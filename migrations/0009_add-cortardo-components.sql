@@ -1,0 +1,1 @@
+ALTER TABLE "cortardo_agent_runs" ADD COLUMN IF NOT EXISTS "components" jsonb;

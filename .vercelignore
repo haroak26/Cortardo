@@ -1,0 +1,13 @@
+node_modules
+.cache
+.config
+.local
+.opencode
+.agents
+.commandcode
+.pythonlibs
+.git
+attached_assets
+screenshots
+skills
+uploads
