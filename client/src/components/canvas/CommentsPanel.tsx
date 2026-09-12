@@ -239,7 +239,7 @@ export function CommentsPanel({
       className={cn(
         "flex flex-col overflow-hidden bg-background",
         isPage
-          ? "absolute inset-0 z-40 transition-transform duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]" +
+          ? "absolute inset-0 z-40 transition-transform duration-300 ease-drawer" +
               (open ? " translate-x-0" : " translate-x-full")
           : "h-full min-h-0"
       )}

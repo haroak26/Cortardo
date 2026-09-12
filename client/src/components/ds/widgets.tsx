@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import type { LucideIcon } from "lucide-react";
-import { ChevronDown, Search, X, ChevronRight, Check, Plus, Pencil } from "lucide-react";
+import { ChevronDown, Search, X, ChevronRight, Check, Plus, Pencil, ArrowUpRight, ArrowDownRight } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { FramedCard } from "@/components/framed-card";
 import { Button } from "@/components/button";
 import { TextInput } from "@/components/text-input";
 
@@ -206,33 +207,57 @@ export interface StatCardProps {
   className?: string;
 }
 
-/** Flat stat block. No border, no background — just content in a grid cell. */
+const STAT_TONES: Record<BadgeTone, string> = {
+  brand: "text-brand",
+  success: "text-success",
+  warning: "text-warning",
+  danger: "text-danger",
+  info: "text-info",
+  neutral: "text-fg-muted",
+};
+
+const STAT_DELTA = /^([+-]\d+)\s+(.+)$/;
+
+/** Framed stat block: label, tone icon, large value, and optional delta hint. */
 export function StatCard({ label, value, hint, icon: Icon, tone = "brand", className }: StatCardProps) {
+  const delta = typeof hint === "string" ? STAT_DELTA.exec(hint) : null;
+  const positive = delta?.[1].startsWith("+") ?? true;
   return (
-    <div className={cn("flex flex-col gap-2 py-3", className)}>
-      <div className="flex items-center justify-between">
-        <span className="lds-section-label">{label}</span>
+    <FramedCard className={cn("flex h-full flex-col p-4", className)}>
+      <div className="flex items-center justify-between gap-3">
+        <span className="truncate text-[12.5px] font-medium text-fg-muted">{label}</span>
         {Icon && (
-          <span
-            className={cn(
-              "inline-flex items-center justify-center w-7 h-7 rounded-[8px]",
-              tone === "brand" && "bg-brand/10 text-brand",
-              tone === "success" && "bg-success/10 text-success",
-              tone === "warning" && "bg-warning/10 text-warning",
-              tone === "danger" && "bg-danger/10 text-danger",
-              tone === "info" && "bg-info/10 text-info",
-              tone === "neutral" && "bg-surface-hover text-fg-muted",
-            )}
-          >
-            <Icon className="h-3.5 w-3.5" strokeWidth={2} />
-          </span>
+          <Icon size={15} strokeWidth={2} className={cn("shrink-0 opacity-80", STAT_TONES[tone])} />
         )}
       </div>
-      <div>
-        <p className="text-[24px] leading-none font-semibold tracking-tight text-foreground">{value}</p>
-        {hint && <p className="mt-2 text-[12.5px] text-fg-muted">{hint}</p>}
-      </div>
-    </div>
+      <p className="mt-3 text-[32px] font-semibold leading-none tracking-[-0.02em] tabular-nums text-foreground">
+        {value}
+      </p>
+      {hint && (
+        <div className="mt-auto flex min-w-0 items-center gap-1.5 pt-3 text-[12px] text-fg-subtle">
+          {delta ? (
+            <>
+              <span
+                className={cn(
+                  "inline-flex shrink-0 items-center gap-0.5 font-semibold tabular-nums",
+                  positive ? "text-success" : "text-danger",
+                )}
+              >
+                {positive ? (
+                  <ArrowUpRight size={13} strokeWidth={2.5} />
+                ) : (
+                  <ArrowDownRight size={13} strokeWidth={2.5} />
+                )}
+                {delta[1].replace(/^[+-]/, "")}
+              </span>
+              <span className="truncate">{delta[2]}</span>
+            </>
+          ) : (
+            <span className="truncate">{hint}</span>
+          )}
+        </div>
+      )}
+    </FramedCard>
   );
 }
 

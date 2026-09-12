@@ -418,15 +418,6 @@ export function registerAuthRoutes(app: Express): void {
     }
   }
 
-  // GitHub OAuth
-  app.get("/auth/github", authRateLimiter, (req, res, next) => {
-    if (!process.env.GITHUB_CLIENT_ID || !process.env.GITHUB_CLIENT_SECRET) {
-      return res.redirect("/auth/login?error=github_not_configured");
-    }
-    const state = generateOAuthState(req);
-    passport.authenticate("github", { scope: ["read:user", "user:email"], state })(req, res, next);
-  });
-
   const oauthCallbackRedirect = async (req: Request, res: Response) => {
     if (!req.user) return res.redirect("/auth/login?error=oauth_failed");
     const user = req.user as User;
@@ -440,28 +431,8 @@ export function registerAuthRoutes(app: Express): void {
     if (session && session.currentStep !== "complete") {
       return res.redirect("/auth/onboarding");
     }
-    return res.redirect("/home/mail");
+    return res.redirect("/workspace/home");
   };
-
-  const githubCallbackHandler = [
-    authRateLimiter,
-    (req: Request, res: Response, next: NextFunction) => {
-      if (!process.env.GITHUB_CLIENT_ID || !process.env.GITHUB_CLIENT_SECRET) {
-        return res.redirect("/auth/login?error=github_not_configured");
-      }
-      if (!verifyOAuthState(req, req.query.state as string)) {
-        return res.redirect("/auth/login?error=oauth_state_mismatch");
-      }
-      next();
-    },
-    (req: Request, res: Response, next: NextFunction) => {
-      passport.authenticate("github", { failureRedirect: "/auth/login?error=github_failed" })(req, res, next);
-    },
-    oauthCallbackRedirect,
-  ] as const;
-
-  app.get("/auth/callback", ...githubCallbackHandler);
-  app.get("/auth/github/callback", ...githubCallbackHandler);
 
   // Google OAuth
   app.get("/auth/google", authRateLimiter, (req, res, next) => {

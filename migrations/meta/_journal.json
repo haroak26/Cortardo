@@ -57,6 +57,41 @@
       "when": 1788500000000,
       "tag": "0008_add-branches",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1789100000000,
+      "tag": "0012_repair-drift",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1789130085226,
+      "tag": "0013_github_integration",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1789141755206,
+      "tag": "0014_github_account_connections",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1789145000000,
+      "tag": "0015_fix_schema_drift",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1789200000000,
+      "tag": "0016_github_account_token_refresh",
+      "breakpoints": true
     }
   ]
 }

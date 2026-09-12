@@ -1,143 +1,302 @@
-import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { useUser } from '@/hooks/use-user';
-import { PromptInput } from '@/components/PromptInput';
-import { Skeleton } from '@/components/ui/skeleton';
-import { ArrowRight } from 'lucide-react';
+import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'wouter';
-import { randomProjectName } from '@/lib/utils';
+import { useUser } from '@/hooks/use-user';
+import { cn } from '@/lib/utils';
+import { Button } from '@/components/button';
+import { StatCard } from '@/components/ds';
+import { FramedCard } from '@/components/framed-card';
+import { SeverityChips, RunStatusDot, RunStatusBadge } from '@/components/review/bits';
+import {
+  dashboardMetrics,
+  mockCodebaseMap,
+  recentReviews,
+  timeAgo,
+  type CodeFileStatus,
+  type CodebaseFile,
+  type MockReview,
+} from '@/lib/mock-review-data';
+import {
+  AlertTriangle,
+  ArrowRight,
+  Boxes,
+  CheckCircle2,
+  FolderGit2,
+  GitPullRequest,
+  ShieldAlert,
+  type LucideIcon,
+} from 'lucide-react';
 
-interface ApiProject {
-  id: string;
-  name: string;
-  updatedAt: string;
+const METRIC_ICONS = {
+  reviews: GitPullRequest,
+  open: ShieldAlert,
+  priority: AlertTriangle,
+  repos: FolderGit2,
+} as const;
+
+const CODE_STATUS_META: Record<CodeFileStatus, { label: string; color: string; swatch: string }> = {
+  clean: { label: 'Clean', color: 'hsl(var(--surface-deep))', swatch: 'bg-surface-deep' },
+  fixing: { label: 'Being fixed', color: 'hsl(var(--warning))', swatch: 'bg-warning' },
+  error: { label: 'Error', color: 'hsl(var(--danger))', swatch: 'bg-danger' },
+};
+
+function CardHeader({ label, icon: Icon, tone }: { label: string; icon: LucideIcon; tone: string }) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <p className="truncate text-[12.5px] font-medium text-fg-muted">{label}</p>
+      <Icon size={15} strokeWidth={2} className={cn('shrink-0 opacity-80', tone)} />
+    </div>
+  );
 }
 
-function timeAgo(dateStr: string): string {
-  const diff = Date.now() - new Date(dateStr).getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  if (days < 30) return `${days}d ago`;
-  return new Date(dateStr).toLocaleDateString();
+function CardFooter({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="mt-auto flex items-center gap-1 border-none bg-transparent pt-3 text-[12.5px] font-medium text-fg-muted transition-colors hover:text-foreground cursor-pointer"
+    >
+      {label} <ArrowRight size={13} />
+    </button>
+  );
+}
+
+function FixQueueCard({ reviews, onOpen }: { reviews: MockReview[]; onOpen: () => void }) {
+  return (
+    <FramedCard className="flex h-full flex-col p-4">
+      <CardHeader label="Fix queue" icon={AlertTriangle} tone="text-danger" />
+      <p className="mt-3 text-[32px] font-semibold leading-none tracking-[-0.02em] tabular-nums text-foreground">
+        {reviews.length}
+      </p>
+      <p className="mt-2 text-[12px] text-fg-subtle">Pull requests with critical or high findings</p>
+      {reviews.length === 0 ? (
+        <div className="mt-3 flex flex-1 items-center gap-2 py-4 text-[13px] text-fg-muted">
+          <CheckCircle2 size={15} className="shrink-0 text-success" />
+          No pull requests are waiting on fixes.
+        </div>
+      ) : (
+        <ul className="mt-3 flex-1">
+          {reviews.map((review) => (
+            <li key={review.id} className="border-b border-border-subtle last:border-b-0">
+              <button
+                type="button"
+                onClick={onOpen}
+                className="-mx-1.5 flex w-full items-start gap-3 rounded-[8px] border-none bg-transparent px-1.5 py-2.5 text-left cursor-pointer transition-colors hover:bg-surface-hover/60"
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[13px] font-medium text-foreground">{review.title}</p>
+                  <p className="mt-0.5 truncate font-mono text-[11.5px] text-fg-muted">
+                    {review.repository} #{review.number} · {review.author}
+                  </p>
+                </div>
+                <div className="hidden shrink-0 items-center gap-2 pt-0.5 sm:flex">
+                  <SeverityChips severity={review.severity} />
+                  <span className="whitespace-nowrap text-[11.5px] tabular-nums text-fg-faint">
+                    {timeAgo(review.createdAt)}
+                  </span>
+                </div>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <CardFooter label="View all reviews" onClick={onOpen} />
+    </FramedCard>
+  );
+}
+
+function ActiveReviewsCard({ reviews, onOpen }: { reviews: MockReview[]; onOpen: () => void }) {
+  return (
+    <FramedCard className="flex h-full flex-col p-4">
+      <CardHeader label="Active reviews" icon={GitPullRequest} tone="text-brand" />
+      <p className="mt-3 text-[32px] font-semibold leading-none tracking-[-0.02em] tabular-nums text-foreground">
+        {reviews.length}
+      </p>
+      <p className="mt-2 text-[12px] text-fg-subtle">Reviews running right now</p>
+      {reviews.length === 0 ? (
+        <div className="mt-3 flex flex-1 items-center gap-2 py-4 text-[13px] text-fg-muted">
+          <CheckCircle2 size={15} className="shrink-0 text-success" />
+          All caught up. No reviews are running.
+        </div>
+      ) : (
+        <ul className="mt-3 flex-1">
+          {reviews.map((review) => (
+            <li key={review.id} className="border-b border-border-subtle last:border-b-0">
+              <button
+                type="button"
+                onClick={onOpen}
+                className="-mx-1.5 flex w-full items-start gap-3 rounded-[8px] border-none bg-transparent px-1.5 py-2.5 text-left cursor-pointer transition-colors hover:bg-surface-hover/60"
+              >
+                <span className="mt-[6px]">
+                  <RunStatusDot status={review.status} />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[13px] font-medium text-foreground">{review.title}</p>
+                  <p className="mt-0.5 truncate font-mono text-[11.5px] text-fg-muted">
+                    {review.repository} #{review.number} · {review.author}
+                  </p>
+                </div>
+                <div className="hidden shrink-0 items-center gap-2 pt-0.5 sm:flex">
+                  <span className="whitespace-nowrap text-[11.5px] tabular-nums text-fg-faint">
+                    {timeAgo(review.createdAt)}
+                  </span>
+                  <RunStatusBadge status={review.status} />
+                </div>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <CardFooter label="View all reviews" onClick={onOpen} />
+    </FramedCard>
+  );
+}
+
+const CODE_BLOCK_PX = 15;
+const CODE_BLOCK_GAP_PX = 5;
+const CODEBASE_ROWS = 5;
+
+function CodebaseCard() {
+  const map = mockCodebaseMap;
+  const gridRef = useRef<HTMLDivElement>(null);
+  const [columns, setColumns] = useState(0);
+
+  useLayoutEffect(() => {
+    const el = gridRef.current;
+    if (!el) return;
+    const measure = () => {
+      const width = el.clientWidth;
+      setColumns(
+        Math.max(1, Math.floor((width + CODE_BLOCK_GAP_PX) / (CODE_BLOCK_PX + CODE_BLOCK_GAP_PX))),
+      );
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  const files = map.files;
+  const totals = map.totals;
+
+  const visibleFiles = useMemo(() => {
+    if (columns <= 0 || files.length === 0) return [];
+    const target = Math.min(columns * CODEBASE_ROWS, files.length);
+    const indexed = files.map((file, index) => ({ file, index }));
+    const issues = indexed.filter((entry) => entry.file.status !== 'clean');
+    const clean = indexed.filter((entry) => entry.file.status === 'clean');
+    const chosen =
+      issues.length >= target
+        ? issues.slice(0, target)
+        : [...issues, ...clean.slice(0, target - issues.length)];
+    return chosen.sort((a, b) => a.index - b.index).map((entry) => entry.file);
+  }, [columns, files]);
+
+  const legendCount = (status: CodeFileStatus) =>
+    status === 'clean' ? totals.clean : status === 'fixing' ? totals.fixing : totals.error;
+
+  return (
+    <FramedCard className="flex flex-col p-4">
+      <CardHeader label="Codebase" icon={Boxes} tone="text-fg-muted" />
+      <p className="mt-2 text-[12px] text-fg-subtle">
+        Each block is one indexed file, coloured by its current state.
+      </p>
+
+      {(
+        <>
+          <div ref={gridRef} className="mt-4 flex flex-wrap gap-[4px]">
+            {visibleFiles.map((file: CodebaseFile) => {
+              const meta = CODE_STATUS_META[file.status];
+              return (
+                <span
+                  key={`${file.repository}:${file.path}`}
+                  className="shrink-0 rounded-[3px]"
+                  style={{ background: meta.color, width: CODE_BLOCK_PX, height: CODE_BLOCK_PX }}
+                  title={`${file.repository} · ${file.path} — ${meta.label}`}
+                />
+              );
+            })}
+          </div>
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11.5px] text-fg-muted">
+              {(Object.keys(CODE_STATUS_META) as CodeFileStatus[]).map((status) => (
+                <span key={status} className="inline-flex items-center gap-1.5">
+                  <span className={cn('h-2.5 w-2.5 rounded-[2px]', CODE_STATUS_META[status].swatch)} />
+                  {CODE_STATUS_META[status].label}{' '}
+                  <span className="tabular-nums text-fg-faint">
+                    {legendCount(status).toLocaleString()}
+                  </span>
+                </span>
+              ))}
+            </div>
+            <span className="text-[11.5px] tabular-nums text-fg-faint">
+              Showing {visibleFiles.length} of {totals.total.toLocaleString()} indexed files
+            </span>
+          </div>
+        </>
+      )}
+    </FramedCard>
+  );
 }
 
 export default function HomePage() {
   const { data: user } = useUser();
   const [, setLocation] = useLocation();
-  const [loading, setLoading] = useState(false);
-
-  /* Pick up a prompt typed on the landing hero and prefill it for review. */
-  const [landingPrompt] = useState<string | undefined>(() => {
-    const v = sessionStorage.getItem('cortardo-landing-prompt');
-    if (v) sessionStorage.removeItem('cortardo-landing-prompt');
-    return v ?? undefined;
-  });
-
-  const { data: projects = [], isLoading: projectsLoading } = useQuery<ApiProject[]>({
-    queryKey: ['/api/projects'],
-    queryFn: async () => {
-      const res = await fetch('/api/projects', { credentials: 'include' });
-      if (!res.ok) return [];
-      return res.json();
-    },
-    staleTime: 30_000,
-  });
-
-  const recentProjects = projects.slice(0, 3);
-
-  const handlePrompt = async (prompt: string, options?: { model?: string; reasoning?: string }) => {
-    setLoading(true);
-    try {
-      if (options?.model) sessionStorage.setItem('cortardo-model', options.model);
-      if (options?.reasoning) sessionStorage.setItem('cortardo-reasoning', options.reasoning);
-      const res = await fetch('/api/projects', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: randomProjectName(),
-          description: prompt,
-          kind: "cortardo",
-        }),
-      });
-      if (res.ok) {
-        const project = await res.json();
-        sessionStorage.setItem('cortardo-prompt', prompt);
-        setLocation(`/canvas/${project.id}`);
-        return;
-      }
-    } catch {}
-    sessionStorage.setItem('cortardo-prompt', prompt);
-    setLocation('/canvas/new');
-  };
 
   const firstName = user?.displayName?.split(' ')[0] || user?.email?.split('@')[0] || 'there';
+  const activeReviews = recentReviews.filter((r) => !['done', 'error', 'cancelled'].includes(r.status));
+  const fixQueue = recentReviews
+    .filter((r) => r.status === 'done' && r.severity.critical + r.severity.high > 0)
+    .sort((a, b) => b.severity.critical - a.severity.critical || b.severity.high - a.severity.high);
+  const openReviews = () => setLocation('/review/reviews');
+  const diagnoseError = () =>
+    setLocation(`/review/reviews?diagnose=${fixQueue[0]?.id ?? recentReviews[0]?.id ?? 'rv_01'}`);
 
   return (
     <div className="h-full flex flex-col overflow-y-auto">
-      <div className="flex-1 flex flex-col items-center pt-16 sm:pt-36 pb-8 sm:pb-12 px-4 sm:px-6 max-w-4xl mx-auto w-full">
-        {/* Welcome */}
-        <div className="text-center mb-3 sm:mb-6 pt-3 sm:pt-6">
-          <h1 className="text-[22px] sm:text-[30px] font-semibold text-foreground tracking-tight">
-            What are we reviewing, {firstName}?
-          </h1>
+      <div className="flex-1 px-4 sm:px-6 md:px-8 py-4 sm:py-6 max-w-5xl mx-auto w-full">
+        <div className="flex items-start justify-between gap-4 mb-6">
+          <div className="min-w-0">
+            <h1 className="text-[22px] font-semibold text-foreground tracking-tight truncate">
+              Welcome back, {firstName}
+            </h1>
+            <p className="text-[13px] text-fg-muted mt-1">
+              Reviews, findings, and open issues across your repositories.
+            </p>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <Button onClick={diagnoseError}>
+              <GitPullRequest size={14} />
+              Diagnose Error
+            </Button>
+          </div>
         </div>
 
-        {/* Prompt Box */}
-        <PromptInput onSubmit={handlePrompt} isLoading={loading} initialValue={landingPrompt} showFocusPlaceholder={false} />
+        {/* Metrics */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+          {dashboardMetrics.map((metric) => {
+            const Icon = METRIC_ICONS[metric.key as keyof typeof METRIC_ICONS] ?? GitPullRequest;
+            return (
+              <StatCard
+                key={metric.key}
+                label={metric.label}
+                value={metric.value}
+                hint={metric.hint}
+                icon={Icon}
+                tone={metric.tone}
+              />
+            );
+          })}
+        </div>
 
-        {/* Recent Projects */}
-        <div className="w-full max-w-3xl mx-auto mt-14 sm:mt-36">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-[18px] font-semibold text-foreground">Recent</h2>
-            <button
-              onClick={() => setLocation('/home/projects')}
-              className="flex items-center gap-1 text-[13px] font-medium text-fg-muted hover:text-foreground transition-colors border-none bg-transparent cursor-pointer"
-            >
-              View all <ArrowRight size={13} />
-            </button>
-          </div>
+        {/* Codebase map */}
+        <div className="mb-4">
+          <CodebaseCard />
+        </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2 pb-2">
-            {projectsLoading && (
-              <>
-                {Array.from({ length: 3 }).map((_, i) => (
-                  <div key={i} className="rounded-[12px] border border-border bg-background overflow-hidden">
-                    <Skeleton className="aspect-[16/10] w-full rounded-none" />
-                    <div className="px-3 py-2 space-y-1.5">
-                      <Skeleton className="h-3.5 w-2/3" />
-                      <Skeleton className="h-2.5 w-1/4" />
-                    </div>
-                  </div>
-                ))}
-              </>
-            )}
-            {!projectsLoading && recentProjects.length === 0 && (
-              <div className="col-span-3 text-center py-8">
-                <p className="text-[13px] text-fg-muted">No projects yet. Connect a repository above.</p>
-              </div>
-            )}
-            {recentProjects.map((project) => (
-              <div
-                key={project.id}
-                onClick={() => setLocation(`/canvas/${project.id}`)}
-                className="group rounded-[12px] border border-border bg-background hover:shadow-[0_2px_12px_rgba(0,0,0,0.06)] hover:-translate-y-1 transition-all duration-150 cursor-pointer overflow-hidden"
-              >
-                <div className="aspect-[16/10] bg-surface-hover flex items-center justify-center">
-                  <span className="text-[11px] text-fg-muted font-medium">No Preview</span>
-                </div>
-                <div className="h-px bg-border/60" />
-                <div className="px-3 py-2">
-                  <p className="text-[13px] font-medium text-foreground truncate">{project.name}</p>
-                  <p className="text-[11px] text-fg-faint mt-0.5">{timeAgo(project.updatedAt)}</p>
-                </div>
-              </div>
-            ))}
-          </div>
+        {/* Pull request queues */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <FixQueueCard reviews={fixQueue} onOpen={openReviews} />
+          <ActiveReviewsCard reviews={activeReviews} onOpen={openReviews} />
         </div>
       </div>
     </div>

@@ -58,7 +58,7 @@ export default function InviteAccept() {
     },
     onSuccess: () => {
       setStatus("accepted");
-      setTimeout(() => navigate("/home/inbox"), 2000);
+      setTimeout(() => navigate("/workspace/home"), 2000);
     },
     onError: (e: any) => {
       setErrorMsg(e.message);

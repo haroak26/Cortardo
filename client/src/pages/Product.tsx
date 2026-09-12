@@ -56,26 +56,20 @@ const features: { icon: typeof GitPullRequest; title: string; description: strin
   {
     icon: GitMerge,
     title: "Style enforcement",
-    description: "Your conventions, written in plain English, enforced automatically on every PR.",
+    description: "Your conventions, written in plain English, enforced automatically on every review.",
     variant: "green",
-  },
-  {
-    icon: Terminal,
-    title: "Works where you work",
-    description: "GitHub, GitLab, and Bitbucket integrations that comment in the PRs you already use.",
-    variant: "amber",
   },
 ];
 
 const steps = [
   {
     num: "01",
-    title: "Connect a repo",
-    description: "Link GitHub, GitLab, or Bitbucket and pick the repos you want reviewed.",
+    title: "Open your reviews",
+    description: "See findings, walkthroughs, and suggested fixes across your workspace in one place.",
   },
   {
     num: "02",
-    title: "Push a pull request",
+    title: "Run a review",
     description: "Cortardo Agent reads the diff and posts a full review — bugs, security, style, and summaries.",
   },
   {

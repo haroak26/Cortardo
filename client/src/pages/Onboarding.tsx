@@ -64,7 +64,7 @@ export default function Onboarding() {
       await queryClient.refetchQueries({ queryKey: ["/api/workspaces"] });
       await activateEncryptedCache();
       await prefetchAppData(queryClient);
-      setLocation("/home/projects");
+      setLocation("/workspace/home");
     }
   }, [queryClient, setLocation]);
 

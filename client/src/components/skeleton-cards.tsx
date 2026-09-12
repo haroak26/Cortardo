@@ -1,16 +1,18 @@
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
+import { CornerMarkers } from "@/components/framed-card";
 
 export function StatCardSkeleton({ className }: { className?: string }) {
   return (
-    <div className={cn("flex flex-col gap-2 py-3 animate-pulse", className)}>
-      <div className="flex items-center justify-between">
+    <div className={cn("relative flex flex-col border border-border/70 bg-background p-4 animate-pulse", className)}>
+      <CornerMarkers />
+      <div className="flex items-center justify-between gap-3">
         <Skeleton className="h-3 w-16" />
-        <Skeleton className="h-7 w-7 rounded-lg" />
+        <Skeleton className="h-4 w-4 rounded-sm" />
       </div>
-      <div>
-        <Skeleton className="h-8 w-16" />
-        <Skeleton className="mt-2 h-3.5 w-20" />
+      <Skeleton className="mt-3 h-8 w-16" />
+      <div className="mt-auto pt-3">
+        <Skeleton className="h-3.5 w-24" />
       </div>
     </div>
   );

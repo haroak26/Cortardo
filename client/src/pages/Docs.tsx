@@ -83,9 +83,9 @@ export default function Docs() {
 
           <Collapsible title="Connecting a repository">
             <Step num="1">Sign in and go to <strong className="text-foreground">Home</strong>.</Step>
-            <Step num="2">Connect GitHub, GitLab, or Bitbucket and pick the repos to review.</Step>
+            <Step num="2">Open the <strong className="text-foreground">Reviews</strong> page to explore findings and walkthroughs.</Step>
             <Step num="3">Choose a model and reasoning effort (optional).</Step>
-            <Step num="4">Cortardo creates the project and starts reviewing pull requests automatically.</Step>
+            <Step num="4">Track review progress from the dashboard.</Step>
           </Collapsible>
 
           <Collapsible title="Organising repositories">
@@ -129,7 +129,7 @@ export default function Docs() {
         {/* ── Authentication and Security ── */}
         <Section title="Authentication and Security">
           <p className="text-[13px] text-muted-foreground leading-[1.7]">
-            Cortardo supports email/password login, GitHub OAuth, and two-factor authentication via TOTP (Time-based One-Time Passwords).
+            Cortardo supports email/password login, Google sign-in, and two-factor authentication via TOTP (Time-based One-Time Passwords).
           </p>
 
           <Collapsible title="Setting up two-factor authentication">
@@ -195,15 +195,11 @@ export default function Docs() {
         {/* ── Integrations ── */}
         <Section title="Integrations">
           <p className="text-[13px] text-muted-foreground leading-[1.7]">
-            Cortardo connects with your existing tools through Stripe for billing and GitHub for OAuth sign-in.
+            Cortardo connects with your existing tools through Stripe for billing and subscription management.
           </p>
 
           <Collapsible title="Stripe">
             <p>Billing and subscription management is handled through Stripe. When you upgrade to a paid plan, Cortardo creates a Stripe Checkout session. Returning customers use the Stripe Customer Portal for plan changes and payment management.</p>
-          </Collapsible>
-
-          <Collapsible title="GitHub OAuth">
-            <p>You can sign in to Cortardo using your GitHub account. GitHub OAuth fetches your profile and email addresses. If it's your first time signing in with GitHub, you'll be guided through linking a password and creating your first workspace.</p>
           </Collapsible>
         </Section>
 

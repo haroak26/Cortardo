@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { Eye, Users, MousePointerClick, LayoutDashboard, LogOut, Mail, Calendar, ShieldCheck, Loader } from "lucide-react";
 import { AppPage, PageHeader, PageHeading, StatCard, DataTable, Badge, FilterChip, ContentPanel, type DataTableColumn } from "@/components/ds";
+import { StatCardSkeleton } from "@/components/skeleton-cards";
 import { Button } from "@/components/button";
 
 type AdminStats = {
@@ -69,11 +70,7 @@ function AdminDashboard() {
       {loading ? (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           {[...Array(4)].map((_, i) => (
-            <div key={i} className="flex flex-col gap-2 py-3 animate-pulse">
-              <div className="h-3 w-16 bg-surface-hover rounded" />
-              <div className="h-8 w-20 bg-surface-hover rounded" />
-              <div className="h-3.5 w-24 bg-surface-hover rounded" />
-            </div>
+            <StatCardSkeleton key={i} />
           ))}
         </div>
       ) : stats ? (

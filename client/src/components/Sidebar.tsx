@@ -3,9 +3,9 @@ import { createPortal } from 'react-dom';
 import { Link, useLocation } from 'wouter';
 import { cn } from '@/lib/utils';
 import {
-  Home01Icon, Folder01Icon, Layers01Icon, Image01Icon,
-  UserGroupIcon, UserAdd01Icon, UserIcon, SmartPhone01Icon,
-  CreditCardIcon, Coins01Icon, Chart01Icon, Shield01Icon, Key01Icon,
+  Home09Icon, MessageMultiple01Icon, Shield01Icon, Blockchain07Icon,
+  Book02Icon, GraduationCapIcon, UserGroupIcon, UserAdd01Icon, UserIcon, SmartPhone01Icon,
+  CreditCardIcon, Coins01Icon, Chart01Icon, Key01Icon,
   Alert01Icon, ArrowRight01Icon, ArrowLeft01Icon,
 } from '@hugeicons/core-free-icons';
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -22,19 +22,26 @@ function initials(name: string | null | undefined): string {
 type Tab = {
   id: string;
   label: string;
-  icon: typeof Home01Icon;
+  icon: typeof Home09Icon;
   href: string | null;
 };
 
-const MAIN_TABS: Tab[] = [
-  { id: 'design',      label: 'Home',       icon: Home01Icon,      href: '/home' },
-  { id: 'projects',    label: 'Projects',    icon: Folder01Icon,    href: '/home/projects' },
-  { id: 'components',  label: 'Components',  icon: Layers01Icon, href: '/home/components' },
-  { id: 'assets',      label: 'Assets',      icon: Image01Icon, href: '/home/assets' },
+const WORKSPACE_TABS: Tab[] = [
+  { id: 'home',         label: 'Home',         icon: Home09Icon,            href: '/workspace/home' },
+];
+
+const REVIEW_TABS: Tab[] = [
+  { id: 'reviews',   label: 'Reviews',   icon: MessageMultiple01Icon, href: '/review/reviews' },
+  { id: 'security',  label: 'Security',  icon: Blockchain07Icon,      href: '/review/security' },
+];
+
+const BOT_TABS: Tab[] = [
+  { id: 'rules',      label: 'Rules',      icon: Book02Icon,    href: '/bot/rules' },
+  { id: 'learnings',  label: 'Learnings',  icon: GraduationCapIcon, href: '/bot/learnings' },
 ];
 
 const TEAM_TABS: Tab[] = [
-  { id: 'manage',  label: 'Manage',  icon: UserGroupIcon,   href: '/workspace/team' },
+  { id: 'manage',  label: 'Manage',  icon: UserGroupIcon,   href: '/team/manage' },
   { id: 'invite',  label: 'Invite',  icon: UserAdd01Icon, href: null },
 ];
 
@@ -71,12 +78,14 @@ const ACCOUNT_NAV: { label: string; tabs: Tab[] }[] = [
 
 function useActiveTab(): string {
   const [location] = useLocation();
-  if (location === '/home' || location.startsWith('/home/design')) return 'design';
-  if (location.startsWith('/home/projects')) return 'projects';
-  if (location.startsWith('/home/components')) return 'components';
-  if (location.startsWith('/home/assets')) return 'assets';
-  if (location.startsWith('/workspace/team')) return 'manage';
-  if (location.startsWith('/workspace')) return 'manage';
+  if (location === '/workspace/home') return 'home';
+  if (location.startsWith('/review/reviews')) return 'reviews';
+  if (location.startsWith('/review/security')) return 'security';
+  if (location.startsWith('/bot/rules')) return 'rules';
+  if (location.startsWith('/bot/learnings')) return 'learnings';
+  if (location.startsWith('/bot')) return 'rules';
+  if (location.startsWith('/team')) return 'manage';
+  if (location.startsWith('/workspace')) return 'home';
   if (location.startsWith('/account/profile')) return 'account-profile';
   if (location.startsWith('/account/security-auth')) return 'account-security';
   if (location.startsWith('/account/security')) return 'account-security';
@@ -87,7 +96,7 @@ function useActiveTab(): string {
   if (location.startsWith('/account/usage')) return 'account-usage';
   if (location.startsWith('/account/actions')) return 'account-actions';
   if (location.startsWith('/account')) return 'account-profile';
-  return 'design';
+  return 'home';
 }
 
 function NavGroup({ label, first, children }: { label: string; first?: boolean; children: React.ReactNode }) {
@@ -347,7 +356,7 @@ export function SidebarContent({ location: _location, onNavigate, collapsed, mob
                 <div className="mt-3">
                   <div className="h-px bg-[hsl(var(--surface-hover))] -mx-2" />
                   <div className="pt-3">
-                    <Link href="/home" onClick={onNavigate}>
+                    <Link href="/workspace/home" onClick={onNavigate}>
                     <div className="group flex items-center gap-2 h-[32px] px-2.5 rounded-[10px] text-[13px] font-medium text-fg-muted cursor-pointer select-none transition-colors duration-100 hover:bg-surface-hover hover:text-foreground">
                       <HugeiconsIcon icon={ ArrowLeft01Icon } size={14} strokeWidth={2} className="shrink-0"  />
                         <span className="leading-snug">Back to home</span>
@@ -361,7 +370,13 @@ export function SidebarContent({ location: _location, onNavigate, collapsed, mob
         ) : (
           <div>
             <NavGroup label="Workspace" first>
-              <TabRow tabs={MAIN_TABS} activeTab={activeTab} onNavigate={onNavigate} />
+              <TabRow tabs={WORKSPACE_TABS} activeTab={activeTab} onNavigate={onNavigate} />
+            </NavGroup>
+            <NavGroup label="Review">
+              <TabRow tabs={REVIEW_TABS} activeTab={activeTab} onNavigate={onNavigate} />
+            </NavGroup>
+            <NavGroup label="Bot">
+              <TabRow tabs={BOT_TABS} activeTab={activeTab} onNavigate={onNavigate} />
             </NavGroup>
             <NavGroup label="Team">
               <TabRow tabs={TEAM_TABS} activeTab={activeTab} onNavigate={onNavigate} onAction={() => onInviteToWorkspace?.()} />

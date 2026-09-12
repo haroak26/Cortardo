@@ -7,9 +7,11 @@ function isAuthRoute(path: string): boolean {
 }
 
 function isMarketingRoute(path: string): boolean {
-  if (path.startsWith("/home/")) return false;
-  if (path.startsWith("/account")) return false;
   if (path.startsWith("/workspace")) return false;
+  if (path.startsWith("/review")) return false;
+  if (path.startsWith("/bot")) return false;
+  if (path.startsWith("/team")) return false;
+  if (path.startsWith("/account")) return false;
   if (path.startsWith("/create/")) return false;
   if (path === "/admin" || path.startsWith("/admin/") && path !== "/admin/login") return false;
   if (isAuthRoute(path)) return false;

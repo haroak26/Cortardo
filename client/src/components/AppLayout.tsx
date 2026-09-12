@@ -40,8 +40,8 @@ export function AppLayout({
   subNav?: React.ReactNode;
 }) {
   const [locationPath] = useLocation();
-  const { data: user } = useUser();
-  const { data: credits } = useCredits();
+  const { data: user, isLoading: userLoading } = useUser();
+  const { data: credits, isLoading: creditsLoading } = useCredits();
   const isAccountPage = locationPath.startsWith('/account');
   const { switchingWorkspace, switchingWsPhase, switchingWsName, activeWorkspaceId } = useWorkspace();
   const isMobile = useIsMobile();
@@ -98,16 +98,18 @@ export function AppLayout({
                   )}
                 </div>
                 <div className="flex items-center gap-3">
-                  {credits ? (
+                  {creditsLoading ? (
+                    <Skeleton className="h-4 w-28" />
+                  ) : credits ? (
                     <Link href="/account/credits" className="text-[14px] font-medium text-fg-muted hover:text-foreground transition-colors no-underline tabular-nums">
                       {credits.balance % 1 === 0 ? credits.balance : credits.balance.toFixed(2)} Credits Remaining
                     </Link>
-                  ) : (
-                    <Skeleton className="h-4 w-28" />
-                  )}
+                  ) : null}
                   <div className="w-px h-4 bg-[hsl(var(--surface-hover))]" />
-                  <Link href="/account/profile">
-                    {user?.avatarUrl ? (
+                  <Link href="/account/profile" aria-label="Account settings">
+                    {userLoading ? (
+                      <Skeleton className="w-[28px] h-[28px] rounded-full" />
+                    ) : user?.avatarUrl ? (
                       <img src={user.avatarUrl} alt="" className="w-[28px] h-[28px] rounded-full object-cover hover:opacity-80 transition-opacity cursor-pointer" />
                     ) : (
                       <div className="w-[28px] h-[28px] rounded-full bg-brand flex items-center justify-center hover:opacity-80 transition-opacity cursor-pointer">

@@ -148,6 +148,16 @@ export default {
       ringWidth: {
         3: "3px",
       },
+      transitionDuration: {
+        450: "450ms",
+        // Drawer close/swipe animation, driven by Base UI swipe strength.
+        "drawer-close": "calc(var(--drawer-swipe-strength, 1) * 400ms)",
+      },
+      transitionTimingFunction: {
+        drawer: "cubic-bezier(0.32, 0.72, 0, 1)",
+        spring: "cubic-bezier(0.22, 1, 0.36, 1)",
+        panel: "cubic-bezier(0.45, 1.005, 0, 1.005)",
+      },
     },
   },
   plugins: [

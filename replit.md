@@ -17,9 +17,8 @@ AI-powered code review tool — connect a repository, and the Cortardo Agent rev
 - Real-time collaborative review workspace (inline comments, shared threads)
 - Review rules and conventions surfaced in sidebar panels
 - Findings / Components / Assets sidebar panels
-- Repositories and team workspaces with role-based access
+- Team workspaces with role-based access
 - Credit-based billing (Stripe / Paddle) with per-run usage settling
-- GitHub, GitLab, and Bitbucket integrations
 - Rate limiting on all auth endpoints via `authRateLimiter`
 - **Timestamps are emitted as UTC ISO 8601** (`...Z`) from the server. `server/db.ts` overrides pg type parsers (OID 1114 → append Z, 1184 → as-is) and pins each connection to `SET TIME ZONE 'UTC'`.
 
@@ -44,6 +43,7 @@ Agent backend in `server/lib/cortardo/` with routes in `server/routes/cortardo-a
 - `BREVO_API_KEY` — Brevo transactional email API key (fallback provider)
 - `BREVO_SENDER_EMAIL`, `BREVO_SENDER_NAME` — Verified Brevo sender details
 - `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` — Google OAuth (optional)
+- `ENCRYPTION_KEY` — 32-byte hex key used to encrypt stored email credentials at rest
 - `STRIPE_SECRET_KEY` — Stripe billing (required for paid plans)
 - `STRIPE_WEBHOOK_SECRET` — Stripe webhook signing secret (required for plan sync)
 - `MERGE_GATEWAY_API_KEY` — AI gateway powering the Cortardo Agent

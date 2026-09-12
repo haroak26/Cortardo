@@ -95,9 +95,11 @@ export function createApp() {
   // This middleware provides defense-in-depth for unsafe methods.
   const csrfSafeMethods = new Set(["GET", "HEAD", "OPTIONS"]);
   const csrfSkippedPaths = [
-    "/auth/callback", "/auth/github/callback", "/auth/google/callback",
+    "/auth/google/callback",
     "/api/contact", "/api/forgot-password", "/api/reset-password",
     "/api/public/",
+    // Provider webhooks authenticate via their own HMAC signatures, not CSRF tokens.
+    "/api/webhooks/",
   ];
   app.use((req, res, next) => {
     // Generate CSRF token on every request so the cookie is always available

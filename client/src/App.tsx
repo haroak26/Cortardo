@@ -37,12 +37,11 @@ import LoadingVerificationPage from "@/pages/LoadingVerification";
 
 /* ── Lazy (code-split, loaded on demand + prefetched after sign-in) ── */
 const Onboarding = lazy(() => import("@/pages/Onboarding"));
-const CompleteGithubSignup = lazy(() => import("@/pages/CompleteGithubSignup"));
 const HomePage = lazy(() => import("@/pages/HomePage"));
-const CanvasPage = lazy(() => import("@/pages/CanvasPage"));
-const ProjectsPage = lazy(() => import("@/pages/ProjectsPage"));
-const ComponentsPage = lazy(() => import("@/pages/ComponentsPage"));
-const AssetsPage = lazy(() => import("@/pages/AssetsPage"));
+const ReviewsPage = lazy(() => import("@/pages/ReviewsPage"));
+const SecurityPage = lazy(() => import("@/pages/SecurityPage"));
+const BotRulesPage = lazy(() => import("@/pages/BotRulesPage"));
+const BotLearningsPage = lazy(() => import("@/pages/BotLearningsPage"));
 const AdminLogin = lazy(() => import("@/pages/AdminLogin"));
 const AdminPage = lazy(() => import("@/pages/Admin"));
 const Account = lazy(() => import("@/pages/Account"));
@@ -94,9 +93,6 @@ function Router() {
       <Route path="/auth/login" component={LoginPage} />
       <Route path="/auth/signup" component={SignUpPage} />
       <Route path="/auth/verify-email" component={VerifyEmailPage} />
-      <Route path="/auth/complete-signup">
-        {() => <ProtectedRoute component={CompleteGithubSignup} />}
-      </Route>
       <Route path="/auth/forgot-password" component={ForgotPasswordPage} />
       <Route path="/auth/reset-password" component={ResetPasswordPage} />
       <Route path="/auth/loading-verification" component={LoadingVerificationPage} />
@@ -111,17 +107,18 @@ function Router() {
       <Route path="/status" component={MarketingStatus} />
 
       {/* Dashboard */}
-      <Route path="/home">{() => <ProtectedRoute component={() => <DesignAppLayout><HomePage /></DesignAppLayout>} />}</Route>
-      <Route path="/canvas/:id">{() => <ProtectedRoute component={CanvasPage} />}</Route>
-      <Route path="/home/projects">{() => <ProtectedRoute component={() => <DesignAppLayout><ProjectsPage /></DesignAppLayout>} />}</Route>
-      <Route path="/home/components">{() => <ProtectedRoute component={() => <DesignAppLayout><ComponentsPage /></DesignAppLayout>} />}</Route>
-      <Route path="/home/assets">{() => <ProtectedRoute component={() => <DesignAppLayout><AssetsPage /></DesignAppLayout>} />}</Route>
+      <Route path="/workspace/home">{() => <ProtectedRoute component={() => <DesignAppLayout><HomePage /></DesignAppLayout>} />}</Route>
+      <Route path="/review/reviews">{() => <ProtectedRoute component={() => <DesignAppLayout><ReviewsPage /></DesignAppLayout>} />}</Route>
+      <Route path="/review/security">{() => <ProtectedRoute component={() => <DesignAppLayout><SecurityPage /></DesignAppLayout>} />}</Route>
+      <Route path="/bot/rules">{() => <ProtectedRoute component={() => <DesignAppLayout><BotRulesPage /></DesignAppLayout>} />}</Route>
+      <Route path="/bot/learnings">{() => <ProtectedRoute component={() => <DesignAppLayout><BotLearningsPage /></DesignAppLayout>} />}</Route>
 
       <Route path="/account">{() => <Redirect to="/account/profile" />}</Route>
       <Route path="/account/*?">{() => <ProtectedRoute component={() => <AppLayout><Account /></AppLayout>} />}</Route>
-      <Route path="/workspace">{() => <Redirect to="/workspace/team" />}</Route>
-      <Route path="/workspace/team">{() => <ProtectedRoute component={() => <AppLayout><TeamPage /></AppLayout>} />}</Route>
-      <Route path="/workspace/*?">{() => <ProtectedRoute component={() => <AppLayout><WorkspacePage /></AppLayout>} />}</Route>
+      <Route path="/workspace">{() => <Redirect to="/workspace/home" />}</Route>
+      <Route path="/team">{() => <Redirect to="/team/manage" />}</Route>
+      <Route path="/team/manage">{() => <ProtectedRoute component={() => <AppLayout><TeamPage /></AppLayout>} />}</Route>
+      <Route path="/team/*?">{() => <ProtectedRoute component={() => <AppLayout><WorkspacePage /></AppLayout>} />}</Route>
       <Route path="/invite/:token" component={InviteAccept} />
 
       {/* Admin */}

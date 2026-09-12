@@ -68,7 +68,7 @@ export default function Terms() {
               <p>5.3 <strong className="text-foreground">No critical use.</strong> The Service is not designed or intended for use in environments where failure or delay could result in death, personal injury, or severe property or environmental damage (including healthcare systems, life support, nuclear facilities, or emergency services). You agree not to use the Service for such purposes.</p>
 
               <h2 className="text-base font-semibold text-foreground pt-4">6) Third-party services and integrations</h2>
-              <p>6.1 The Service integrates with third-party services including Stripe (payment processing), Brevo (transactional email), OpenAI (AI agent services), Mistral AI (document OCR), and GitHub (OAuth authentication). Your use of these integrations is subject to their respective terms of service and privacy policies.</p>
+              <p>6.1 The Service integrates with third-party services including Stripe (payment processing), Brevo (transactional email), OpenAI (AI agent services), and Mistral AI (document OCR). Your use of these integrations is subject to their respective terms of service and privacy policies.</p>
               <p>6.2 We are not responsible for the availability, security, or performance of third-party services. Changes to third-party APIs or discontinuation of third-party services may affect Cortardo's functionality. We will make reasonable efforts to notify you of such impacts and, where feasible, provide alternative integration options.</p>
               <p>6.3 The Service may enable you to configure webhooks for custom integrations. You are responsible for securing your webhook endpoints and for all data transmitted through webhooks.</p>
 

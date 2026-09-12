@@ -28,7 +28,7 @@ export default function LoadingVerification() {
         queryClient.setQueryData(["/api/me"], data.user);
         await activateEncryptedCache();
         await prefetchAppData(queryClient);
-        setLocation("/home");
+        setLocation("/workspace/home");
       }
     };
     poll();

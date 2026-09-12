@@ -26,7 +26,7 @@ const faqs = [
   },
   {
     q: "Does Cortardo work with my git provider?",
-    a: "Cortardo integrates with GitHub, GitLab, and Bitbucket. Connect a repo and Cortardo reviews every pull request automatically — no downloads needed.",
+    a: "Yes. Cortardo works alongside your existing workflow — open your reviews and the agent handles the rest, with no downloads needed.",
   },
   {
     q: "Can I customise what Cortardo looks for?",

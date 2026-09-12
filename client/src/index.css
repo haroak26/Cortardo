@@ -775,6 +775,13 @@ select:-webkit-autofill:active {
   transition: background-color 0.12s ease, border-color 0.12s ease, transform 0.12s ease;
 }
 
+/* Editing blocks pulse between full and light yellow while the bot writes a fix. */
+@keyframes mapEditPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+.map-block-editing { animation: mapEditPulse 1.2s ease-in-out infinite; }
+
 /* Page entry animation — subtle fade-in + micro slide-up on every page mount */
 @keyframes pageIn {
   from {

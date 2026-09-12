@@ -46,7 +46,6 @@ export function injectMeta(html: string, requestUrl: string): string {
       "Inline suggestions and one-click fixes",
       "Style and best-practice enforcement",
       "PR summaries and walkthroughs",
-      "GitHub, GitLab, and Bitbucket integration",
       "Team workspaces"
     ],
     "screenshot": "https://cortardo.com/og-image.png"
@@ -85,7 +84,6 @@ Cortardo is an AI code review tool that helps teams ship better code, faster. Ke
 - **Inline Fixes**: One-click suggestions that apply directly to your branch
 - **PR Summaries**: Instant walkthroughs of what changed and why it matters
 - **Style Enforcement**: Keeps your codebase consistent with your team's conventions
-- **Integrations**: GitHub, GitLab, and Bitbucket out of the box
 - **Team Workspaces**: Collaborate with your team in shared workspaces
 
 ## Links

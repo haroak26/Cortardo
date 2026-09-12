@@ -37,7 +37,7 @@ export default function Privacy() {
                 <li>Password (hashed with scrypt and a unique salt — never stored in plaintext)</li>
                 <li>Username (auto-generated from email or OAuth profile)</li>
                 <li>Display name and avatar image (optional)</li>
-                <li>Google ID or GitHub ID (if you authenticate via OAuth)</li>
+                <li>Google ID (if you authenticate via OAuth)</li>
                 <li>Email verification status and verification tokens</li>
                 <li>TOTP secret key (if you enable two-factor authentication)</li>
                 <li>Theme preference (system, light, or dark)</li>

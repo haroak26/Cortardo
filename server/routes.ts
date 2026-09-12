@@ -12,7 +12,6 @@ import { sendVerificationEmail, sendEmailChangeVerification, sendPasswordResetEm
 import { generateTotpSecret, verifyTotp, buildOtpauthUrl } from "./totp";
 import { registerAuthRoutes } from "./routes/auth";
 import { registerRemainingRoutes } from "./routes/remaining";
-import { registerCortardoAgentRoutes } from "./routes/cortardo-agent";
 import { buildOnboardingSession } from "./onboarding-session";
 import { createHash, randomBytes, randomInt, timingSafeEqual } from "crypto";
 import {
@@ -483,8 +482,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       return res.status(500).json({ message: err?.message || "Failed to list assets" });
     }
   });
-
-  registerCortardoAgentRoutes(app);
 
   return httpServer;
 }

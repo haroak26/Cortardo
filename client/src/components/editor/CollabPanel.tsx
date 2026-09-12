@@ -203,7 +203,7 @@ export function CollabPanel({ workspaceId, myRoleFallback, page }: CollabPanelPr
             </span>
             {canInvite && (
               <a
-                href="/workspace/team"
+                href="/team/manage"
                 className="text-[9.5px] font-semibold text-fg-muted hover:text-brand transition-colors shrink-0 border-none bg-transparent cursor-pointer no-underline"
               >
                 Manage team
@@ -510,7 +510,7 @@ export function CollabPanel({ workspaceId, myRoleFallback, page }: CollabPanelPr
       {page && canInvite && (
         <div className="mt-4 pt-3 border-t border-border/40 flex justify-center">
           <a
-            href="/workspace/team"
+            href="/team/manage"
             className="text-[11px] font-semibold text-fg-muted hover:text-brand transition-colors border-none bg-transparent cursor-pointer no-underline"
           >
             Manage team

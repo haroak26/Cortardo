@@ -17,11 +17,11 @@ export default function NotFound() {
         description="The page you're looking for doesn't exist or has been moved."
         actions={
           <Link
-            href={isSignedIn ? "/home/inbox" : "/"}
+            href={isSignedIn ? "/workspace/home" : "/"}
             className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-fg-muted hover:text-foreground transition-colors no-underline"
           >
             <ArrowLeft className="h-3.5 w-3.5" />
-            {isSignedIn ? "Back to inbox" : "Back to home"}
+            Back to home
           </Link>
         }
       />

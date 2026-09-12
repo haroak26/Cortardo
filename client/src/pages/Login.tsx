@@ -53,7 +53,7 @@ export default function Login() {
         setPrefetchProgress(step / total);
       });
     } catch {}
-    setLocation("/home");
+    setLocation("/workspace/home");
   };
 
   const handleSubmit = async (e: React.FormEvent) => {

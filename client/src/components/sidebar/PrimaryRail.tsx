@@ -114,7 +114,7 @@ export function PrimaryRail({
   return (
     <div className="w-[52px] h-full min-h-0 bg-background border-r border-[hsl(var(--surface-hover))] flex flex-col items-center pt-3 pb-3 shrink-0 overflow-x-hidden overscroll-none">
       <Link href="/canvas/new" className="mb-4 shrink-0 flex items-center justify-center w-[32px] h-[32px]">
-        <img src="/CortardoSymbol.svg" alt="Cortardo" width={32} className="w-8 h-auto shrink-0" />
+        <img src="/CortardoSymbol.svg?v=1" alt="Cortardo" width={32} className="w-8 h-auto shrink-0" />
       </Link>
 
       <div className="flex-1 min-h-0 flex flex-col items-center gap-1 w-full px-2 overflow-y-auto scrollbar-none">

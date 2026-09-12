@@ -42,7 +42,7 @@ export function ProtectedRoute({ component: Component }: ProtectedRouteProps) {
   }
 
   if (isOnboardingComplete && isOnboardingPage) {
-    return <Redirect to="/home" />;
+    return <Redirect to="/workspace/home" />;
   }
 
   return <Component />;

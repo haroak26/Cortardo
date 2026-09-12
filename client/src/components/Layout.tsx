@@ -40,7 +40,7 @@ const navDropdowns = [
     items: [
       { icon: PenTool, title: "Code Review", desc: "AI review on every pull request", href: "/product" },
       { icon: Layers, title: "Security Scans", desc: "Catch vulnerabilities before merge", href: "/product" },
-      { icon: Share2, title: "Integrations", desc: "GitHub, GitLab, and Bitbucket", href: "/product" },
+      { icon: Share2, title: "Integrations", desc: "Stripe billing and payments", href: "/product" },
       { icon: Sparkles, title: "AI Features", desc: "AI-powered review tools", href: "/product" },
     ],
   },
@@ -138,7 +138,7 @@ export function Layout({ children, showFooter = true, panel = false, fullWidth =
 
             {userLoading ? null : user ? (
               <>
-                <Link href="/home" className="inline-flex">
+                <Link href="/workspace/home" className="inline-flex">
                   <Button design="pill" size="sm" className={overDark ? "bg-[#284B63] text-white hover:bg-[#3A6480]" : undefined}>My Account</Button>
                 </Link>
               </>
@@ -219,7 +219,7 @@ export function Layout({ children, showFooter = true, panel = false, fullWidth =
             {user && (
               <div>
                 <Link
-                  href="/home"
+                  href="/workspace/home"
                   onClick={() => setMobileMenuOpen(false)}
                   className="flex items-center justify-between py-3.5 text-[15px] font-medium text-foreground border-b border-border/60"
                 >

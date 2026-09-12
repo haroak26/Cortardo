@@ -295,8 +295,6 @@ export async function prefetchAppData(
     const wsQuery = `workspaceId=${encodeURIComponent(workspaceId)}`;
     jobs.push(
       prefetchKey(qc, ["/api/spaces", workspaceId], `/api/spaces?${wsQuery}`),
-      prefetchKey(qc, ["/api/components", workspaceId], `/api/components?${wsQuery}`),
-      prefetchKey(qc, ["/api/assets", workspaceId], `/api/assets?${wsQuery}`),
     );
   }
   await Promise.allSettled(jobs);
@@ -306,8 +304,7 @@ export async function prefetchAppData(
   // first navigation after sign-in doesn't pay the parse cost.
   const warm = () => {
     void import("@/pages/HomePage");
-    void import("@/pages/ProjectsPage");
-    void import("@/pages/CanvasPage");
+    void import("@/pages/ReviewsPage");
   };
   if (typeof requestIdleCallback === "function") {
     requestIdleCallback(warm, { timeout: 3000 });
