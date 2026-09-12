@@ -520,9 +520,6 @@ function AccountOverview({ user, planLabel, currentPlan }: any) {
       <SettingsSection title="Account settings">
         {ACCOUNT_NAV.map((group) => (
           <div key={group.label}>
-            <p className="text-[10px] font-semibold text-fg-faint uppercase tracking-wider pt-3 pb-1 px-1">
-              {group.label}
-            </p>
             {group.items.map((link) => (
               <a key={link.href} href={link.href} className="block no-underline group">
                 <div className="flex items-center justify-between gap-3 py-3 border-b border-[hsl(var(--surface-hover))] last:border-b-0">

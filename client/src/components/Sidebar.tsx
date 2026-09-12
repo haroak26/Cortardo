@@ -99,14 +99,11 @@ function useActiveTab(): string {
   return 'home';
 }
 
-function NavGroup({ label, first, children }: { label: string; first?: boolean; children: React.ReactNode }) {
+function NavGroup({ first, children }: { first?: boolean; children: React.ReactNode }) {
   return (
     <div className={first ? undefined : 'mt-3'}>
       {!first && <div className="h-px bg-[hsl(var(--surface-hover))] -mx-2" />}
       <div className="pt-3">
-        <div className="px-2.5 pb-1.5">
-          <span className="text-[13px] font-medium text-fg-soft leading-none">{label}</span>
-        </div>
         {children}
       </div>
     </div>
@@ -346,7 +343,7 @@ export function SidebarContent({ location: _location, onNavigate, collapsed, mob
         {isAccountPage ? (
           <div className={cn("flex flex-col", !mobile && "flex-1")}>
             {ACCOUNT_NAV.map((group, i) => (
-              <NavGroup key={group.label} label={group.label} first={i === 0}>
+              <NavGroup key={group.label} first={i === 0}>
                 <TabRow tabs={group.tabs} activeTab={activeTab} onNavigate={onNavigate} />
               </NavGroup>
             ))}
@@ -369,16 +366,16 @@ export function SidebarContent({ location: _location, onNavigate, collapsed, mob
           </div>
         ) : (
           <div>
-            <NavGroup label="Workspace" first>
+            <NavGroup first>
               <TabRow tabs={WORKSPACE_TABS} activeTab={activeTab} onNavigate={onNavigate} />
             </NavGroup>
-            <NavGroup label="Review">
+            <NavGroup>
               <TabRow tabs={REVIEW_TABS} activeTab={activeTab} onNavigate={onNavigate} />
             </NavGroup>
-            <NavGroup label="Bot">
+            <NavGroup>
               <TabRow tabs={BOT_TABS} activeTab={activeTab} onNavigate={onNavigate} />
             </NavGroup>
-            <NavGroup label="Team">
+            <NavGroup>
               <TabRow tabs={TEAM_TABS} activeTab={activeTab} onNavigate={onNavigate} onAction={() => onInviteToWorkspace?.()} />
             </NavGroup>
           </div>
