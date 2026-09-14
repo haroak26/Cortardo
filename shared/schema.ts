@@ -10,9 +10,11 @@ import {
   boolean,
   index,
   uniqueIndex,
+  primaryKey,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
+import type { CodeGraphConnection, CodeGraphFile, CodeGraphSymbol, CodeGraphSymbolEdge } from "./codegraph";
 
 // ── Users ──────────────────────────────────────────────────────────────────
 
@@ -894,6 +896,168 @@ export const auditLogs = pgTable("audit_logs", {
 });
 
 export type AuditLog = typeof auditLogs.$inferSelect;
+
+// ── GitHub App Integration ────────────────────────────────────────────────
+
+export const githubInstallations = pgTable("github_installations", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  installationId: text("installation_id").notNull().unique(),
+  accountLogin: text("account_login"),
+  accountType: text("account_type"),
+  repositorySelection: text("repository_selection").notNull().default("selected"),
+  suspendedAt: timestamp("suspended_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (t) => [
+  index("github_installations_workspace_idx").on(t.workspaceId),
+]);
+
+export type GithubInstallation = typeof githubInstallations.$inferSelect;
+export type NewGithubInstallation = typeof githubInstallations.$inferInsert;
+
+export const repositories = pgTable("repositories", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  ownerId: uuid("owner_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  provider: text("provider").notNull().default("github"),
+  externalId: text("external_id"),
+  fullName: text("full_name").notNull(),
+  defaultBranch: text("default_branch").notNull().default("main"),
+  cloneUrl: text("clone_url"),
+  installationId: text("installation_id"),
+  isPrivate: boolean("is_private").notNull().default(true),
+  reviewEnabled: boolean("review_enabled").notNull().default(true),
+  settings: jsonb("settings").$type<Record<string, unknown>>().default({}).notNull(),
+  indexedAt: timestamp("indexed_at"),
+  lastReviewedAt: timestamp("last_reviewed_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (t) => [
+  uniqueIndex("repositories_workspace_full_name_idx").on(t.workspaceId, t.provider, t.fullName),
+  index("repositories_installation_idx").on(t.installationId),
+  index("repositories_workspace_idx").on(t.workspaceId),
+]);
+
+export type Repository = typeof repositories.$inferSelect;
+export type NewRepository = typeof repositories.$inferInsert;
+
+export const repositoryCodegraphs = pgTable("repository_codegraphs", {
+  repositoryId: uuid("repository_id")
+    .primaryKey()
+    .references(() => repositories.id, { onDelete: "cascade" }),
+  commitSha: text("commit_sha"),
+  status: text("status").notNull().default("pending"),
+  error: text("error"),
+  files: jsonb("files").$type<CodeGraphFile[]>().notNull().default([]),
+  connections: jsonb("connections").$type<CodeGraphConnection[]>().notNull().default([]),
+  symbols: jsonb("symbols").$type<CodeGraphSymbol[]>().notNull().default([]),
+  symbolEdges: jsonb("symbol_edges").$type<CodeGraphSymbolEdge[]>().notNull().default([]),
+  knowledge: jsonb("knowledge").$type<Array<{ path: string; content: string }>>().notNull().default([]),
+  fileCount: integer("file_count").notNull().default(0),
+  generatedAt: timestamp("generated_at"),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export type RepositoryCodegraph = typeof repositoryCodegraphs.$inferSelect;
+export type NewRepositoryCodegraph = typeof repositoryCodegraphs.$inferInsert;
+
+export const repositoryCodeFiles = pgTable("repository_code_files", {
+  repositoryId: uuid("repository_id").notNull().references(() => repositories.id, { onDelete: "cascade" }),
+  path: text("path").notNull(),
+  contentHash: text("content_hash").notNull(),
+  language: text("language").notNull(),
+  kind: text("kind").notNull(),
+  loc: integer("loc").notNull().default(0),
+  parsed: jsonb("parsed").$type<Record<string, unknown>>().notNull().default({}),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (t) => [
+  primaryKey({ columns: [t.repositoryId, t.path] }),
+]);
+
+export type RepositoryCodeFile = typeof repositoryCodeFiles.$inferSelect;
+export type NewRepositoryCodeFile = typeof repositoryCodeFiles.$inferInsert;
+
+export const pullRequests = pgTable("pull_requests", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  repositoryId: uuid("repository_id").notNull().references(() => repositories.id, { onDelete: "cascade" }),
+  number: integer("number").notNull(),
+  title: text("title"),
+  body: text("body"),
+  author: text("author"),
+  baseRef: text("base_ref"),
+  headRef: text("head_ref"),
+  baseSha: text("base_sha"),
+  headSha: text("head_sha"),
+  state: text("state").notNull().default("open"),
+  url: text("url"),
+  additions: integer("additions").notNull().default(0),
+  deletions: integer("deletions").notNull().default(0),
+  changedFiles: integer("changed_files").notNull().default(0),
+  providerData: jsonb("provider_data").$type<Record<string, unknown>>().default({}).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (t) => [
+  uniqueIndex("pull_requests_repository_number_idx").on(t.repositoryId, t.number),
+  index("pull_requests_repository_idx").on(t.repositoryId),
+]);
+
+export type PullRequest = typeof pullRequests.$inferSelect;
+export type NewPullRequest = typeof pullRequests.$inferInsert;
+
+export const webhookDeliveries = pgTable("webhook_deliveries", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  provider: text("provider").notNull().default("github"),
+  event: text("event").notNull(),
+  deliveryId: text("delivery_id").notNull().unique(),
+  payloadHash: text("payload_hash"),
+  status: text("status").notNull().default("received"),
+  error: text("error"),
+  receivedAt: timestamp("received_at").defaultNow().notNull(),
+  processedAt: timestamp("processed_at"),
+}, (t) => [
+  index("webhook_deliveries_event_idx").on(t.event),
+  index("webhook_deliveries_received_idx").on(t.receivedAt.desc()),
+]);
+
+export type WebhookDelivery = typeof webhookDeliveries.$inferSelect;
+
+export const updateRepositorySchema = z.object({
+  reviewEnabled: z.boolean().optional(),
+  settings: z.record(z.unknown()).optional(),
+});
+
+export const updateRepositorySelectionSchema = z.object({
+  externalIds: z.array(z.string().trim().min(1)).max(1000),
+});
+
+export const createIssueSchema = z.object({
+  title: z.string().trim().min(1, "Title is required").max(256),
+  body: z.string().max(20000).optional(),
+});
+
+export const createIssueCommentSchema = z.object({
+  body: z.string().trim().min(1, "Comment body is required").max(20000),
+});
+
+export const PR_REVIEW_EVENTS = ["COMMENT", "APPROVE", "REQUEST_CHANGES"] as const;
+
+export const createPullRequestReviewSchema = z.object({
+  body: z.string().max(20000).optional(),
+  event: z.enum(PR_REVIEW_EVENTS).default("COMMENT"),
+  comments: z
+    .array(
+      z.object({
+        path: z.string().min(1),
+        line: z.number().int().positive(),
+        body: z.string().min(1).max(20000),
+        side: z.enum(["LEFT", "RIGHT"]).default("RIGHT"),
+      }),
+    )
+    .max(50)
+    .optional(),
+});
 
 // ── Session Tables ─────────────────────────────────────────────────────────
 

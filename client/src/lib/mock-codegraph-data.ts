@@ -5,35 +5,24 @@
    the live hooks when the graph API lands. */
 
 import { findings, type MockFindingDetail, type SeverityKey } from './mock-review-data';
+import type {
+  CodeFileKind,
+  CodeGraphConnection,
+  CodeGraphData,
+  CodeGraphFile,
+  ConnectionKind,
+} from '@shared/codegraph';
+
+export type {
+  CodeFileKind,
+  CodeGraphConnection,
+  CodeGraphFile,
+  ConnectionKind,
+} from '@shared/codegraph';
 
 export type GraphFileStatus = 'idle' | 'searching' | 'affected' | 'editing' | 'fixed';
-export type CodeFileKind = 'source' | 'test' | 'config' | 'docs';
-export type ConnectionKind = 'imports' | 'calls' | 'types';
 
-export interface CodeGraphFile {
-  /** Stable id — the repo-relative path. */
-  id: string;
-  path: string;
-  name: string;
-  dir: string;
-  language: string;
-  kind: CodeFileKind;
-  loc: number;
-  entry?: boolean;
-  hub?: boolean;
-}
-
-export interface CodeGraphConnection {
-  source: string;
-  target: string;
-  kind: ConnectionKind;
-}
-
-export interface MockCodeGraph {
-  repository: string;
-  files: CodeGraphFile[];
-  connections: CodeGraphConnection[];
-}
+export type MockCodeGraph = CodeGraphData;
 
 export interface DiagnosisAffectedFile {
   fileId: string;

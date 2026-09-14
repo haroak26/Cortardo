@@ -23,15 +23,15 @@ function TinyToggle({
       title={title}
       onClick={() => onCheckedChange?.(!checked)}
       className={cn(
-        "relative inline-flex h-5 w-8 shrink-0 cursor-pointer items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50 disabled:cursor-not-allowed disabled:opacity-50",
-        checked ? "bg-brand" : "bg-border"
+        "relative inline-flex h-[16px] w-[28px] shrink-0 cursor-pointer items-center rounded-full p-[2px] transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50 focus-visible:ring-offset-1 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50",
+        checked ? "bg-toggle-on" : "bg-border"
       )}
       {...props}
     >
       <span
         className={cn(
-          "inline-block h-3 w-3 transform rounded-full bg-white transition-transform",
-          checked ? "translate-x-4" : "translate-x-1"
+          "inline-block h-[12px] w-[12px] shrink-0 transform rounded-full bg-white transition-transform duration-150",
+          checked ? "translate-x-[12px]" : "translate-x-0"
         )}
       />
     </button>

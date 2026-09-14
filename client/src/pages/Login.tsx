@@ -53,7 +53,9 @@ export default function Login() {
         setPrefetchProgress(step / total);
       });
     } catch {}
-    setLocation("/workspace/home");
+    const next = new URLSearchParams(window.location.search).get("next");
+    const target = next && next.startsWith("/") && !next.startsWith("//") ? next : "/workspace/home";
+    setLocation(target);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {

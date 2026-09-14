@@ -3,14 +3,17 @@ import { createPortal } from 'react-dom';
 import { Link, useLocation } from 'wouter';
 import { cn } from '@/lib/utils';
 import {
-  Home09Icon, MessageMultiple01Icon, Shield01Icon, Blockchain07Icon,
-  Book02Icon, GraduationCapIcon, UserGroupIcon, UserAdd01Icon, UserIcon, SmartPhone01Icon,
-  CreditCardIcon, Coins01Icon, Chart01Icon, Key01Icon,
-  Alert01Icon, ArrowRight01Icon, ArrowLeft01Icon,
+  Home09Icon, Analytics01Icon, AiContentGenerator01Icon, MessageMultiple01Icon, Shield01Icon, SecurityCheckIcon,
+  SourceCodeIcon, Activity01Icon, Book02Icon, GraduationCapIcon,
+  GitPullRequestIcon, GitCommitIcon,
+  UserGroupIcon, UserAdd01Icon, UserIcon, SmartPhone01Icon,
+  CreditCardIcon, Coins01Icon, Chart01Icon, Key01Icon, GithubIcon,
+  Alert01Icon,
 } from '@hugeicons/core-free-icons';
 import { HugeiconsIcon } from "@hugeicons/react";
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useWorkspace } from '@/contexts/workspace-context';
-import { usePlan } from '@/hooks/use-user';
+import { usePlan, useUser } from '@/hooks/use-user';
 
 function initials(name: string | null | undefined): string {
   const str = (name || '?').trim();
@@ -28,21 +31,42 @@ type Tab = {
 
 const WORKSPACE_TABS: Tab[] = [
   { id: 'home',         label: 'Home',         icon: Home09Icon,            href: '/workspace/home' },
+  { id: 'analytics',    label: 'Analytics',    icon: Analytics01Icon,       href: '/workspace/analytics' },
+  { id: 'bot',          label: 'Cortardo Bot',  icon: AiContentGenerator01Icon,  href: '/bot/rules' },
 ];
 
 const REVIEW_TABS: Tab[] = [
-  { id: 'reviews',   label: 'Reviews',   icon: MessageMultiple01Icon, href: '/review/reviews' },
-  { id: 'security',  label: 'Security',  icon: Blockchain07Icon,      href: '/review/security' },
+  { id: 'repositories',  label: 'Repositories',  icon: SourceCodeIcon,        href: '/review/repositories' },
+  { id: 'activity',      label: 'Activity',      icon: Activity01Icon,        href: '/review/activity' },
 ];
 
-const BOT_TABS: Tab[] = [
-  { id: 'rules',      label: 'Rules',      icon: Book02Icon,    href: '/bot/rules' },
-  { id: 'learnings',  label: 'Learnings',  icon: GraduationCapIcon, href: '/bot/learnings' },
+const BOT_NAV: { label: string; tabs: Tab[] }[] = [
+  {
+    label: 'Behaviour',
+    tabs: [
+      { id: 'bot-rules',      label: 'Rules',          icon: Book02Icon,        href: '/bot/rules' },
+      { id: 'bot-learnings',  label: 'Learnings',      icon: GraduationCapIcon, href: '/bot/learnings' },
+    ],
+  },
+  {
+    label: 'Reviews',
+    tabs: [
+      { id: 'bot-pull-requests',  label: 'Pull Requests',  icon: GitPullRequestIcon,  href: '/bot/pull-requests' },
+      { id: 'bot-commits',        label: 'Commits',        icon: GitCommitIcon,       href: '/bot/commits' },
+    ],
+  },
+  {
+    label: 'Results',
+    tabs: [
+      { id: 'bot-reviews',   label: 'Reviews',   icon: MessageMultiple01Icon, href: '/review/reviews' },
+      { id: 'bot-security',  label: 'Security',  icon: SecurityCheckIcon,     href: '/review/security' },
+    ],
+  },
 ];
 
 const TEAM_TABS: Tab[] = [
-  { id: 'manage',  label: 'Manage',  icon: UserGroupIcon,   href: '/team/manage' },
-  { id: 'invite',  label: 'Invite',  icon: UserAdd01Icon, href: null },
+  { id: 'manage',    label: 'Manage',    icon: UserGroupIcon,   href: '/team/manage' },
+  { id: 'invite',    label: 'Invite',    icon: UserAdd01Icon,   href: null },
 ];
 
 const ACCOUNT_NAV: { label: string; tabs: Tab[] }[] = [
@@ -51,6 +75,12 @@ const ACCOUNT_NAV: { label: string; tabs: Tab[] }[] = [
     tabs: [
       { id: 'account-profile', label: 'Profile', href: '/account/profile', icon: UserIcon },
       { id: 'account-sessions', label: 'Sessions', href: '/account/sessions', icon: SmartPhone01Icon },
+    ],
+  },
+  {
+    label: 'Integrations',
+    tabs: [
+      { id: 'account-integrations', label: 'GitHub', href: '/account/integrations', icon: GithubIcon },
     ],
   },
   {
@@ -79,14 +109,20 @@ const ACCOUNT_NAV: { label: string; tabs: Tab[] }[] = [
 function useActiveTab(): string {
   const [location] = useLocation();
   if (location === '/workspace/home') return 'home';
-  if (location.startsWith('/review/reviews')) return 'reviews';
-  if (location.startsWith('/review/security')) return 'security';
-  if (location.startsWith('/bot/rules')) return 'rules';
-  if (location.startsWith('/bot/learnings')) return 'learnings';
-  if (location.startsWith('/bot')) return 'rules';
+  if (location.startsWith('/workspace/analytics')) return 'analytics';
+  if (location.startsWith('/review/reviews')) return 'bot-reviews';
+  if (location.startsWith('/review/security')) return 'bot-security';
+  if (location.startsWith('/review/repositories')) return 'repositories';
+  if (location.startsWith('/review/activity')) return 'activity';
+  if (location.startsWith('/bot/rules')) return 'bot-rules';
+  if (location.startsWith('/bot/learnings')) return 'bot-learnings';
+  if (location.startsWith('/bot/pull-requests')) return 'bot-pull-requests';
+  if (location.startsWith('/bot/commits')) return 'bot-commits';
+  if (location.startsWith('/bot')) return 'bot-rules';
   if (location.startsWith('/team')) return 'manage';
   if (location.startsWith('/workspace')) return 'home';
   if (location.startsWith('/account/profile')) return 'account-profile';
+  if (location.startsWith('/account/integrations')) return 'account-integrations';
   if (location.startsWith('/account/security-auth')) return 'account-security';
   if (location.startsWith('/account/security')) return 'account-security';
   if (location.startsWith('/account/authentication')) return 'account-auth';
@@ -171,9 +207,13 @@ function TabRow({ tabs, activeTab, onNavigate, onAction }: { tabs: Tab[]; active
 
 export function SidebarContent({ location: _location, onNavigate, collapsed, mobile, onNewWorkspace, onInviteToWorkspace }: { location: string; onNavigate?: () => void; collapsed?: boolean; mobile?: boolean; onNewWorkspace?: () => void; onInviteToWorkspace?: () => void }) {
   const activeTab = useActiveTab();
+  const [, navigate] = useLocation();
   const isAccountPage = activeTab.startsWith('account-');
+  const isBotPage = activeTab.startsWith('bot-');
+  const isSubNav = isAccountPage || isBotPage;
   const { workspaces, activeWorkspace, activeWorkspaceId, setActiveWorkspaceId } = useWorkspace();
   const { data: planInfo } = usePlan();
+  const { data: user, isLoading: userLoading } = useUser();
   const [wsOpen, setWsOpen] = useState(false);
   const [wsFlyoutOpen, setWsFlyoutOpen] = useState(false);
   const [flyoutPos, setFlyoutPos] = useState<{ top: number; left: number } | null>(null);
@@ -229,31 +269,46 @@ export function SidebarContent({ location: _location, onNavigate, collapsed, mob
   return (
     <div className="h-full bg-background border-r border-[hsl(var(--surface-hover))] flex flex-col">
       {/* Workspace selector */}
-      <div className="relative shrink-0 px-3 pt-3">
+      <div className="relative shrink-0 px-2 pt-2">
         <button
-          onClick={() => setWsOpen(!wsOpen)}
-          className={`flex w-full items-center gap-2 rounded-[10px] px-2.5 py-2 transition-colors border-none cursor-pointer text-left ${
-            wsOpen ? 'bg-surface-hover' : 'bg-transparent hover:bg-surface-hover'
+          onClick={() => {
+            if (isSubNav) {
+              setWsOpen(false);
+              setWsFlyoutOpen(false);
+              onNavigate?.();
+              navigate('/workspace/home');
+              return;
+            }
+            setWsOpen(!wsOpen);
+          }}
+          aria-label={isSubNav ? 'Back to main navigation' : 'Select workspace'}
+          className={`group flex w-full items-center gap-2.5 rounded-[10px] px-2.5 py-2 transition-colors duration-100 select-none border-none cursor-pointer text-left ${
+            wsOpen && !isSubNav ? 'bg-surface-hover' : 'bg-transparent hover:bg-surface-hover active:bg-surface-hover'
           }`}
         >
-          <span className="flex items-center justify-center w-7 h-7 rounded-[8px] bg-brand text-white text-[11px] font-bold shrink-0">
+          <span className="flex items-center justify-center w-8 h-8 rounded-[8px] bg-brand text-white text-[12px] font-bold shrink-0">
             {initials(activeWorkspace?.name)}
           </span>
+          <span className="h-6 w-px shrink-0 self-center bg-[hsl(var(--border-strong))]" />
           <span className="flex-1 min-w-0">
             <span className="block text-[13px] font-semibold text-foreground truncate">
               {activeWorkspace?.name ?? 'Select workspace'}
             </span>
-            <span className="block text-[10.5px] font-medium text-fg-muted truncate">
+            <span className="block text-[11px] font-medium text-fg-muted truncate">
               {planInfo?.limits.label ?? 'Free'} plan
             </span>
           </span>
-          <HugeiconsIcon icon={ ArrowRight01Icon } size={14} className="text-fg-muted shrink-0"  />
+          {isSubNav ? (
+            <ChevronLeft size={14} className="text-fg-muted shrink-0" />
+          ) : (
+            <ChevronRight size={14} className="text-fg-muted shrink-0" />
+          )}
         </button>
 
-        {wsOpen && (
+        {wsOpen && !isSubNav && (
           <>
             <div className="fixed inset-0 z-10" onClick={() => { setWsOpen(false); setWsFlyoutOpen(false); }} />
-            <div className="absolute left-3 right-3 top-[calc(100%+6px)] z-20 bg-background border border-border rounded-[14px] p-1 flex flex-col gap-1 shadow-md">
+            <div className="absolute left-2 right-2 top-[calc(100%+6px)] z-20 bg-background border border-border rounded-[14px] p-1 flex flex-col gap-1 shadow-md">
               <div
                 className="relative"
                 onMouseEnter={cancelFlyoutClose}
@@ -264,12 +319,11 @@ export function SidebarContent({ location: _location, onNavigate, collapsed, mob
                   onClick={openWsFlyout}
                   onMouseEnter={openWsFlyout}
                   onMouseLeave={scheduleFlyoutClose}
-                  className={`flex w-full items-center justify-between px-2 py-1.5 rounded-[8px] text-[12.5px] font-medium text-fg-soft transition-colors border-none cursor-pointer text-left ${
+                  className={`flex w-full items-center px-2 py-1.5 rounded-[8px] text-[12.5px] font-medium text-fg-soft transition-colors border-none cursor-pointer text-left ${
                     wsFlyoutOpen ? 'bg-surface-hover' : 'hover:bg-surface-hover'
                   }`}
                 >
                   All Workspaces
-                  <HugeiconsIcon icon={ ArrowRight01Icon } size={14} className="text-fg-soft shrink-0"  />
                 </button>
                 {wsFlyoutOpen && flyoutPos && createPortal(
                   <div
@@ -336,10 +390,10 @@ export function SidebarContent({ location: _location, onNavigate, collapsed, mob
           </>
         )}
       </div>
-      <div className="shrink-0 mt-5 h-px bg-[hsl(var(--surface-hover))]" />
+      <div className="shrink-0 mt-2 h-px bg-[hsl(var(--surface-hover))]" />
 
       {/* Navigation tabs */}
-      <div className="flex-1 min-h-0 overflow-y-auto scrollbar-none px-2 pb-3 flex flex-col">
+      <div className="flex-1 min-h-0 overflow-y-auto scrollbar-none px-2 pb-2 flex flex-col">
         {isAccountPage ? (
           <div className={cn("flex flex-col", !mobile && "flex-1")}>
             {ACCOUNT_NAV.map((group, i) => (
@@ -347,25 +401,17 @@ export function SidebarContent({ location: _location, onNavigate, collapsed, mob
                 <TabRow tabs={group.tabs} activeTab={activeTab} onNavigate={onNavigate} />
               </NavGroup>
             ))}
-            {!mobile && (
-              <>
-                <div className="flex-1" />
-                <div className="mt-3">
-                  <div className="h-px bg-[hsl(var(--surface-hover))] -mx-2" />
-                  <div className="pt-3">
-                    <Link href="/workspace/home" onClick={onNavigate}>
-                    <div className="group flex items-center gap-2 h-[32px] px-2.5 rounded-[10px] text-[13px] font-medium text-fg-muted cursor-pointer select-none transition-colors duration-100 hover:bg-surface-hover hover:text-foreground">
-                      <HugeiconsIcon icon={ ArrowLeft01Icon } size={14} strokeWidth={2} className="shrink-0"  />
-                        <span className="leading-snug">Back to home</span>
-                      </div>
-                    </Link>
-                  </div>
-                </div>
-              </>
-            )}
+          </div>
+        ) : isBotPage ? (
+          <div className={cn("flex flex-col", !mobile && "flex-1")}>
+            {BOT_NAV.map((group, i) => (
+              <NavGroup key={group.label} first={i === 0}>
+                <TabRow tabs={group.tabs} activeTab={activeTab} onNavigate={onNavigate} />
+              </NavGroup>
+            ))}
           </div>
         ) : (
-          <div>
+          <div className={cn("flex flex-col", !mobile && "flex-1")}>
             <NavGroup first>
               <TabRow tabs={WORKSPACE_TABS} activeTab={activeTab} onNavigate={onNavigate} />
             </NavGroup>
@@ -373,11 +419,34 @@ export function SidebarContent({ location: _location, onNavigate, collapsed, mob
               <TabRow tabs={REVIEW_TABS} activeTab={activeTab} onNavigate={onNavigate} />
             </NavGroup>
             <NavGroup>
-              <TabRow tabs={BOT_TABS} activeTab={activeTab} onNavigate={onNavigate} />
-            </NavGroup>
-            <NavGroup>
               <TabRow tabs={TEAM_TABS} activeTab={activeTab} onNavigate={onNavigate} onAction={() => onInviteToWorkspace?.()} />
             </NavGroup>
+            {!mobile && <div className="flex-1" />}
+            <div>
+              <div className="h-px bg-[hsl(var(--surface-hover))] -mx-2" />
+              <div className="pt-2">
+                <Link href="/account/profile" onClick={onNavigate} className="block">
+                  <div className="group flex w-full items-center gap-2.5 rounded-[10px] px-2.5 py-2 cursor-pointer select-none transition-colors duration-100 hover:bg-surface-hover active:bg-surface-hover">
+                    {userLoading ? (
+                      <span className="w-8 h-8 rounded-full bg-surface-hover shrink-0 animate-pulse" />
+                    ) : (
+                      <span className="flex items-center justify-center w-8 h-8 rounded-full bg-brand text-white text-[12px] font-bold shrink-0">
+                        {initials(user?.displayName || user?.email)}
+                      </span>
+                    )}
+                    <span className="h-6 w-px shrink-0 self-center bg-[hsl(var(--border-strong))]" />
+                    <span className="flex-1 min-w-0">
+                      <span className="block font-sans text-[13px] font-semibold text-foreground truncate">
+                        {user?.displayName || user?.username || 'Account'}
+                      </span>
+                      <span className="block font-sans text-[11px] font-medium text-fg-muted truncate">
+                        {planInfo?.limits.label ?? 'Free'} plan
+                      </span>
+                    </span>
+                  </div>
+                </Link>
+              </div>
+            </div>
           </div>
         )}
       </div>

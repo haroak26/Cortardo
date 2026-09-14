@@ -253,13 +253,13 @@ export default function HomePage() {
 
   return (
     <div className="h-full flex flex-col overflow-y-auto">
-      <div className="flex-1 px-4 sm:px-6 md:px-8 py-4 sm:py-6 max-w-5xl mx-auto w-full">
+      <div className="flex-1 px-4 sm:px-6 md:px-8 pt-10 pb-4 sm:pt-14 sm:pb-6 max-w-5xl mx-auto w-full">
         <div className="flex items-start justify-between gap-4 mb-6">
           <div className="min-w-0">
-            <h1 className="text-[22px] font-semibold text-foreground tracking-tight truncate">
+            <h1 className="font-sans text-[15px] font-medium leading-tight text-foreground truncate">
               Welcome back, {firstName}
             </h1>
-            <p className="text-[13px] text-fg-muted mt-1">
+            <p className="mt-0.5 text-[12px] font-[450] leading-snug text-fg-warm">
               Reviews, findings, and open issues across your repositories.
             </p>
           </div>

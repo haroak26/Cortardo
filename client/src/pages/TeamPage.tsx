@@ -178,9 +178,9 @@ export function TeamPageContent() {
 
   return (
     <div className="h-full flex flex-col overflow-y-auto">
-      <div className="flex-1 px-4 sm:px-6 md:px-8 py-4 sm:py-6 max-w-5xl mx-auto w-full">
+      <div className="flex-1 px-4 sm:px-6 md:px-8 pt-10 pb-4 sm:pt-14 sm:pb-6 max-w-5xl mx-auto w-full">
         <div className="flex items-center justify-between mb-6">
-          <h1 className="text-[22px] font-semibold text-foreground tracking-tight">Team Members</h1>
+          <h1 className="font-sans text-[15px] font-medium leading-tight text-foreground">Team Members</h1>
           {canManage && (
             <Button size="sm" onClick={() => setShowInvite(true)}>
               <UserPlus size={15} /> Invite member

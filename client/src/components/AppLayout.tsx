@@ -1,25 +1,12 @@
 import React, { Suspense, useEffect, useState } from 'react';
-import { Link, useLocation } from 'wouter';
+import { useLocation } from 'wouter';
 import { Loading01Icon, ArrowLeft01Icon } from '@hugeicons/core-free-icons';
 import { HugeiconsIcon } from "@hugeicons/react";
 import { SidebarContent } from '@/components/Sidebar';
 import { CreateWorkspacePopup } from '@/components/CreateWorkspacePopup';
 import { InviteWorkspacePopup } from '@/components/InviteWorkspacePopup';
-import { Skeleton } from '@/components/ui/skeleton';
 import { useWorkspace } from '@/contexts/workspace-context';
-import { useUser, useCredits } from '@/hooks/use-user';
 import { useIsMobile } from '@/hooks/use-mobile';
-import { Button } from '@/components/button';
-
-function initials(name: string | null | undefined, email: string | null | undefined): string {
-  const str = name || email || '?';
-  const parts = str.trim().split(/\s+/);
-  if (parts.length >= 2) {
-    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-  }
-  return str[0].toUpperCase();
-}
-
 
 const SIDEBAR_W = 240;
 
@@ -40,9 +27,6 @@ export function AppLayout({
   subNav?: React.ReactNode;
 }) {
   const [locationPath] = useLocation();
-  const { data: user, isLoading: userLoading } = useUser();
-  const { data: credits, isLoading: creditsLoading } = useCredits();
-  const isAccountPage = locationPath.startsWith('/account');
   const { switchingWorkspace, switchingWsPhase, switchingWsName, activeWorkspaceId } = useWorkspace();
   const isMobile = useIsMobile();
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
@@ -66,60 +50,18 @@ export function AppLayout({
 
           {/* Main content */}
           <div className="flex-1 min-h-0 flex flex-col">
-            {isAccountPage ? (
-              isMobile && (
-                <div className="shrink-0 flex items-center h-[48px] px-5">
-                  <button
-                    onClick={() => setMobileSidebarOpen(true)}
-                    className="md:hidden flex items-center justify-center w-8 h-8 rounded-lg text-foreground hover:bg-surface-hover transition-colors border-none cursor-pointer"
-                    aria-label="Open menu"
-                  >
-                    <div className="relative w-4 h-[10px] flex flex-col justify-between">
-                      <span className="block w-4 h-[2px] bg-current rounded-full" />
-                      <span className="block w-4 h-[2px] bg-current rounded-full" />
-                    </div>
-                  </button>
-                </div>
-              )
-            ) : (
-            <div className="shrink-0 flex items-center justify-between h-[48px] px-5">
-                <div className="flex items-center gap-2">
-                  {isMobile && (
-                    <button
-                      onClick={() => setMobileSidebarOpen(true)}
-                      className="md:hidden flex items-center justify-center w-8 h-8 rounded-lg text-foreground hover:bg-surface-hover transition-colors border-none cursor-pointer"
-                      aria-label="Open menu"
-                    >
-                      <div className="relative w-4 h-[10px] flex flex-col justify-between">
-                        <span className="block w-4 h-[2px] bg-current rounded-full" />
-                        <span className="block w-4 h-[2px] bg-current rounded-full" />
-                      </div>
-                    </button>
-                  )}
-                </div>
-                <div className="flex items-center gap-3">
-                  {creditsLoading ? (
-                    <Skeleton className="h-4 w-28" />
-                  ) : credits ? (
-                    <Link href="/account/credits" className="text-[14px] font-medium text-fg-muted hover:text-foreground transition-colors no-underline tabular-nums">
-                      {credits.balance % 1 === 0 ? credits.balance : credits.balance.toFixed(2)} Credits Remaining
-                    </Link>
-                  ) : null}
-                  <div className="w-px h-4 bg-[hsl(var(--surface-hover))]" />
-                  <Link href="/account/profile" aria-label="Account settings">
-                    {userLoading ? (
-                      <Skeleton className="w-[28px] h-[28px] rounded-full" />
-                    ) : user?.avatarUrl ? (
-                      <img src={user.avatarUrl} alt="" className="w-[28px] h-[28px] rounded-full object-cover hover:opacity-80 transition-opacity cursor-pointer" />
-                    ) : (
-                      <div className="w-[28px] h-[28px] rounded-full bg-brand flex items-center justify-center hover:opacity-80 transition-opacity cursor-pointer">
-                        <span className="text-[11px] font-bold text-white">
-                          {initials(user?.displayName, user?.email)}
-                        </span>
-                      </div>
-                    )}
-                  </Link>
-                </div>
+            {isMobile && (
+              <div className="shrink-0 flex items-center h-[48px] px-5">
+                <button
+                  onClick={() => setMobileSidebarOpen(true)}
+                  className="md:hidden flex items-center justify-center w-8 h-8 rounded-lg text-foreground hover:bg-surface-hover transition-colors border-none cursor-pointer"
+                  aria-label="Open menu"
+                >
+                  <div className="relative w-4 h-[10px] flex flex-col justify-between">
+                    <span className="block w-4 h-[2px] bg-current rounded-full" />
+                    <span className="block w-4 h-[2px] bg-current rounded-full" />
+                  </div>
+                </button>
               </div>
             )}
             {subNav && (

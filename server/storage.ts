@@ -1,4 +1,4 @@
-import { and, asc, count, desc, eq, gte, inArray, isNotNull, isNull, ilike, like, lte, not, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, inArray, isNotNull, isNull, ilike, like, lte, not, or, sql } from "drizzle-orm";
 import { db } from "./db";
 import { createHash, randomUUID, randomBytes } from "crypto";
 import {
@@ -33,6 +33,23 @@ import {
   assets,
   branches,
   type Branch,
+  githubInstallations,
+  repositories,
+  pullRequests,
+  webhookDeliveries,
+  type GithubInstallation,
+  type NewGithubInstallation,
+  type Repository,
+  type NewRepository,
+  type PullRequest,
+  type NewPullRequest,
+  type WebhookDelivery,
+  repositoryCodegraphs,
+  type RepositoryCodegraph,
+  type NewRepositoryCodegraph,
+  repositoryCodeFiles,
+  type RepositoryCodeFile,
+  type NewRepositoryCodeFile,
 } from "@shared/schema";
 
 function stepRank(step: string | null | undefined) {
@@ -122,6 +139,42 @@ export interface IStorage {
   listAssets(workspaceId: string): Promise<Array<{ id: string; name: string; type: string; url: string; thumbnailUrl: string | null; size: number; mimeType: string | null }>>;
   listAllUsers(): Promise<User[]>;
   getTotalStats(days?: number): Promise<{ totalUsers: number; totalWorkspaces: number }>;
+
+  // ── GitHub App integration ────────────────────────────────────────────────
+  listGithubInstallations(workspaceId: string): Promise<GithubInstallation[]>;
+  getGithubInstallation(id: string): Promise<GithubInstallation | undefined>;
+  getGithubInstallationByInstallationId(installationId: string): Promise<GithubInstallation | undefined>;
+  createGithubInstallation(data: NewGithubInstallation): Promise<GithubInstallation>;
+  updateGithubInstallation(id: string, data: Partial<NewGithubInstallation>): Promise<GithubInstallation>;
+  deleteGithubInstallation(id: string): Promise<void>;
+
+  listRepositories(workspaceId: string): Promise<Repository[]>;
+  getRepositoryById(id: string): Promise<Repository | undefined>;
+  getRepositoryByFullName(workspaceId: string, fullName: string): Promise<Repository | undefined>;
+  getRepositoryByExternalId(externalId: string): Promise<Repository | undefined>;
+  listRepositoriesByInstallation(installationId: string): Promise<Repository[]>;
+  upsertRepository(data: NewRepository): Promise<Repository>;
+  updateRepository(id: string, data: Partial<NewRepository>): Promise<Repository>;
+  deleteRepository(id: string): Promise<void>;
+  deleteRepositoriesByInstallation(installationId: string): Promise<void>;
+
+  getRepositoryCodegraph(repositoryId: string): Promise<RepositoryCodegraph | undefined>;
+  listRepositoryCodegraphs(repositoryIds: string[]): Promise<RepositoryCodegraph[]>;
+  upsertRepositoryCodegraph(repositoryId: string, data: Partial<NewRepositoryCodegraph>): Promise<RepositoryCodegraph>;
+  deleteRepositoryCodegraph(repositoryId: string): Promise<void>;
+  markInterruptedCodegraphsAsError(): Promise<number>;
+
+  listRepositoryCodeFiles(repositoryId: string): Promise<RepositoryCodeFile[]>;
+  upsertRepositoryCodeFiles(data: NewRepositoryCodeFile[]): Promise<number>;
+  deleteRepositoryCodeFiles(repositoryId: string, paths: string[]): Promise<number>;
+
+  listPullRequests(repositoryId: string, state?: string): Promise<PullRequest[]>;
+  getPullRequestById(id: string): Promise<PullRequest | undefined>;
+  getPullRequestByNumber(repositoryId: string, number: number): Promise<PullRequest | undefined>;
+  upsertPullRequest(data: NewPullRequest): Promise<PullRequest>;
+
+  recordWebhookDelivery(data: { provider?: string; event: string; deliveryId: string; payloadHash?: string | null }): Promise<WebhookDelivery | undefined>;
+  markWebhookDelivery(id: string, status: string, error?: string | null): Promise<void>;
 }
 
 class DatabaseStorage implements IStorage {
@@ -726,6 +779,241 @@ class DatabaseStorage implements IStorage {
     const [userCount] = await db.select({ count: count() }).from(users);
     const [wsCount] = await db.select({ count: count() }).from(workspaces);
     return { totalUsers: Number(userCount?.count ?? 0), totalWorkspaces: Number(wsCount?.count ?? 0) };
+  }
+
+  // ── GitHub App integration ────────────────────────────────────────────────
+  async listGithubInstallations(workspaceId: string): Promise<GithubInstallation[]> {
+    return db.select().from(githubInstallations)
+      .where(eq(githubInstallations.workspaceId, workspaceId))
+      .orderBy(desc(githubInstallations.createdAt));
+  }
+
+  async getGithubInstallation(id: string): Promise<GithubInstallation | undefined> {
+    const [row] = await db.select().from(githubInstallations).where(eq(githubInstallations.id, id));
+    return row;
+  }
+
+  async getGithubInstallationByInstallationId(installationId: string): Promise<GithubInstallation | undefined> {
+    const [row] = await db.select().from(githubInstallations).where(eq(githubInstallations.installationId, installationId));
+    return row;
+  }
+
+  async createGithubInstallation(data: NewGithubInstallation): Promise<GithubInstallation> {
+    const [row] = await db.insert(githubInstallations).values(data).returning();
+    return row;
+  }
+
+  async updateGithubInstallation(id: string, data: Partial<NewGithubInstallation>): Promise<GithubInstallation> {
+    const [row] = await db.update(githubInstallations)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(githubInstallations.id, id))
+      .returning();
+    return row;
+  }
+
+  async deleteGithubInstallation(id: string): Promise<void> {
+    await db.delete(githubInstallations).where(eq(githubInstallations.id, id));
+  }
+
+  async listRepositories(workspaceId: string): Promise<Repository[]> {
+    return db.select().from(repositories)
+      .where(eq(repositories.workspaceId, workspaceId))
+      .orderBy(asc(repositories.fullName));
+  }
+
+  async getRepositoryById(id: string): Promise<Repository | undefined> {
+    const [row] = await db.select().from(repositories).where(eq(repositories.id, id));
+    return row;
+  }
+
+  async getRepositoryByFullName(workspaceId: string, fullName: string): Promise<Repository | undefined> {
+    const [row] = await db.select().from(repositories)
+      .where(and(eq(repositories.workspaceId, workspaceId), eq(repositories.fullName, fullName)));
+    return row;
+  }
+
+  async getRepositoryByExternalId(externalId: string): Promise<Repository | undefined> {
+    const [row] = await db.select().from(repositories)
+      .where(and(eq(repositories.provider, "github"), eq(repositories.externalId, externalId)));
+    return row;
+  }
+
+  async listRepositoriesByInstallation(installationId: string): Promise<Repository[]> {
+    return db.select().from(repositories).where(eq(repositories.installationId, installationId));
+  }
+
+  async upsertRepository(data: NewRepository): Promise<Repository> {
+    const [row] = await db.insert(repositories)
+      .values(data)
+      .onConflictDoUpdate({
+        target: [repositories.workspaceId, repositories.provider, repositories.fullName],
+        set: {
+          ownerId: data.ownerId,
+          externalId: data.externalId ?? null,
+          defaultBranch: data.defaultBranch ?? "main",
+          cloneUrl: data.cloneUrl ?? null,
+          installationId: data.installationId ?? null,
+          isPrivate: data.isPrivate ?? true,
+          updatedAt: new Date(),
+        },
+      })
+      .returning();
+    return row;
+  }
+
+  async updateRepository(id: string, data: Partial<NewRepository>): Promise<Repository> {
+    const [row] = await db.update(repositories)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(repositories.id, id))
+      .returning();
+    return row;
+  }
+
+  async deleteRepository(id: string): Promise<void> {
+    await db.delete(repositories).where(eq(repositories.id, id));
+  }
+
+  async deleteRepositoriesByInstallation(installationId: string): Promise<void> {
+    await db.delete(repositories).where(eq(repositories.installationId, installationId));
+  }
+
+  async getRepositoryCodegraph(repositoryId: string): Promise<RepositoryCodegraph | undefined> {
+    const [row] = await db.select().from(repositoryCodegraphs)
+      .where(eq(repositoryCodegraphs.repositoryId, repositoryId));
+    return row;
+  }
+
+  async listRepositoryCodegraphs(repositoryIds: string[]): Promise<RepositoryCodegraph[]> {
+    if (repositoryIds.length === 0) return [];
+    return db.select().from(repositoryCodegraphs)
+      .where(inArray(repositoryCodegraphs.repositoryId, repositoryIds));
+  }
+
+  async upsertRepositoryCodegraph(
+    repositoryId: string,
+    data: Partial<NewRepositoryCodegraph>,
+  ): Promise<RepositoryCodegraph> {
+    const [row] = await db.insert(repositoryCodegraphs)
+      .values({ repositoryId, ...data })
+      .onConflictDoUpdate({
+        target: repositoryCodegraphs.repositoryId,
+        set: { ...data, updatedAt: new Date() },
+      })
+      .returning();
+    return row;
+  }
+
+  async deleteRepositoryCodegraph(repositoryId: string): Promise<void> {
+    await db.delete(repositoryCodegraphs).where(eq(repositoryCodegraphs.repositoryId, repositoryId));
+  }
+
+  async markInterruptedCodegraphsAsError(): Promise<number> {
+    const rows = await db.update(repositoryCodegraphs)
+      .set({ status: "error", error: "Indexing interrupted by a server restart", updatedAt: new Date() })
+      .where(eq(repositoryCodegraphs.status, "indexing"))
+      .returning({ repositoryId: repositoryCodegraphs.repositoryId });
+    return rows.length;
+  }
+
+  async listRepositoryCodeFiles(repositoryId: string): Promise<RepositoryCodeFile[]> {
+    return db.select().from(repositoryCodeFiles)
+      .where(eq(repositoryCodeFiles.repositoryId, repositoryId));
+  }
+
+  async upsertRepositoryCodeFiles(data: NewRepositoryCodeFile[]): Promise<number> {
+    if (data.length === 0) return 0;
+    let written = 0;
+    const batchSize = 100;
+    for (let index = 0; index < data.length; index += batchSize) {
+      const batch = data.slice(index, index + batchSize);
+      await db.insert(repositoryCodeFiles)
+        .values(batch)
+        .onConflictDoUpdate({
+          target: [repositoryCodeFiles.repositoryId, repositoryCodeFiles.path],
+          set: {
+            contentHash: sql`excluded.content_hash`,
+            language: sql`excluded.language`,
+            kind: sql`excluded.kind`,
+            loc: sql`excluded.loc`,
+            parsed: sql`excluded.parsed`,
+            updatedAt: new Date(),
+          },
+        });
+      written += batch.length;
+    }
+    return written;
+  }
+
+  async deleteRepositoryCodeFiles(repositoryId: string, paths: string[]): Promise<number> {
+    if (paths.length === 0) return 0;
+    const rows = await db.delete(repositoryCodeFiles)
+      .where(and(eq(repositoryCodeFiles.repositoryId, repositoryId), inArray(repositoryCodeFiles.path, paths)))
+      .returning({ path: repositoryCodeFiles.path });
+    return rows.length;
+  }
+
+  async listPullRequests(repositoryId: string, state?: string): Promise<PullRequest[]> {
+    const conditions = [eq(pullRequests.repositoryId, repositoryId)];
+    if (state) conditions.push(eq(pullRequests.state, state));
+    return db.select().from(pullRequests)
+      .where(and(...conditions))
+      .orderBy(desc(pullRequests.number));
+  }
+
+  async getPullRequestByNumber(repositoryId: string, number: number): Promise<PullRequest | undefined> {
+    const [row] = await db.select().from(pullRequests)
+      .where(and(eq(pullRequests.repositoryId, repositoryId), eq(pullRequests.number, number)));
+    return row;
+  }
+
+  async getPullRequestById(id: string): Promise<PullRequest | undefined> {
+    const [row] = await db.select().from(pullRequests).where(eq(pullRequests.id, id));
+    return row;
+  }
+
+  async upsertPullRequest(data: NewPullRequest): Promise<PullRequest> {
+    const [row] = await db.insert(pullRequests)
+      .values(data)
+      .onConflictDoUpdate({
+        target: [pullRequests.repositoryId, pullRequests.number],
+        set: {
+          title: data.title ?? null,
+          body: data.body ?? null,
+          author: data.author ?? null,
+          baseRef: data.baseRef ?? null,
+          headRef: data.headRef ?? null,
+          baseSha: data.baseSha ?? null,
+          headSha: data.headSha ?? null,
+          state: data.state ?? "open",
+          url: data.url ?? null,
+          additions: data.additions ?? 0,
+          deletions: data.deletions ?? 0,
+          changedFiles: data.changedFiles ?? 0,
+          providerData: data.providerData ?? {},
+          updatedAt: new Date(),
+        },
+      })
+      .returning();
+    return row;
+  }
+
+  async recordWebhookDelivery(data: { provider?: string; event: string; deliveryId: string; payloadHash?: string | null }): Promise<WebhookDelivery | undefined> {
+    const [row] = await db.insert(webhookDeliveries)
+      .values({
+        provider: data.provider ?? "github",
+        event: data.event,
+        deliveryId: data.deliveryId,
+        payloadHash: data.payloadHash ?? null,
+      })
+      .onConflictDoNothing({ target: webhookDeliveries.deliveryId })
+      .returning();
+    return row;
+  }
+
+  async markWebhookDelivery(id: string, status: string, error?: string | null): Promise<void> {
+    await db.update(webhookDeliveries)
+      .set({ status, error: error ?? null, processedAt: new Date() })
+      .where(eq(webhookDeliveries.id, id));
   }
 }
 

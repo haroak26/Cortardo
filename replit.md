@@ -1,6 +1,6 @@
 # Cortardo
 
-AI-powered code review tool — connect a repository, and the Cortardo Agent reviews every pull request for bugs, security issues, and style drift.
+AI-powered code review workspace — connect repositories and review pull requests for bugs, security issues, and style drift. The Cortardo Bot engine is not implemented in this repository yet.
 
 ## Architecture
 
@@ -9,11 +9,10 @@ AI-powered code review tool — connect a repository, and the Cortardo Agent rev
 - **Database**: PostgreSQL via Drizzle ORM (`shared/schema.ts`)
 - **Auth**: Passport.js (local + Google OAuth)
 - **Email**: Resend (primary) via `server/resend.ts`, Brevo (fallback) via `server/brevo.ts`, and local SMTP fallback
-- **AI**: Merge Gateway (`merge-gateway-sdk`) — powers the Cortardo Agent (`server/lib/cortardo/`, `server/routes/cortardo-agent.ts`)
 
 ## Key Features
 
-- **Cortardo Agent**: automated code review (clarify → plan → findings/summaries/fixes)
+- **GitHub App integration**: install the app on repositories, sync them per workspace, browse pull requests, submit reviews, comment, and open issues. Setup guide: `docs/github-app-setup.md`.
 - Real-time collaborative review workspace (inline comments, shared threads)
 - Review rules and conventions surfaced in sidebar panels
 - Findings / Components / Assets sidebar panels
@@ -21,17 +20,6 @@ AI-powered code review tool — connect a repository, and the Cortardo Agent rev
 - Credit-based billing (Stripe / Paddle) with per-run usage settling
 - Rate limiting on all auth endpoints via `authRateLimiter`
 - **Timestamps are emitted as UTC ISO 8601** (`...Z`) from the server. `server/db.ts` overrides pg type parsers (OID 1114 → append Z, 1184 → as-is) and pins each connection to `SET TIME ZONE 'UTC'`.
-
-## Cortardo Agent
-
-Agent backend in `server/lib/cortardo/` with routes in `server/routes/cortardo-agent.ts`:
-
-- **Clarify** (`clarify.ts`): chat-title generation + EXACTLY 3 clarification questions (cheap model, background).
-- **Plan** (`gateway.ts`): streamed reasoning + plan shown while the run starts.
-- **Artifacts** (`artifacts.ts`): review areas, rules, and reusable check-module proposal (structured JSON via `completeJSON`).
-- **Runs** are persisted in the `cortardo_agent_runs` table (`shared/schema.ts`); live progress via SSE at
-  `GET /api/cortardo-agent/runs/:runId/events`; answers posted to `/api/cortardo-agent/runs/:runId/answers`.
-- **Cost**: gateway reports actual usage; runs settle against measured tokens (see `server/lib/pricing.ts`).
 
 ## Environment Variables
 
@@ -43,13 +31,14 @@ Agent backend in `server/lib/cortardo/` with routes in `server/routes/cortardo-a
 - `BREVO_API_KEY` — Brevo transactional email API key (fallback provider)
 - `BREVO_SENDER_EMAIL`, `BREVO_SENDER_NAME` — Verified Brevo sender details
 - `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` — Google OAuth (optional)
+- `GITHUB_APP_ID` — GitHub App id
+- `GITHUB_APP_SLUG` — GitHub App slug (used to build the install URL)
+- `GITHUB_APP_NAME` — display name (optional)
+- `GITHUB_APP_PRIVATE_KEY` — PEM private key; literal `\n` sequences are normalized
+- `GITHUB_WEBHOOK_SECRET` — HMAC secret for `X-Hub-Signature-256` verification
 - `ENCRYPTION_KEY` — 32-byte hex key used to encrypt stored email credentials at rest
 - `STRIPE_SECRET_KEY` — Stripe billing (required for paid plans)
 - `STRIPE_WEBHOOK_SECRET` — Stripe webhook signing secret (required for plan sync)
-- `MERGE_GATEWAY_API_KEY` — AI gateway powering the Cortardo Agent
-- `CORTARDO_MODEL`, `CORTARDO_TITLE_MODEL` — model overrides (default `google/gemini-3.7-flash`; must be a model available on the gateway via `GET /v1/models`)
-- `CORTARDO_GATEWAY_TIMEOUT_MS` — per-call HTTP timeout (default 300000)
-- `CORTARDO_MERGE_GATEWAY_TAG_<ROLE>` / `CORTARDO_MERGE_GATEWAY_TAG_KEY` / `CORTARDO_MERGE_GATEWAY_TAG_VALUE` — gateway analytics tags
 
 ## Database Schema
 
@@ -57,7 +46,11 @@ See `shared/schema.ts`. Key tables:
 - `users` — auth, email verification, email change, password reset tokens
 - `workspaces` — team organization
 - `projects` — design projects (`kind` = `cortardo`)
-- `cortardo_agent_runs` — agent runs: prompt, questions, answers, reasoning, plan, findings, rules, checks
+- `github_installations` — GitHub App installs linked to a workspace
+- `repositories` — connected repos with per-repo `reviewEnabled`
+- `pull_requests` — PRs synced from webhooks / the GitHub API
+- `repository_codegraphs` / `repository_code_files` — code graph used as review context
+- `webhook_deliveries` — idempotent GitHub webhook log
 
 ## Important Notes
 

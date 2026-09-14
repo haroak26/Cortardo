@@ -13,6 +13,7 @@ export default defineConfig({
   out: "./migrations",
   schema: "./shared/schema.ts",
   dialect: "postgresql",
+  schemaFilter: ["public"],
   dbCredentials: {
     url,
   },

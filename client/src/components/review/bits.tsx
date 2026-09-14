@@ -8,10 +8,14 @@ type BadgeTone = 'neutral' | 'brand' | 'success' | 'warning' | 'danger' | 'info'
 
 export const RUN_STATUS_META: Record<string, { label: string; tone: BadgeTone; color: string; pulse?: boolean }> = {
   queued: { label: 'Queued', tone: 'brand', color: 'hsl(var(--brand))', pulse: true },
+  preparing: { label: 'Preparing', tone: 'brand', color: 'hsl(var(--brand))', pulse: true },
   indexing: { label: 'Indexing', tone: 'brand', color: 'hsl(var(--brand))', pulse: true },
   planning: { label: 'Planning', tone: 'brand', color: 'hsl(var(--brand))', pulse: true },
   reviewing: { label: 'Reviewing', tone: 'brand', color: 'hsl(var(--brand))', pulse: true },
   verifying: { label: 'Verifying', tone: 'brand', color: 'hsl(var(--brand))', pulse: true },
+  sandboxing: { label: 'Sandboxing', tone: 'brand', color: 'hsl(var(--brand))', pulse: true },
+  fixing: { label: 'Fixing', tone: 'brand', color: 'hsl(var(--brand))', pulse: true },
+  publishing: { label: 'Publishing', tone: 'brand', color: 'hsl(var(--brand))', pulse: true },
   summarizing: { label: 'Summarizing', tone: 'brand', color: 'hsl(var(--brand))', pulse: true },
   done: { label: 'Completed', tone: 'success', color: 'hsl(var(--success))' },
   error: { label: 'Failed', tone: 'danger', color: 'hsl(var(--danger))' },
@@ -111,22 +115,33 @@ export function ReviewPageShell({
   children,
   maxWidth = 'max-w-5xl',
 }: {
-  title: React.ReactNode;
+  title?: React.ReactNode;
   description?: React.ReactNode;
   actions?: React.ReactNode;
   children: React.ReactNode;
   maxWidth?: string;
 }) {
+  const hasHeader = title !== undefined || description !== undefined || actions !== undefined;
   return (
     <div className="h-full flex flex-col overflow-y-auto">
-      <div className={`flex-1 px-4 sm:px-6 md:px-8 py-4 sm:py-6 ${maxWidth} mx-auto w-full`}>
-        <div className="flex items-start justify-between gap-4 mb-6">
-          <div className="min-w-0">
-            <h1 className="text-[22px] font-semibold text-foreground tracking-tight truncate">{title}</h1>
-            {description && <p className="text-[13px] text-fg-muted mt-1">{description}</p>}
+      <div className={`flex-1 px-4 sm:px-6 md:px-8 pt-10 pb-4 sm:pt-14 sm:pb-6 ${maxWidth} mx-auto w-full`}>
+        {hasHeader && (
+          <div className="flex items-start justify-between gap-4 mb-6">
+            <div className="min-w-0">
+              {title && (
+                <h1 className="font-sans text-[15px] font-medium leading-tight text-foreground truncate">
+                  {title}
+                </h1>
+              )}
+              {description && (
+                <p className="mt-0.5 text-[12px] font-[450] leading-snug text-fg-warm">
+                  {description}
+                </p>
+              )}
+            </div>
+            {actions && <div className="flex items-center gap-2 shrink-0">{actions}</div>}
           </div>
-          {actions && <div className="flex items-center gap-2 shrink-0">{actions}</div>}
-        </div>
+        )}
         {children}
       </div>
     </div>

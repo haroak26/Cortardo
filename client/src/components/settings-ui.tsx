@@ -3,24 +3,25 @@
  *
  * Every settings page in the app composes itself from these primitives:
  *
- *   <SettingsSection title="General" description="Basic info">
- *     <SettingsTextRow    label="Name"    value={name}   onChange={setName} />
- *     <SettingsDisplayRow label="Email"   value="a@b.co" />
- *     <SettingsColorRow   label="Accent"  value={color}  onChange={setColor} />
- *     <SettingsSwitchRow  label="Active"  checked={on}   onCheckedChange={setOn} />
- *     <SettingsLargeTextRow label="Bio"   value={bio}    onChange={setBio} rows={3} />
- *     <SettingsButtonRow  label="Export"> <Button>Export</Button> </SettingsButtonRow>
+ *   <SettingsSection title="General">
+ *     <SettingsTextRow    label="Name"    description="Shown to teammates" value={name} onChange={setName} />
+ *     <SettingsDisplayRow label="Email"   description="Used to sign in" value="a@b.co" />
+ *     <SettingsColorRow   label="Accent"  description="Brand colour" value={color}  onChange={setColor} />
+ *     <SettingsSwitchRow  label="Active"  description="Enable the feature" checked={on} onCheckedChange={setOn} />
+ *     <SettingsLargeTextRow label="Bio"   description="A short intro" value={bio} onChange={setBio} rows={3} />
+ *     <SettingsButtonRow  label="Export"  description="Download your data"> <Button>Export</Button> </SettingsButtonRow>
  *     For anything custom, use the generic SettingsRow:
- *     <SettingsRow label="Custom"> <MyControl /> </SettingsRow>
+ *     <SettingsRow label="Custom" description="What this does"> <MyControl /> </SettingsRow>
  *   </SettingsSection>
  *
  * Design specs:
- *   Section heading: 17px font-semibold
- *   Section subtext: 13px text-muted-foreground, tight mt-1 below heading
- *   Subtext-to-rows gap: mt-1.5 (6px)
+ *   Section heading: 15px font-medium, Inter (font-sans), outside the card
+ *   Heading-to-card gap: mt-[14px]
+ *   Card: rounded-[12px] outline in --surface-hover; 12px inset on all sides
  *   Row height: min-h-11 (44px) for standard rows; large-text rows are auto-height
- *   Row label: 13.5px font-medium, vertically centred with content
- *   Row padding: py-3 (12px top+bottom)
+ *   Row label: 13.5px font-medium text-fg-strong, vertically centred with content
+ *   Row subtext: 12px font-[450] text-fg-warm, mt-0.5 below the label
+ *   Row padding: 12px (px-[12px] py-[12px])
  *   Row dividers: border-b border-[hsl(var(--surface-hover))]
  */
 
@@ -29,7 +30,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/button";
 import { TextInput, Textarea } from "@/components/text-input";
 import { ColorPicker } from "@/components/color-picker";
-import { Switch } from "@/components/ui/switch";
+import { TinyToggle } from "@/components/ui/tiny-toggle";
 import { Lock } from "lucide-react";
 
 /* ──────────────────────────────────────────────────────────────────────────
@@ -38,34 +39,55 @@ import { Lock } from "lucide-react";
 
 export function SettingsSection({
   title,
-  description,
   action,
   children,
   className,
 }: {
   title: React.ReactNode;
-  description?: React.ReactNode;
   action?: React.ReactNode;
   children: React.ReactNode;
   className?: string;
 }) {
   return (
     <section className={cn("w-full", className)}>
-      <header className="flex items-end justify-between gap-3 pb-2">
+      <header className="flex items-end justify-between gap-3">
         <div className="min-w-0">
-          <h2 className="text-[15px] font-semibold leading-tight text-foreground tracking-wide font-sans">
+          <h2 className="font-sans text-[15px] font-medium leading-tight text-foreground">
             {title}
           </h2>
-          {description && (
-            <p className="mt-1 text-[13px] leading-snug text-muted-foreground">
-              {description}
-            </p>
-          )}
         </div>
         {action && <div className="shrink-0">{action}</div>}
       </header>
-      <div className="mt-1.5 divide-y divide-[hsl(var(--surface-hover))]">{children}</div>
+      <SettingsCard className="mt-[14px]">{children}</SettingsCard>
     </section>
+  );
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+   CARD — the bare settings card shell, for custom sections that don't want
+   the standard heading above them (e.g. cards in a grid).
+   ────────────────────────────────────────────────────────────────────────── */
+
+export function SettingsCard({
+  children,
+  className,
+  padded = true,
+}: {
+  children: React.ReactNode;
+  className?: string;
+  /** Inset children by 12px. Set false for edge-to-edge dividers. */
+  padded?: boolean;
+}) {
+  return (
+    <div
+      className={cn(
+        "overflow-hidden rounded-[12px] border border-[hsl(var(--surface-hover))] divide-y divide-[hsl(var(--surface-hover))]",
+        padded && "px-[12px]",
+        className,
+      )}
+    >
+      {children}
+    </div>
   );
 }
 
@@ -74,16 +96,18 @@ export function SettingsSection({
    ────────────────────────────────────────────────────────────────────────── */
 
 const rowBase =
-  "flex flex-row items-center justify-between gap-3 py-3 min-h-11";
+  "flex flex-row items-center justify-between gap-3 py-[12px] min-h-11";
 
 export function SettingsRow({
   label,
+  description,
   children,
   align = "center",
   stack = false,
   className,
 }: {
   label: React.ReactNode;
+  description?: React.ReactNode;
   children?: React.ReactNode;
   align?: "center" | "start";
   stack?: boolean;
@@ -99,9 +123,14 @@ export function SettingsRow({
       )}
     >
       <div className="min-w-0 flex-1">
-        <p className="text-[13.5px] font-medium leading-snug text-foreground">
+        <p className="text-[13.5px] font-medium leading-snug text-fg-strong">
           {label}
         </p>
+        {description && (
+          <p className="mt-0.5 text-[12px] font-[450] leading-snug text-fg-warm">
+            {description}
+          </p>
+        )}
       </div>
       {children !== undefined && (
         <div
@@ -127,6 +156,7 @@ const inputClass =
 
 export function SettingsTextRow({
   label,
+  description,
   value,
   onChange,
   placeholder,
@@ -135,8 +165,10 @@ export function SettingsTextRow({
   readOnly,
   className,
   onKeyDown,
+  onBlur,
 }: {
   label: string;
+  description?: string;
   value: string;
   onChange?: (e: React.ChangeEvent<HTMLInputElement>) => void;
   placeholder?: string;
@@ -145,9 +177,10 @@ export function SettingsTextRow({
   readOnly?: boolean;
   className?: string;
   onKeyDown?: (e: React.KeyboardEvent<HTMLInputElement>) => void;
+  onBlur?: (e: React.FocusEvent<HTMLInputElement>) => void;
 }) {
   return (
-    <SettingsRow label={label}>
+    <SettingsRow label={label} description={description}>
       <TextInput
         type={type}
         value={value}
@@ -157,6 +190,7 @@ export function SettingsTextRow({
         readOnly={readOnly}
         className={cn(inputClass, className)}
         onKeyDown={onKeyDown}
+        onBlur={onBlur}
       />
     </SettingsRow>
   );
@@ -169,6 +203,7 @@ export function SettingsTextRow({
 
 export function SettingsLargeTextRow({
   label,
+  description,
   value,
   onChange,
   placeholder,
@@ -176,6 +211,7 @@ export function SettingsLargeTextRow({
   disabled,
 }: {
   label: string;
+  description?: string;
   value: string;
   onChange?: (e: React.ChangeEvent<HTMLTextAreaElement>) => void;
   placeholder?: string;
@@ -183,11 +219,17 @@ export function SettingsLargeTextRow({
   disabled?: boolean;
 }) {
   return (
-    <div className="py-3">
-      <p className="text-[13.5px] font-medium leading-snug text-foreground mb-2">
+    <div className="py-[12px]">
+      <p className="text-[13.5px] font-medium leading-snug text-fg-strong">
         {label}
       </p>
+      {description && (
+        <p className="mt-0.5 text-[12px] font-[450] leading-snug text-fg-warm">
+          {description}
+        </p>
+      )}
       <Textarea
+        className="mt-2"
         value={value}
         onChange={onChange}
         placeholder={placeholder}
@@ -205,17 +247,19 @@ export function SettingsLargeTextRow({
 
 export function SettingsDisplayRow({
   label,
+  description,
   value,
   mono,
   children,
 }: {
   label: string;
+  description?: string;
   value?: string;
   mono?: boolean;
   children?: React.ReactNode;
 }) {
   return (
-    <SettingsRow label={label}>
+    <SettingsRow label={label} description={description}>
       {children ?? (
         <span
           className={cn(
@@ -237,15 +281,17 @@ export function SettingsDisplayRow({
 
 export function SettingsColorRow({
   label,
+  description,
   value,
   onChange,
 }: {
   label: string;
+  description?: string;
   value: string;
   onChange: (color: string) => void;
 }) {
   return (
-    <SettingsRow label={label}>
+    <SettingsRow label={label} description={description}>
       <ColorPicker value={value} onChange={onChange} />
     </SettingsRow>
   );
@@ -258,18 +304,20 @@ export function SettingsColorRow({
 
 export function SettingsSwitchRow({
   label,
+  description,
   checked,
   onCheckedChange,
   disabled,
 }: {
   label: string;
+  description?: string;
   checked: boolean;
   onCheckedChange: (checked: boolean) => void;
   disabled?: boolean;
 }) {
   return (
-    <SettingsRow label={label}>
-      <Switch
+    <SettingsRow label={label} description={description}>
+      <TinyToggle
         checked={checked}
         onCheckedChange={onCheckedChange}
         disabled={disabled}
@@ -285,13 +333,15 @@ export function SettingsSwitchRow({
 
 export function SettingsButtonRow({
   label,
+  description,
   children,
 }: {
   label: string;
+  description?: string;
   children: React.ReactNode;
 }) {
   return (
-    <SettingsRow label={label}>
+    <SettingsRow label={label} description={description}>
       <div className="flex items-center gap-2">{children}</div>
     </SettingsRow>
   );

@@ -199,7 +199,6 @@ export async function startServer(app: Express, httpServer: Server) {
     console.error("[startup] Database unreachable — check DATABASE_URL:", e);
   }
 
-  // Cortardo Agent runs: nothing to reconcile on boot (runs are short-lived SSE streams).
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
     const message = err.message || "Internal Server Error";

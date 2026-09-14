@@ -41,6 +41,7 @@
   --fg-secondary: 240 4% 54%;
   --fg-subtle: 225 6% 57%;
   --fg-faint: 220 8% 58%;
+  --fg-warm: 0 0% 45%;             /* neutral grey #737373 (row subtext) */
 
   --border: 220 14% 88%;
   --border-subtle: 45 8% 94%;
@@ -53,6 +54,9 @@
   --brand-muted: 204 42% 27% / 0.1;
   --brand-border: 204 42% 27% / 0.25;
   --brand-hover: 204 42% 20%;
+
+  /* Toggle (on state) */
+  --toggle-on: 152 58% 45%;
 
   /* Blue accent */
   --blue: 204 42% 27%;
@@ -119,6 +123,7 @@
   --fg-secondary: 220 6% 52%;
   --fg-subtle: 220 6% 48%;
   --fg-faint: 220 6% 35%;
+  --fg-warm: 0 0% 60%;
 
   --border: 220 10% 20%;
   --border-subtle: 45 7% 19%;
@@ -130,6 +135,8 @@
   --brand-muted: 204 42% 60% / 0.12;
   --brand-border: 204 42% 60% / 0.25;
   --brand-hover: 204 42% 32%;
+
+  --toggle-on: 152 55% 48%;
 
   /* Blue accent (dark mode) */
   --blue: 204 42% 60%;

@@ -18,6 +18,41 @@ export function StatCardSkeleton({ className }: { className?: string }) {
   );
 }
 
+export function TileCardSkeleton({ className }: { className?: string }) {
+  return (
+    <div className={cn("flex h-full flex-col rounded-2xl border border-border bg-background p-4 animate-pulse", className)}>
+      <div className="flex items-start gap-3">
+        <div className="h-9 w-9 shrink-0 rounded-[10px] bg-surface-hover" />
+        <div className="min-w-0 flex-1 space-y-2 pt-0.5">
+          <div className="h-3.5 w-32 rounded bg-surface-hover" />
+          <div className="h-3 w-44 rounded bg-surface-hover" />
+        </div>
+      </div>
+      <div className="mt-auto flex items-center justify-between gap-3 pt-4">
+        <div className="h-3 w-24 rounded bg-surface-hover" />
+        <div className="h-5 w-9 rounded-full bg-surface-hover" />
+      </div>
+    </div>
+  );
+}
+
+export function SettingsCardSkeleton({ className }: { className?: string }) {
+  return (
+    <div className={cn("flex h-full flex-col overflow-hidden rounded-[12px] border border-[hsl(var(--surface-hover))] px-[12px] animate-pulse", className)}>
+      <div className="py-[12px]">
+        <div className="h-[140px] w-full rounded-[8px] bg-surface-hover" />
+      </div>
+      <div className="flex min-h-11 items-center justify-between gap-3 border-t border-[hsl(var(--surface-hover))] py-[12px]">
+        <div className="min-w-0 flex-1 space-y-1.5">
+          <div className="h-3.5 w-32 rounded bg-surface-hover" />
+          <div className="h-3 w-40 rounded bg-surface-hover" />
+        </div>
+        <div className="h-4 w-7 shrink-0 rounded-full bg-surface-hover" />
+      </div>
+    </div>
+  );
+}
+
 export function ConversationRowSkeleton() {
   return (
     <div className="flex items-center gap-3 px-5 py-3 animate-pulse">

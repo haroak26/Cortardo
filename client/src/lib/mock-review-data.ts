@@ -5,10 +5,14 @@ export type SeverityKey = 'critical' | 'high' | 'medium' | 'low' | 'info';
 export type SeverityCounts = Record<SeverityKey, number>;
 export type RunStatus =
   | 'queued'
+  | 'preparing'
   | 'indexing'
   | 'planning'
   | 'reviewing'
   | 'verifying'
+  | 'sandboxing'
+  | 'fixing'
+  | 'publishing'
   | 'summarizing'
   | 'done'
   | 'error'
@@ -479,6 +483,140 @@ export const learnings: MockLearning[] = [
   { id: 'ln_04', text: 'Skip style findings in the legacy folder. The team is not maintaining it.', scope: 'acme/ledger', source: 'manual', accepted: 3, rejected: 0, createdAt: minutesAgo(60 * 24 * 6) },
   { id: 'ln_05', text: 'The team dismissed "Unused import after the refactor" three times this month.', scope: 'acme/web', source: 'feedback', accepted: 0, rejected: 8, createdAt: minutesAgo(60 * 24 * 3) },
   { id: 'ln_06', text: 'Round-trip currency tests are considered authoritative. Do not flag arithmetic in test fixtures.', scope: 'All repositories', source: 'manual', accepted: 2, rejected: 0, createdAt: minutesAgo(60 * 24 * 12) },
+];
+
+/* ── Notifications ───────────────────────────────────────────────── */
+
+export type NotificationKind = 'review' | 'finding' | 'bot' | 'team' | 'system';
+
+export interface MockNotification {
+  id: string;
+  kind: NotificationKind;
+  title: string;
+  body: string;
+  createdAt: string;
+  read: boolean;
+}
+
+export const notifications: MockNotification[] = [
+  { id: 'nt_01', kind: 'review', title: 'Review completed on acme/payments-api #482', body: 'The bot found 1 critical and 2 high findings in "Harden webhook signature verification".', createdAt: minutesAgo(6), read: false },
+  { id: 'nt_02', kind: 'finding', title: 'Critical finding needs an owner', body: 'Capture is not guarded by the idempotency key — src/checkout/capture.ts:142.', createdAt: minutesAgo(42), read: false },
+  { id: 'nt_03', kind: 'team', title: 'priya.n accepted your workspace invite', body: 'They joined acme as an editor.', createdAt: minutesAgo(60 * 5), read: false },
+  { id: 'nt_04', kind: 'bot', title: 'The bot learned from your feedback', body: 'Style findings in the legacy folder will be skipped from now on.', createdAt: minutesAgo(60 * 20), read: true },
+  { id: 'nt_05', kind: 'review', title: 'Review failed on acme/ledger #128', body: 'The run could not clone the repository. Retry once the index is rebuilt.', createdAt: minutesAgo(60 * 26), read: true },
+  { id: 'nt_06', kind: 'system', title: 'Weekly digest is ready', body: '128 reviews, 212 findings and a 68% fix rate across 6 repositories.', createdAt: minutesAgo(60 * 30), read: true },
+];
+
+/* ── Activity feed ───────────────────────────────────────────────── */
+
+export type ActivityKind =
+  | 'review_started'
+  | 'review_completed'
+  | 'review_failed'
+  | 'finding_fixed'
+  | 'finding_dismissed'
+  | 'rule_added'
+  | 'learning_added'
+  | 'member_joined'
+  | 'repo_connected';
+
+export interface MockActivityEvent {
+  id: string;
+  kind: ActivityKind;
+  actor: string;
+  text: string;
+  repository: string | null;
+  createdAt: string;
+}
+
+export const activityEvents: MockActivityEvent[] = [
+  { id: 'ac_01', kind: 'review_started', actor: 'bot', text: 'started a review of "Harden webhook signature verification"', repository: 'acme/payments-api', createdAt: minutesAgo(6) },
+  { id: 'ac_02', kind: 'finding_fixed', actor: 'priya.n', text: 'marked "Refund can exceed the captured amount" as fixed', repository: 'acme/payments-api', createdAt: minutesAgo(52) },
+  { id: 'ac_03', kind: 'review_completed', actor: 'bot', text: 'completed a review of "Race condition in the new checkout path" with 4 findings', repository: 'acme/payments-api', createdAt: minutesAgo(96) },
+  { id: 'ac_04', kind: 'learning_added', actor: 'dan.okafor', text: 'taught the bot to skip style findings in the legacy folder', repository: 'acme/ledger', createdAt: minutesAgo(60 * 4) },
+  { id: 'ac_05', kind: 'member_joined', actor: 'sam.lee', text: 'joined the workspace as an editor', repository: null, createdAt: minutesAgo(60 * 7) },
+  { id: 'ac_06', kind: 'review_failed', actor: 'bot', text: 'could not finish a review of "Swap the queue client for the shared transport"', repository: 'acme/ledger', createdAt: minutesAgo(60 * 26) },
+  { id: 'ac_07', kind: 'rule_added', actor: 'morgan.k', text: 'added a rule: all queries must use bound parameters', repository: null, createdAt: minutesAgo(60 * 30) },
+  { id: 'ac_08', kind: 'finding_dismissed', actor: 'sam.lee', text: 'dismissed "Public helper is missing a doc comment"', repository: 'acme/web', createdAt: minutesAgo(60 * 34) },
+  { id: 'ac_09', kind: 'repo_connected', actor: 'priya.n', text: 'connected acme/infra to the workspace', repository: 'acme/infra', createdAt: minutesAgo(60 * 48) },
+  { id: 'ac_10', kind: 'review_completed', actor: 'bot', text: 'completed a review of "Add idempotency keys to the payout worker" with 6 findings', repository: 'acme/ledger', createdAt: minutesAgo(60 * 49) },
+  { id: 'ac_11', kind: 'finding_fixed', actor: 'dan.okafor', text: 'marked "Unbounded in-memory cache on the hot path" as fixed', repository: 'acme/web', createdAt: minutesAgo(60 * 72) },
+  { id: 'ac_12', kind: 'review_completed', actor: 'bot', text: 'completed a review of "Migrate session storage to signed cookies" with 3 findings', repository: 'acme/web', createdAt: minutesAgo(60 * 72) },
+];
+
+/* ── Analytics ───────────────────────────────────────────────────── */
+
+export interface AnalyticsSummary {
+  reviews: number;
+  reviewsHint: string;
+  findings: number;
+  findingsHint: string;
+  fixRate: number;
+  fixRateHint: string;
+  timeToFix: number;
+  timeToFixHint: string;
+}
+
+export const analyticsSummary: AnalyticsSummary = {
+  reviews: 128,
+  reviewsHint: '+14 in the last 7 days',
+  findings: 212,
+  findingsHint: '+23 in the last 7 days',
+  fixRate: 68,
+  fixRateHint: '+5pts in the last 7 days',
+  timeToFix: 9.4,
+  timeToFixHint: '-2.1h in the last 7 days',
+};
+
+export interface TrendPoint {
+  label: string;
+  reviews: number;
+  findings: number;
+}
+
+export const reviewTrend: TrendPoint[] = [
+  { label: 'Jun 22', reviews: 6, findings: 11 },
+  { label: 'Jun 29', reviews: 9, findings: 14 },
+  { label: 'Jul 6', reviews: 7, findings: 9 },
+  { label: 'Jul 13', reviews: 11, findings: 19 },
+  { label: 'Jul 20', reviews: 10, findings: 17 },
+  { label: 'Jul 27', reviews: 8, findings: 12 },
+  { label: 'Aug 3', reviews: 13, findings: 24 },
+  { label: 'Aug 10', reviews: 12, findings: 21 },
+  { label: 'Aug 17', reviews: 9, findings: 15 },
+  { label: 'Aug 24', reviews: 14, findings: 26 },
+  { label: 'Aug 31', reviews: 15, findings: 28 },
+  { label: 'Sep 7', reviews: 14, findings: 20 },
+];
+
+export interface CategoryCount {
+  category: string;
+  count: number;
+}
+
+export const findingsByCategory: CategoryCount[] = [
+  { category: 'Security', count: 74 },
+  { category: 'Bug', count: 52 },
+  { category: 'Correctness', count: 38 },
+  { category: 'Performance', count: 29 },
+  { category: 'Maintainability', count: 19 },
+];
+
+export interface RepoAnalytics {
+  repository: string;
+  reviews: number;
+  open: number;
+  fixed: number;
+  fixRate: number;
+}
+
+export const repoAnalytics: RepoAnalytics[] = [
+  { repository: 'acme/payments-api', reviews: 48, open: 14, fixed: 61, fixRate: 81 },
+  { repository: 'acme/ledger', reviews: 34, open: 9, fixed: 40, fixRate: 74 },
+  { repository: 'acme/web', reviews: 26, open: 6, fixed: 28, fixRate: 66 },
+  { repository: 'acme/infra', reviews: 12, open: 3, fixed: 11, fixRate: 58 },
+  { repository: 'acme/docs', reviews: 6, open: 2, fixed: 4, fixRate: 47 },
+  { repository: 'acme/mobile', reviews: 2, open: 0, fixed: 1, fixRate: 33 },
 ];
 
 /* ── Helpers ─────────────────────────────────────────────────────── */

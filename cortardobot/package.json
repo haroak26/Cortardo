@@ -1,0 +1,36 @@
+{
+  "name": "cortardobot",
+  "version": "2.0.0",
+  "description": "Cortado 2.0 \u2014 Fast autonomous code review engine (investigate -> prove -> fix -> verify) built on LangGraph",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test tests/unit/*.test.ts tests/integration/*.test.ts tests/dry/*.test.ts tests/exhaustive/*.test.ts tests/final/*.test.ts tests/hardening/*.test.ts",
+    "test:dry": "node --import tsx --test tests/dry/*.test.ts",
+    "test:unit": "node --import tsx --test tests/unit/*.test.ts",
+    "test:integration": "node --import tsx --test tests/integration/*.test.ts",
+    "dry": "node --import tsx scripts/run-dry.ts",
+    "bot": "node --import tsx src/cli.ts",
+    "test:exhaustive": "node --import tsx --test tests/exhaustive/*.test.ts",
+    "exhaustive": "node --import tsx scripts/run-exhaustive.ts",
+    "test:final": "node --import tsx --test tests/final/*.test.ts",
+    "final": "node --import tsx scripts/run-final.ts",
+    "test:hardening": "node --import tsx --test tests/hardening/*.test.ts",
+    "hardening": "node --import tsx scripts/run-hardening.ts"
+  },
+  "dependencies": {
+    "@langchain/core": "^1.2.11",
+    "@langchain/langgraph": "^1.4.15",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "tsx": "^4.23.13",
+    "typescript": "^5.9.3"
+  }
+}

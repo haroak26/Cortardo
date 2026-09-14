@@ -79,6 +79,8 @@ export default {
         "fg-secondary": "hsl(var(--fg-secondary) / <alpha-value>)",
         "fg-subtle": "hsl(var(--fg-subtle) / <alpha-value>)",
         "fg-faint": "hsl(var(--fg-faint) / <alpha-value>)",
+        "fg-warm": "hsl(var(--fg-warm) / <alpha-value>)",
+        "toggle-on": "hsl(var(--toggle-on) / <alpha-value>)",
         success: "hsl(var(--success) / <alpha-value>)",
         warning: "hsl(var(--warning) / <alpha-value>)",
         danger: "hsl(var(--danger) / <alpha-value>)",

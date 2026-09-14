@@ -262,6 +262,122 @@ export function StatCard({ label, value, hint, icon: Icon, tone = "brand", class
 }
 
 /* ──────────────────────────────────────────────────────────────────────────
+   8.1) TILE CARD — rounded secondary card for grids & compact lists
+   Softer companion to StatCard: same tone system and delta hints, but
+   border-radius instead of the framed corner treatment. Use for repository
+   lists, integrations, and any grid where stat blocks repeat too heavily.
+   ────────────────────────────────────────────────────────────────────────── */
+
+export interface TileCardProps extends Omit<React.HTMLAttributes<HTMLDivElement>, "title"> {
+  icon?: LucideIcon;
+  tone?: BadgeTone;
+  label?: React.ReactNode;
+  title?: React.ReactNode;
+  value?: React.ReactNode;
+  hint?: React.ReactNode;
+  description?: React.ReactNode;
+  badges?: React.ReactNode;
+  actions?: React.ReactNode;
+  footer?: React.ReactNode;
+  selected?: boolean;
+  onClick?: () => void;
+}
+
+export function TileCard({
+  icon: Icon,
+  tone = "neutral",
+  label,
+  title,
+  value,
+  hint,
+  description,
+  badges,
+  actions,
+  footer,
+  selected,
+  onClick,
+  className,
+  children,
+  ...props
+}: TileCardProps) {
+  const delta = typeof hint === "string" ? STAT_DELTA.exec(hint) : null;
+  const positive = delta?.[1].startsWith("+") ?? true;
+  return (
+    <div
+      {...props}
+      onClick={onClick}
+      className={cn(
+        "relative flex h-full flex-col rounded-2xl border bg-background p-4 transition-colors duration-200",
+        selected ? "border-brand/60 bg-brand/[0.04]" : "border-border",
+        onClick && "cursor-pointer hover:border-border-strong hover:bg-surface-hover/40",
+        className,
+      )}
+    >
+      <div className="flex items-start gap-3">
+        {Icon && (
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] bg-surface-hover">
+            <Icon size={16} strokeWidth={1.75} className={STAT_TONES[tone]} />
+          </div>
+        )}
+        <div className="min-w-0 flex-1">
+          {label && (
+            <p className="truncate text-[12.5px] font-medium text-fg-muted">{label}</p>
+          )}
+          {title && (
+            <p className={cn("truncate text-[13.5px] font-medium text-foreground", label && "mt-0.5")}>
+              {title}
+            </p>
+          )}
+          {description && (
+            <p className="mt-1 text-[12px] leading-snug text-fg-subtle">{description}</p>
+          )}
+          {badges && <div className="mt-1.5 flex flex-wrap items-center gap-1.5">{badges}</div>}
+        </div>
+        {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
+      </div>
+
+      {value !== undefined && (
+        <p className="mt-3 text-[32px] font-semibold leading-none tracking-[-0.02em] tabular-nums text-foreground">
+          {value}
+        </p>
+      )}
+
+      {children}
+
+      {(hint || footer) && (
+        <div className="mt-auto pt-3">
+          {hint && (
+            <div className="flex min-w-0 items-center gap-1.5 text-[12px] text-fg-subtle">
+              {delta ? (
+                <>
+                  <span
+                    className={cn(
+                      "inline-flex shrink-0 items-center gap-0.5 font-semibold tabular-nums",
+                      positive ? "text-success" : "text-danger",
+                    )}
+                  >
+                    {positive ? (
+                      <ArrowUpRight size={13} strokeWidth={2.5} />
+                    ) : (
+                      <ArrowDownRight size={13} strokeWidth={2.5} />
+                    )}
+                    {delta[1].replace(/^[+-]/, "")}
+                  </span>
+                  <span className="truncate">{delta[2]}</span>
+                </>
+              ) : (
+                <span className="truncate">{hint}</span>
+              )}
+            </div>
+          )}
+          {footer && <div className={cn(hint && "mt-3")}>{footer}</div>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
    9) DATA TABLE — the single table pattern used across the app
    ────────────────────────────────────────────────────────────────────────── */
 

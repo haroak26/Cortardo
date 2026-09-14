@@ -10,7 +10,7 @@ import { useWorkspace } from "@/contexts/workspace-context";
 import {
   Check, Clock, Download, Lock, ChevronRight, ChevronDown, ArrowLeft,
   User, CreditCard, Globe, Hash, Coins,
-  Zap, Trash2, Smartphone, Key,
+  Zap, Trash2, Smartphone, Key, Github,
   Plus, Loader, AlertCircle, X, Menu,
   Users,
 } from "lucide-react";
@@ -31,6 +31,7 @@ import {
 } from "@/components/settings-ui";
 
 import TeamPageView from "@/pages/TeamPage";
+import { GithubIntegrationsPage } from "@/components/account/GithubIntegrationSection";
 import { PLAN_LIMITS, type PlanTier, type BillingPeriod } from "@shared/schema";
 import { CURRENCIES, CURRENCY_CODES, type CurrencyCode } from "@/lib/billing";
 import { CanvasDropdown } from "@/components/CanvasDropdown";
@@ -62,9 +63,9 @@ function PlanBadge({ plan }: { plan: Plan }) {
 // ── Editable field row ─────────────────────────────────────────────────────
 
 function EditableRow({
-  label, value, onSave, type = "text", placeholder, readOnly, disabled, onDirtyChange, onRegisterSave,
+  label, description, value, onSave, type = "text", placeholder, readOnly, disabled, onDirtyChange, onRegisterSave,
 }: {
-  label: string; value: string;
+  label: string; description?: string; value: string;
   onSave?: (v: string) => Promise<void>; type?: string; placeholder?: string;
   readOnly?: boolean; disabled?: boolean;
   onDirtyChange?: (dirty: boolean) => void;
@@ -95,7 +96,7 @@ function EditableRow({
   }, [save, initialValue]);
 
   return (
-    <SettingsRow label={label}>
+    <SettingsRow label={label} description={description}>
       {readOnly || disabled ? (
         <TextInput value={value || placeholder} disabled size="sm" className="min-w-0 w-full sm:w-64" />
       ) : (
@@ -175,7 +176,7 @@ function AvatarUpload({ user, onUpdated }: { user: any; onUpdated: () => void })
     .slice(0, 2);
 
   return (
-    <SettingsRow label="Logo / Avatar">
+    <SettingsRow label="Logo / Avatar" description="Shown on your profile and review comments.">
       <div className="flex items-center gap-3">
         {user.avatarUrl ? (
           <img src={user.avatarUrl} alt="Avatar" className="w-10 h-10 rounded-full object-cover shrink-0" />
@@ -201,7 +202,7 @@ function AvatarUpload({ user, onUpdated }: { user: any; onUpdated: () => void })
               {uploading ? "Uploading…" : "Upload"}
             </label>
           </div>
-          <p className="text-[11px] text-fg-muted">Max 25MB</p>
+          <p className="text-[12px] font-[450] text-fg-warm">Max 25MB</p>
           {error && <p className="text-[11px] text-destructive m-0">{error}</p>}
         </div>
       </div>
@@ -222,19 +223,20 @@ function ProfilePage({ user, updateProfile, emailVerified, pendingEmail, onResen
       {(!emailVerified || pendingEmail) && (
         <VerificationBanner emailVerified={emailVerified} pendingEmail={pendingEmail} onResend={onResend} isResending={isResending} />
       )}
-      <SettingsSection title="Identity" description="Your basic profile information.">
+      <SettingsSection title="Identity">
         <AvatarUpload user={user} onUpdated={refetch} />
         <EditableRow
           label="Full Name"
+          description="Displayed to your team and on review comments."
           value={user.displayName || ""}
           placeholder="Your display name"
           onSave={(v) => updateProfile("displayName", v)}
           onRegisterSave={(save, cancel) => { sectionSaveRef.current = save; sectionCancelRef.current = cancel; }}
           onDirtyChange={setSectionDirty}
         />
-        <SettingsDisplayRow label="Email Address">
+        <SettingsDisplayRow label="Email Address" description="Used to sign in and receive account emails.">
           <div className="flex items-center gap-2">
-            <span className="text-[14px] text-foreground font-medium">{user.email}</span>
+            <span className="text-[13.5px] text-fg-strong font-medium">{user.email}</span>
           </div>
         </SettingsDisplayRow>
         {sectionDirty && (
@@ -249,8 +251,8 @@ function ProfilePage({ user, updateProfile, emailVerified, pendingEmail, onResen
         )}
       </SettingsSection>
 
-      <SettingsSection title="Preferences" description="Appearance and notification preferences.">
-        <SettingsRow label="Theme">
+      <SettingsSection title="Preferences">
+        <SettingsRow label="Theme" description="Choose how Cortardo looks to you.">
           <div className="relative min-w-[140px]">
             <Dropdown
               value={theme}
@@ -268,13 +270,13 @@ function ProfilePage({ user, updateProfile, emailVerified, pendingEmail, onResen
             />
           </div>
         </SettingsRow>
-        <SettingsRow label="Product updates">
+        <SettingsRow label="Product updates" description="Occasional emails about new features and improvements.">
           <TinyToggle
             checked={user.productUpdates ?? true}
             onCheckedChange={(v) => saveAccountSettings.mutate({ productUpdates: v })}
           />
         </SettingsRow>
-        <SettingsRow label="Security alerts">
+        <SettingsRow label="Security alerts" description="Get notified about sign-ins and account changes.">
           <TinyToggle
             checked={user.securityAlerts ?? true}
             onCheckedChange={(v) => saveAccountSettings.mutate({ securityAlerts: v })}
@@ -314,7 +316,7 @@ function PasswordRow() {
 
   if (!open) {
     return (
-      <SettingsRow label="Password">
+      <SettingsRow label="Password" description="Change the password used to sign in.">
         <Button design="ghost" size="xs" onClick={() => setOpen(true)}>Change password</Button>
       </SettingsRow>
     );
@@ -322,7 +324,7 @@ function PasswordRow() {
 
   return (
     <>
-      <SettingsRow label="Change password" align="start">
+      <SettingsRow label="Change password" description="Enter your current password, then set a new one." align="start">
         <form onSubmit={submit} className="flex flex-col gap-2.5 w-full sm:w-48">
           {[
             { label: "Current password", val: current, set: setCurrent },
@@ -385,7 +387,7 @@ function DeleteRow({ username }: { username: string }) {
 
   if (!open) {
     return (
-      <SettingsRow label="Delete account">
+      <SettingsRow label="Delete account" description="Permanently delete your account and all data.">
         <Button design="destructive" size="xs" onClick={() => setOpen(true)}>
           <Trash2 className="h-3.5 w-3.5" /> Delete account
         </Button>
@@ -394,7 +396,7 @@ function DeleteRow({ username }: { username: string }) {
   }
 
   return (
-    <SettingsRow label="Delete account" align="start">
+    <SettingsRow label="Delete account" description="This can't be undone. Type your username and password to confirm." align="start">
       <form onSubmit={submit} className="flex flex-col gap-2.5 w-full sm:w-48">
         <div className="flex flex-col gap-0.5">
           <label className="text-[11px] font-semibold text-foreground">Your password</label>
@@ -453,6 +455,12 @@ const ACCOUNT_NAV: AccountNavGroup[] = [
     items: [
       { label: "Profile", href: "/account/profile", hint: "Name, email, username", icon: User },
       { label: "Sessions", href: "/account/sessions", hint: "Devices where you're signed in", icon: Smartphone },
+    ],
+  },
+  {
+    label: "Integrations",
+    items: [
+      { label: "GitHub", href: "/account/integrations", hint: "Repositories, pull requests & issues", icon: Github },
     ],
   },
   {
@@ -604,10 +612,11 @@ function TwoFactorSection() {
   };
 
   return (
-    <SettingsSection title="Two-factor authentication" description="Add an extra layer of security to your account.">
+    <SettingsSection title="Two-factor authentication">
       {view === 'idle' && (
         <SettingsRow
           label="Authenticator App"
+          description="Use an authenticator app as a second sign-in factor."
         >
           {enabled ? (
             <div className="flex items-center gap-2">
@@ -636,7 +645,7 @@ function TwoFactorSection() {
             </div>
           )}
           {enabled && (
-            <SettingsRow label="Disable 2FA">
+            <SettingsRow label="Disable 2FA" description="Confirm your password to turn off two-factor.">
               <div className="flex items-center gap-2">
                 <TextInput type="password" value={disablePassword} onChange={e => setDisablePassword(e.target.value)} placeholder="Current password" size="sm" className="w-36" />
                 <Button size="xs" design="destructive" onClick={handleDisable} isLoading={saving} disabled={!disablePassword}>Disable</Button>
@@ -731,7 +740,6 @@ function SessionsSection() {
   return (
     <SettingsSection
       title="Active Sessions"
-      description="Manage devices where you're signed in."
       action={
         otherSessions.length > 0 ? (
           <Button
@@ -752,20 +760,20 @@ function SessionsSection() {
         </div>
       ) : sessions.length === 0 ? (
         <div className="py-6 text-center">
-          <p className="text-[13px] text-muted-foreground">No active sessions found.</p>
+          <p className="text-[12.5px] font-[450] text-fg-warm">No active sessions found.</p>
         </div>
       ) : (
         <>
           {currentSession && (
-            <div className="flex items-center justify-between gap-3 py-3">
+            <div className="flex items-center justify-between gap-3 py-[12px]">
               <div className="flex items-center gap-3 min-w-0">
                 <span className="text-[16px] shrink-0">{deviceIcon(currentSession.device)}</span>
                 <div className="min-w-0">
-                  <p className="text-[13.5px] font-medium text-foreground leading-tight truncate">
+                  <p className="text-[13.5px] font-medium text-fg-strong leading-tight truncate">
                     {currentSession.browser ?? "Unknown browser"} — {currentSession.os ?? "Unknown OS"}
                     <span className="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded-full bg-emerald-500/10 text-[10px] font-semibold text-emerald-600 leading-none">Current</span>
                   </p>
-                  <p className="text-[11.5px] text-muted-foreground mt-0.5 truncate">
+                  <p className="text-[12px] font-[450] text-fg-warm mt-0.5 truncate">
                     {currentSession.location && `${currentSession.location} · `}Active now
                   </p>
                 </div>
@@ -773,14 +781,14 @@ function SessionsSection() {
             </div>
           )}
           {otherSessions.map((session: any) => (
-            <div key={session.id} className="flex items-center justify-between gap-3 py-3">
+            <div key={session.id} className="flex items-center justify-between gap-3 py-[12px]">
               <div className="flex items-center gap-3 min-w-0">
                 <span className="text-[16px] shrink-0">{deviceIcon(session.device)}</span>
                 <div className="min-w-0">
-                  <p className="text-[13.5px] font-medium text-foreground leading-tight truncate">
+                  <p className="text-[13.5px] font-medium text-fg-strong leading-tight truncate">
                     {session.browser ?? "Unknown browser"} — {session.os ?? "Unknown OS"}
                   </p>
-                  <p className="text-[11.5px] text-muted-foreground mt-0.5 truncate">
+                  <p className="text-[12px] font-[450] text-fg-warm mt-0.5 truncate">
                     {session.location && `${session.location} · `}{formatTime(session.lastActiveAt)}
                   </p>
                 </div>
@@ -805,11 +813,11 @@ function SecurityPage() {
   const logout = useLogout();
   return (
     <div className="py-4 space-y-8">
-      <SettingsSection title="Password" description="Change your account password.">
+      <SettingsSection title="Password">
         <PasswordRow />
       </SettingsSection>
-      <SettingsSection title="Sign Out" description="End your current session on all devices.">
-        <SettingsRow label="Sign out">
+      <SettingsSection title="Sign Out">
+        <SettingsRow label="Sign out" description="End your session on this device.">
           <Button design="secondary" size="xs" onClick={() => logout.mutate()} disabled={logout.isPending} isLoading={logout.isPending}>
             {logout.isPending ? "Signing out…" : "Sign out"}
           </Button>
@@ -863,7 +871,6 @@ function BillingPage({ planInfo, checkoutMutation, cancelMutation, portalMutatio
     <div className="py-4 space-y-6">
       <SettingsSection
         title="Current Plan"
-        description="Your active subscription."
         action={
           <div className="flex items-center gap-2">
             {!planInfo?.cancelAtPeriodEnd && currentPlan !== "free" && (
@@ -877,26 +884,25 @@ function BillingPage({ planInfo, checkoutMutation, cancelMutation, portalMutatio
           </div>
         }
       >
-        <div className="px-1 pt-2 pb-4">
+        <div className="pt-2 pb-4">
           <div className="flex items-baseline gap-2 mb-1">
-            <span className="text-[36px] font-bold text-foreground tracking-tight tabular-nums">${price}</span>
-            <span className="text-[15px] font-medium text-fg-muted">/month</span>
+            <span className="text-[32px] font-semibold text-foreground tracking-[-0.02em] tabular-nums">${price}</span>
+            <span className="text-[13px] font-[450] text-fg-warm">/month</span>
           </div>
           <div className="flex items-center gap-2 mt-2">
-            <span className="text-[15px] font-medium text-foreground">{limits.label} Plan</span>
+            <span className="text-[13.5px] font-medium text-fg-strong">{limits.label} Plan</span>
             {planInfo?.billingPeriod === "annual" && (
               <span className="text-[10px] font-medium text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded-full">Annual</span>
             )}
           </div>
           {renewsLabel && (
-            <p className="text-[12px] text-fg-muted mt-0.5">Renews {renewsLabel}</p>
+            <p className="text-[12px] font-[450] text-fg-warm mt-0.5">Renews {renewsLabel}</p>
           )}
         </div>
       </SettingsSection>
 
       <SettingsSection
         title="Change Plan"
-        description="Upgrade or downgrade anytime. Switching is prorated by Stripe."
         action={
           <div className="flex items-center gap-2">
             <CanvasDropdown
@@ -918,61 +924,57 @@ function BillingPage({ planInfo, checkoutMutation, cancelMutation, portalMutatio
                 <ChevronDown size={12} strokeWidth={2.5} />
               </button>
             </CanvasDropdown>
-            <button
-              onClick={() => setBillingPeriod(p => p === "monthly" ? "annual" : "monthly")}
-              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${billingPeriod === "annual" ? "bg-brand" : "bg-border"}`}
+            <TinyToggle
+              checked={billingPeriod === "annual"}
+              onCheckedChange={(v) => setBillingPeriod(v ? "annual" : "monthly")}
               title={billingPeriod === "annual" ? "Switch to monthly billing" : "Switch to annual billing (save ~20%)"}
-            >
-              <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${billingPeriod === "annual" ? "translate-x-6" : "translate-x-1"}`} />
-            </button>
+            />
           </div>
         }
       >
-        <div className="space-y-2">
-          {paidTiers.map((key) => {
-            const tierLimits = PLAN_LIMITS[key];
-            const usdPerUnit = CURRENCIES[currency].usdPerUnit;
-            const displayPrice = billingPeriod === "annual" ? tierLimits.prices.annual / 12 : tierLimits.prices.monthly;
-            const convertedPrice = Math.round(displayPrice / usdPerUnit);
-            const convertedAnnual = Math.round(tierLimits.prices.annual / usdPerUnit);
-            const isCurrent = key === currentPlan && planInfo?.billingPeriod === billingPeriod;
-            return (
-              <div key={key} className="flex items-center justify-between gap-3 py-3 border-b border-[hsl(var(--surface-hover))] last:border-0">
-                <div className="min-w-0">
-                  <p className="text-[13.5px] font-medium text-foreground">{tierLimits.label}</p>
-                  <p className="text-[11.5px] text-fg-muted mt-0.5">
-                    {CURRENCIES[currency].symbol}{convertedPrice}/mo
-                    {billingPeriod === "annual" && ` · ${CURRENCIES[currency].symbol}${convertedAnnual} billed annually`}
-                  </p>
-                </div>
-                <Button
-                  design={key === currentPlan ? "secondary" : "primary"}
-                  size="xs"
-                  onClick={() => checkoutMutation.mutate({ plan: key, billingPeriod, currency: currency.toLowerCase() })}
-                  disabled={isCurrent || checkoutMutation.isPending}
-                  isLoading={checkoutMutation.isPending}
-                >
-                  {isCurrent ? "Current plan" : key === currentPlan ? "Switch" : "Upgrade"}
-                </Button>
+        {paidTiers.map((key) => {
+          const tierLimits = PLAN_LIMITS[key];
+          const usdPerUnit = CURRENCIES[currency].usdPerUnit;
+          const displayPrice = billingPeriod === "annual" ? tierLimits.prices.annual / 12 : tierLimits.prices.monthly;
+          const convertedPrice = Math.round(displayPrice / usdPerUnit);
+          const convertedAnnual = Math.round(tierLimits.prices.annual / usdPerUnit);
+          const isCurrent = key === currentPlan && planInfo?.billingPeriod === billingPeriod;
+          return (
+            <div key={key} className="flex items-center justify-between gap-3 py-[12px]">
+              <div className="min-w-0">
+                <p className="text-[13.5px] font-medium text-fg-strong">{tierLimits.label}</p>
+                <p className="text-[12px] font-[450] text-fg-warm mt-0.5">
+                  {CURRENCIES[currency].symbol}{convertedPrice}/mo
+                  {billingPeriod === "annual" && ` · ${CURRENCIES[currency].symbol}${convertedAnnual} billed annually`}
+                </p>
               </div>
-            );
-          })}
-        </div>
+              <Button
+                design={key === currentPlan ? "secondary" : "primary"}
+                size="xs"
+                onClick={() => checkoutMutation.mutate({ plan: key, billingPeriod, currency: currency.toLowerCase() })}
+                disabled={isCurrent || checkoutMutation.isPending}
+                isLoading={checkoutMutation.isPending}
+              >
+                {isCurrent ? "Current plan" : key === currentPlan ? "Switch" : "Upgrade"}
+              </Button>
+            </div>
+          );
+        })}
       </SettingsSection>
 
-      <SettingsSection title="Transaction History" description="Recent billing activity on your account.">
+      <SettingsSection title="Transaction History">
         {transactions.length === 0 ? (
           <div className="py-4 text-center">
-            <p className="text-[13px] text-fg-muted">No transactions yet.</p>
+            <p className="text-[12.5px] font-[450] text-fg-warm">No transactions yet.</p>
           </div>
         ) : (
           transactions.map((t) => (
-          <div key={t.id} className="flex items-center justify-between py-2.5">
+          <div key={t.id} className="flex items-center justify-between py-[10px]">
             <div>
-              <p className="text-[13px] font-medium text-foreground">{t.description}</p>
-              <p className="text-[11px] text-fg-faint mt-0.5">{t.date}</p>
+              <p className="text-[13.5px] font-medium text-fg-strong">{t.description}</p>
+              <p className="text-[12px] font-[450] text-fg-warm mt-0.5">{t.date}</p>
             </div>
-            <span className={`text-[13px] font-semibold tabular-nums ${t.amount > 0 ? 'text-emerald-600' : 'text-foreground'}`}>
+            <span className={`text-[13.5px] font-semibold tabular-nums ${t.amount > 0 ? 'text-emerald-600' : 'text-foreground'}`}>
               {t.amount > 0 ? '+' : ''}{t.amount}
             </span>
           </div>
@@ -990,7 +992,7 @@ function CollapsibleSection({ title, defaultOpen = false, children }: { title: s
         onClick={() => setOpen(v => !v)}
         className="flex items-center justify-between w-full cursor-pointer bg-none border-none text-left py-2.5"
       >
-        <h2 className="text-[15px] font-semibold text-foreground">{title}</h2>
+        <h2 className="text-[15px] font-medium text-foreground">{title}</h2>
         <ChevronDown size={14} className="text-fg-muted shrink-0 transition-transform duration-200" style={{ transform: open ? 'rotate(180deg)' : 'rotate(0deg)' }} />
       </button>
       {open && (
@@ -1007,7 +1009,7 @@ function DataPage({
 }: any) {
   return (
     <div className="py-4 space-y-8">
-      <SettingsSection title="Export Your Data" description="Download your account data.">
+      <SettingsSection title="Export Your Data">
         <SettingsRow label="Account Export">
           <Button design="ghost" size="xs" onClick={exportInsights}>
             <Download className="h-3.5 w-3.5" /> Export
@@ -1060,14 +1062,14 @@ function ActionsPage({ username }: { username: string }) {
   const logout = useLogout();
   return (
     <div className="py-4 space-y-8">
-      <SettingsSection title="Session" description="Manage your current login session.">
-        <SettingsRow label="Sign out">
+      <SettingsSection title="Session">
+        <SettingsRow label="Sign out" description="End your session on this device.">
           <Button design="secondary" size="xs" onClick={() => logout.mutate()} disabled={logout.isPending} isLoading={logout.isPending}>
             {logout.isPending ? "Signing out…" : "Sign out"}
           </Button>
         </SettingsRow>
       </SettingsSection>
-      <SettingsSection title="Delete account" description="Permanently delete your account and all data.">
+      <SettingsSection title="Delete account">
         <DeleteRow username={username} />
       </SettingsSection>
     </div>
@@ -1079,9 +1081,9 @@ function UsageBar({ current, limit, label, unit = "", decimals = 0 }: { current:
   if (limit === "unlimited") {
     return (
       <SettingsRow label={label}>
-        <span className="text-[13px] font-medium text-foreground">
+        <span className="text-[13.5px] font-medium text-fg-strong">
           {fmt(current)}
-          <span className="text-muted-foreground"> / Unlimited</span>
+          <span className="text-fg-warm"> / Unlimited</span>
         </span>
       </SettingsRow>
     );
@@ -1094,10 +1096,10 @@ function UsageBar({ current, limit, label, unit = "", decimals = 0 }: { current:
         <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
           <div className={`h-full rounded-full transition-all ${color}`} style={{ width: `${pct}%` }} />
         </div>
-        <span className="text-[13px] font-medium text-foreground shrink-0 tabular-nums">
-          {fmt(current)}
-          <span className="text-muted-foreground"> / {fmt(limit)}</span>
-        </span>
+          <span className="text-[13.5px] font-medium text-fg-strong shrink-0 tabular-nums">
+            {fmt(current)}
+            <span className="text-fg-warm"> / {fmt(limit)}</span>
+          </span>
       </div>
     </SettingsRow>
   );
@@ -1115,11 +1117,11 @@ function UsagePage({ planInfo }: any) {
 
   return (
     <div className="py-4 space-y-6">
-      <SettingsSection title="Usage Overview" description={`Your ${limits.label} plan limits and current usage.`}>
-        <div className="px-1 pt-2 pb-4">
+      <SettingsSection title="Usage Overview">
+        <div className="pt-2 pb-4">
           <div className="flex items-baseline gap-2 mb-1">
-            <span className="text-[32px] font-bold text-foreground tracking-tight tabular-nums">{overall}%</span>
-            <span className="text-[15px] font-medium text-fg-muted">plan used</span>
+            <span className="text-[32px] font-semibold text-foreground tracking-[-0.02em] tabular-nums">{overall}%</span>
+            <span className="text-[13px] font-[450] text-fg-warm">plan used</span>
           </div>
           <div className="h-2 bg-muted rounded-full overflow-hidden max-w-xs mt-3">
             <div
@@ -1128,18 +1130,18 @@ function UsagePage({ planInfo }: any) {
             />
           </div>
           <div className="flex items-center gap-1 mt-2">
-            <span className="text-[12px] text-fg-muted">
+            <span className="text-[12px] font-[450] text-fg-warm">
               <span className="text-foreground font-medium">{limits.label}</span> plan
             </span>
             <span className="text-[11px] text-fg-faint mx-1">·</span>
-            <span className="text-[12px] text-fg-muted">
+            <span className="text-[12px] font-[450] text-fg-warm">
               Resets <span className="text-foreground font-medium">{planInfo?.renewsAt ? new Date(planInfo.renewsAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'monthly'}</span>
             </span>
           </div>
         </div>
       </SettingsSection>
 
-      <SettingsSection title="Detailed Usage" description="Breakdown by feature.">
+      <SettingsSection title="Detailed Usage">
         <UsageBar label="Repositories" current={usage.projectsCount ?? 0} limit={limits.projects} />
         <UsageBar label="Review files" current={usage.designFilesCount ?? 0} limit={limits.designFiles} />
         <UsageBar label="Storage" current={usage.storageUsed ?? 0} limit={limits.storage} unit="MB" />
@@ -1151,7 +1153,7 @@ function UsagePage({ planInfo }: any) {
 function AgentPage() {
   return (
     <div className="py-4">
-      <SettingsSection title="Your Agents" description="Create and manage AI agents.">
+      <SettingsSection title="Your Agents">
         <SettingsRow label="No agents yet">
           <Button size="xs">
             <Zap className="h-3.5 w-3.5" /> Create agent
@@ -1199,15 +1201,15 @@ function CreditsPage({ planInfo }: any) {
 
   return (
     <div className="py-4 space-y-6">
-      <SettingsSection title="Credit Balance" description="Your available credits for Cortardo Agent reviews.">
-        <div className="px-1 pt-2 pb-4">
+      <SettingsSection title="Credit Balance">
+        <div className="pt-2 pb-4">
           {isLoading ? (
             <div className="h-10 w-32 bg-muted rounded animate-pulse" />
           ) : (
             <>
               <div className="flex items-baseline gap-2 mb-1">
-                <span className="text-[36px] font-bold text-foreground tracking-tight tabular-nums">{balance}</span>
-                <span className="text-[15px] font-medium text-fg-muted">credits remaining</span>
+                <span className="text-[32px] font-semibold text-foreground tracking-[-0.02em] tabular-nums">{balance}</span>
+                <span className="text-[13px] font-[450] text-fg-warm">credits remaining</span>
               </div>
               <div className="h-2 bg-muted rounded-full overflow-hidden max-w-xs mt-3">
                 <div
@@ -1216,10 +1218,10 @@ function CreditsPage({ planInfo }: any) {
                 />
               </div>
               <div className="flex items-center gap-4 mt-2">
-                <span className="text-[12px] text-fg-muted">
+                <span className="text-[12px] font-[450] text-fg-warm">
                   <span className="text-foreground font-medium tabular-nums">{monthlyUsed}</span> / {monthlyUnlimited ? "Unlimited" : monthlyAllowance} used this month
                 </span>
-                <span className="text-[12px] text-fg-muted">
+                <span className="text-[12px] font-[450] text-fg-warm">
                   <span className="text-foreground font-medium tabular-nums">{dailyUsed}</span> / {dailyUnlimited ? "No daily cap" : dailyAllowance} used today
                 </span>
               </div>
@@ -1229,7 +1231,7 @@ function CreditsPage({ planInfo }: any) {
       </SettingsSection>
 
       {packs && packs.length > 0 && (
-        <SettingsSection title="Buy Credits" description="Credit packs are one-time purchases that never expire.">
+        <SettingsSection title="Buy Credits">
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2">
             {packs.map((pack) => (
               <button
@@ -1241,8 +1243,8 @@ function CreditsPage({ planInfo }: any) {
                 disabled={buyMutation.isPending && buying === pack.id}
                 className="flex flex-col items-center gap-1 p-4 rounded-xl border border-border/50 bg-surface/50 hover:bg-surface transition-colors disabled:opacity-50"
               >
-                <span className="text-xl font-bold text-foreground">{pack.credits}</span>
-                <span className="text-[11px] text-fg-muted">credits</span>
+                <span className="text-[15px] font-semibold text-foreground">{pack.credits}</span>
+                <span className="text-[11px] text-fg-warm">credits</span>
                 <span className="text-[13px] font-medium text-brand mt-1">${(pack.usd / 100).toFixed(0)}</span>
               </button>
             ))}
@@ -1250,7 +1252,7 @@ function CreditsPage({ planInfo }: any) {
         </SettingsSection>
       )}
 
-      <SettingsSection title="Usage Breakdown" description="How your plan allowances were used this period.">
+      <SettingsSection title="Usage Breakdown">
         <UsageBar label="Monthly AI credits" current={monthlyUsed} limit={monthlyAllowance} />
         <UsageBar label="Daily AI credits" current={dailyUsed} limit={dailyAllowance} />
       </SettingsSection>
@@ -1427,6 +1429,7 @@ const contentBySection: Record<string, React.ReactNode> = {
   "billing": <BillingPage planInfo={planInfo} checkoutMutation={checkoutMutation} cancelMutation={cancelMutation} portalMutation={portalMutation} />,
   "credits": <CreditsPage planInfo={planInfo} />,
   "usage": <UsagePage planInfo={planInfo} />,
+  "integrations": <GithubIntegrationsPage />,
   "team": <TeamPageView />,
 
   "actions": <ActionsPage username={user.username} />,
