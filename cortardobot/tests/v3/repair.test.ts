@@ -39,9 +39,14 @@ async function runRepair(options: {
   autoFix?: boolean;
   cache?: MemoryCacheStore;
   cachePack?: (candidateId: string) => ContextPack;
+  execHandler?: (command: string) => { exitCode: number; stdout?: string };
 }) {
   const files = options.files ?? { "src/a.ts": ORIGINAL };
-  const sandbox = new MemorySandbox({ files, profile: { typecheckCommand: "true" }, execHandler: () => ({ exitCode: 0, stdout: "" }) });
+  const sandbox = new MemorySandbox({
+    files,
+    profile: { typecheckCommand: "true" },
+    execHandler: options.execHandler ?? (() => ({ exitCode: 0, stdout: "" })),
+  });
   const candidateValue = candidate({ file: "src/a.ts", autoFix: options.autoFix ? [{ path: "src/a.ts", find: "const x = undefined", replace: "const x = 1" }] : undefined });
   const context = contextWith([{ path: "src/a.ts", content: ORIGINAL }]);
   const terraClient = terra(options.script);
@@ -129,6 +134,42 @@ test("a verified fix is cached and re-verified on the next run without model cal
 test("an aborted agent restores the file and does not leak probes", async () => {
   const { sandbox } = await runRepair({ script: ['{"not":"an action"}', FINISH_RESPONSE] });
   assert.equal(await sandbox.read("src/a.ts"), ORIGINAL);
+});
+
+test("a failing authored probe is captured and promoted with the verified fix", async () => {
+  const probeResponse = JSON.stringify({
+    thought: "reproduce with a probe",
+    strategy: "probe first",
+    actions: [
+      { tool: "write_probe", args: { name: "repro.test.ts", content: "test('repro', () => { throw new Error('boom') })" } },
+      { tool: "run_probe", args: { name: "repro.test.ts" } },
+    ],
+  });
+  const { repair } = await runRepair({
+    script: [probeResponse, editResponse("const x = undefined", "const x = 1")],
+    execHandler: (command) => ({ exitCode: command.includes("repro.test.ts") ? 1 : 0, stdout: "boom" }),
+  });
+  assert.equal(repair.exit, "VERIFIED");
+  assert.ok(repair.probe, "the failing probe is attached to the verified repair");
+  assert.equal(repair.probe!.name, "repro.test.ts");
+  assert.equal(repair.probe!.passed, false);
+  assert.match(repair.probe!.content, /throw new Error\('boom'\)/);
+  assert.match(repair.probe!.command, /repro\.test\.ts/);
+});
+
+test("a probe that only ever passes is not promoted", async () => {
+  const probeResponse = JSON.stringify({
+    thought: "health check",
+    actions: [
+      { tool: "write_probe", args: { name: "sanity.test.ts", content: "test('sanity', () => { expect(1).toBe(1) })" } },
+      { tool: "run_probe", args: { name: "sanity.test.ts" } },
+    ],
+  });
+  const { repair } = await runRepair({
+    script: [probeResponse, editResponse("const x = undefined", "const x = 1")],
+  });
+  assert.equal(repair.exit, "VERIFIED");
+  assert.equal(repair.probe, undefined);
 });
 
 test("a failed fix is diagnosed and the next attempt follows the new strategy", async () => {

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type {
   AgentTurn,
+  AuthoredProbe,
   Candidate,
   ContextPack,
   FailureCategory,
@@ -86,6 +87,8 @@ export interface AgentLoopOutcome {
   attempts: RepairAttempt[];
   finalEdits?: RepairEdit[];
   finalPatch?: string;
+  /** Last pre-fix failing probe from the successful attempt (3.2). */
+  probe?: AuthoredProbe;
   reason: string;
   transcript: ReturnType<TranscriptRecorder["snapshot"]>;
   toolCalls: number;
@@ -247,12 +250,14 @@ export async function runRepairAgent(deps: AgentLoopDeps): Promise<AgentLoopOutc
   const failedEditHashes = new Set<string>(deps.memory?.blockedEdits ?? []);
   let previousDiagnosis: string | undefined;
   let previousFailure: FailureReport | undefined;
+  let promotedProbe: AuthoredProbe | undefined;
   let totalTurns = 0;
   let unsafeRejections = 0;
 
   const runModelDrivenAttempt = async (attempt: number): Promise<RepairAttempt | undefined> => {
     const messages: ModelMessage[] = [];
     const appliedEdits: RepairEdit[] = [];
+    const attemptProbes: AuthoredProbe[] = [];
     const beforeSnapshot = new Map<string, string>();
     const toolContext: ToolContext = {
       sandbox: deps.sandbox,
@@ -264,6 +269,7 @@ export async function runRepairAgent(deps: AgentLoopDeps): Promise<AgentLoopOutc
       probeDir: `${deps.sandbox.root}/.cortado-probes`,
       runReproduction: deps.proveCandidate,
       recordAppliedEdits: (edits) => appliedEdits.push(...edits),
+      recordProbe: (probe) => attemptProbes.push(probe),
     };
 
     let nextUser = initialTurnPrompt(
@@ -439,6 +445,7 @@ export async function runRepairAgent(deps: AgentLoopDeps): Promise<AgentLoopOutc
         const proof = reproductionObservation?.ok ? undefined : await deps.proveCandidate();
         const confirmed = reproductionObservation ? !reproductionObservation.ok : proof!.status === "confirmed" || proof!.status === "error" || proof!.status === "likely";
         if (!confirmed) {
+          promotedProbe = [...attemptProbes].reverse().find((probe) => !probe.passed);
           const record: RepairAttempt = {
             attempt,
             strategy: lastStrategy,
@@ -581,6 +588,7 @@ export async function runRepairAgent(deps: AgentLoopDeps): Promise<AgentLoopOutc
       attempts,
       finalEdits: success.edits,
       finalPatch,
+      probe: promotedProbe,
       reason: `fix applied and the reproduction passes after ${success.attempt} attempt(s)`,
       transcript: recorder.snapshot(),
       toolCalls: recorder.count,

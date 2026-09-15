@@ -133,6 +133,8 @@ export function formatMarkdown(result: Omit<ReviewResult, "markdown">): string {
       lines.push(`Fix verification: ${verificationSummary(finding)}`);
       const reproduction = finding.verification.steps.find((step) => step.kind === "reproduction");
       if (reproduction?.reason) lines.push(`  ${reproduction.passed ? "✓" : "✗"} ${reproduction.reason}`);
+      const probe = finding.verification.steps.find((step) => step.kind === "authored_probe");
+      if (probe) lines.push(`  ${probe.passed ? "✓" : "✗"} authored probe (${probe.command}): ${probe.reason}`);
     }
     if (finding.review) {
       lines.push(`Astra: ${finding.review.validity} / fix ${finding.review.fixCorrectness} / risk ${finding.review.risk} / ${finding.review.approval}`);

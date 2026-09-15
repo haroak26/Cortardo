@@ -3,15 +3,22 @@ import { test } from "node:test";
 import { verifyRepairs, relatedTestsFor } from "../../src/v3/verify.ts";
 import { candidate, contextWith, packFor, proof, silentLogger } from "./helpers.ts";
 import { MemorySandbox } from "../../src/v3/sandbox-memory.ts";
-import type { ProofStatus } from "../../src/v3/types.ts";
+import type { ProofStatus, RepairResult } from "../../src/v3/types.ts";
 
-function depsFor(status: ProofStatus, opts: { testExit?: number; typecheckExit?: number } = {}) {
+function depsFor(status: ProofStatus, opts: { testExit?: number; typecheckExit?: number; probeExit?: number } = {}) {
   const c = candidate();
   const context = contextWith([{ path: "src/a.ts", content: "const x = undefined" }], { tests: ["src/a.test.ts"] });
   const sandbox = new MemorySandbox({
     files: { "src/a.ts": "const x = 1", "src/a.test.ts": "test" },
     profile: { testCommand: "npm test", testSingle: (file: string) => `npx vitest run ${file}`, typecheckCommand: "npx tsc --noEmit" },
-    execHandler: (command) => ({ exitCode: command.includes("tsc") ? (opts.typecheckExit ?? 0) : (opts.testExit ?? 0), stdout: "ok" }),
+    execHandler: (command) => ({
+      exitCode: command.includes("repro.test.ts")
+        ? (opts.probeExit ?? 0)
+        : command.includes("tsc")
+          ? (opts.typecheckExit ?? 0)
+          : (opts.testExit ?? 0),
+      stdout: "ok",
+    }),
   });
   return {
     context,
@@ -25,16 +32,49 @@ function depsFor(status: ProofStatus, opts: { testExit?: number; typecheckExit?:
   };
 }
 
-const repairFor = (candidateId = "c_test01") => ({
+const repairFor = (candidateId = "c_test01", probe?: RepairResult["probe"]) => ({
   candidateId,
   severity: "high" as const,
   exit: "VERIFIED" as const,
   attempts: [],
   finalPatch: "@@ -1,2 +1,1 @@\n-const x = undefined\n+const x = 1",
   finalEdits: [{ path: "src/a.ts", find: "const x = undefined", replace: "const x = 1" }],
+  ...(probe ? { probe } : {}),
   durationMs: 1,
   toolCalls: 1,
   reason: "fixed",
+});
+
+const promotedProbe = {
+  name: "repro.test.ts",
+  content: "test('repro', () => { throw new Error('boom') })",
+  command: "npx vitest run .cortado-probes/repro.test.ts",
+  passed: false,
+  output: "boom",
+};
+
+test("a promoted authored probe is re-run after the fix and must pass", async () => {
+  const { context, deps } = depsFor("disproven", { probeExit: 0 });
+  const reports = await verifyRepairs([repairFor("c_test01", promotedProbe)], [candidate()], context, deps);
+  assert.equal(reports.c_test01.passed, true);
+  const step = reports.c_test01.steps.find((entry) => entry.kind === "authored_probe");
+  assert.equal(step?.skipped, false);
+  assert.equal(step?.passed, true);
+  assert.match(step?.reason ?? "", /model-authored probe/);
+});
+
+test("a promoted authored probe that fails after the fix fails verification", async () => {
+  const { context, deps } = depsFor("disproven", { probeExit: 1 });
+  const reports = await verifyRepairs([repairFor("c_test01", promotedProbe)], [candidate()], context, deps);
+  assert.equal(reports.c_test01.passed, false);
+  const step = reports.c_test01.steps.find((entry) => entry.kind === "authored_probe");
+  assert.equal(step?.passed, false);
+});
+
+test("repairs without a probe have no authored_probe step", async () => {
+  const { context, deps } = depsFor("disproven");
+  const reports = await verifyRepairs([repairFor()], [candidate()], context, deps);
+  assert.equal(reports.c_test01.steps.some((entry) => entry.kind === "authored_probe"), false);
 });
 
 test("verification passes only when the reproduction is disproven and steps pass", async () => {

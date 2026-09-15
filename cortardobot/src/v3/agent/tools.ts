@@ -1,4 +1,4 @@
-import type { Candidate, ContextPack, PRContext, ProofResult, RepairEdit, ToolCall, ToolName, ToolObservation } from "../types";
+import type { AuthoredProbe, Candidate, ContextPack, PRContext, ProofResult, RepairEdit, ToolCall, ToolName, ToolObservation } from "../types";
 import type { RepoProfile, Sandbox } from "../sandbox";
 import { hashContent, truncate, type Logger } from "../util";
 import { assessEdits } from "../safety";
@@ -15,6 +15,8 @@ export interface ToolContext {
   /** Engine-owned authoritative reproduction (two-run confirmed). */
   runReproduction: () => Promise<ProofResult>;
   recordAppliedEdits: (edits: RepairEdit[]) => void;
+  /** Captures every probe execution for promotion into verification (3.2). */
+  recordProbe?: (probe: AuthoredProbe) => void;
 }
 
 function shellQuote(value: string): string {
@@ -275,6 +277,16 @@ export async function executeTool(call: ToolCall, ctx: ToolContext): Promise<Too
           : `npx vitest run --reporter=basic --passWithNoTests ${shellQuote(path)} 2>&1 | tail -120`;
         const result = await exec(ctx, command, 180_000);
         const ok = result.exitCode === 0 && !result.timedOut;
+        const content = await safeRead(ctx.sandbox, path);
+        if (content !== undefined) {
+          ctx.recordProbe?.({
+            name,
+            content,
+            command,
+            passed: ok,
+            output: truncate(result.output, 2_000),
+          });
+        }
         return observation(call.tool, ok, ok ? `probe passed: ${name}` : `probe failed (exit ${result.exitCode})`, truncate(result.output, 4_000), started);
       }
 

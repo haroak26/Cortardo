@@ -218,6 +218,7 @@ export async function verifyRepairs(
     };
   }
 
+  let promotedProbeCount = 0;
   for (const entry of eligible) {
     const steps: VerificationStep[] = [];
     const proof = proofById.get(entry.candidate.id)!;
@@ -236,6 +237,33 @@ export async function verifyRepairs(
       durationMs: proof.durationMs,
       output: truncate(proof.reproduction, 1200),
     });
+
+    const promotedProbe = entry.repair.probe;
+    if (promotedProbe) {
+      try {
+        await deps.sandbox.write(`${deps.sandbox.root}/.cortado-probes/${promotedProbe.name}`, promotedProbe.content);
+        promotedProbeCount += 1;
+        const outcome = await runCommand(promotedProbe.command);
+        steps.push({
+          kind: "authored_probe",
+          command: promotedProbe.command,
+          passed: outcome.passed,
+          skipped: false,
+          reason: "model-authored probe that failed before the fix must pass after it",
+          durationMs: outcome.durationMs,
+          output: outcome.output,
+        });
+      } catch (error) {
+        steps.push({
+          kind: "authored_probe",
+          command: promotedProbe.command,
+          passed: false,
+          skipped: false,
+          reason: `promoted probe could not run: ${error instanceof Error ? error.message : String(error)}`,
+          durationMs: 0,
+        });
+      }
+    }
 
     const relatedTests = relatedTestsFor(entry.candidate, context);
     if (relatedTests.length > 0 && deps.profile.testSingle) {
@@ -271,6 +299,12 @@ export async function verifyRepairs(
       steps,
       durationMs: now() - started,
     };
+  }
+
+  if (promotedProbeCount > 0) {
+    await deps.sandbox
+      .exec(`rm -rf ${deps.sandbox.root}/.cortado-probes`, { cwd: deps.sandbox.root, timeoutMs: 15_000, allowFailure: true })
+      .catch(() => undefined);
   }
 
   return reports;

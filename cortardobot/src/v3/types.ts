@@ -227,6 +227,16 @@ export interface RepairEdit {
   replace: string;
 }
 
+/** A model-authored probe captured during repair; promoted into verification (3.2). */
+export interface AuthoredProbe {
+  name: string;
+  content: string;
+  command: string;
+  /** Probe result during the repair attempt: false means it failed before the fix. */
+  passed: boolean;
+  output?: string;
+}
+
 export type FailureCategory =
   | "apply_failed"
   | "no_edit"
@@ -280,6 +290,8 @@ export interface RepairResult {
   attempts: RepairAttempt[];
   finalPatch?: string;
   finalEdits?: RepairEdit[];
+  /** Last pre-fix failing probe from the successful attempt (3.2). */
+  probe?: AuthoredProbe;
   durationMs: number;
   toolCalls: number;
   reason: string;
@@ -289,7 +301,7 @@ export interface RepairResult {
 }
 
 export interface VerificationStep {
-  kind: "reproduction" | "targeted_tests" | "affected_tests" | "typecheck" | "build";
+  kind: "reproduction" | "authored_probe" | "targeted_tests" | "affected_tests" | "typecheck" | "build";
   command: string;
   passed: boolean;
   skipped: boolean;
@@ -464,6 +476,7 @@ export interface RepairCachePayload {
   finalPatch: string;
   reason: string;
   attempts: RepairAttempt[];
+  probe?: AuthoredProbe;
 }
 
 export interface StageEvent {

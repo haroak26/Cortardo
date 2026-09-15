@@ -135,6 +135,7 @@ export async function repairFindings(
                 ],
                 finalPatch,
                 finalEdits: hit.value.finalEdits,
+                probe: hit.value.probe,
                 durationMs: now() - started,
                 toolCalls: 0,
                 reason: "cached fix re-verified against the current file content",
@@ -190,6 +191,7 @@ export async function repairFindings(
       attempts: outcome.attempts,
       finalPatch: outcome.finalPatch,
       finalEdits: outcome.finalEdits,
+      probe: outcome.probe,
       durationMs: now() - started,
       toolCalls: outcome.toolCalls,
       reason: outcome.reason,
@@ -208,6 +210,7 @@ export async function repairFindings(
           finalPatch: outcome.finalPatch,
           reason: outcome.reason,
           attempts: outcome.attempts,
+          probe: outcome.probe,
         };
         await deps.cache.set({
           key,

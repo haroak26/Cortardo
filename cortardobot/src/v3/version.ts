@@ -4,6 +4,6 @@
  */
 export const ENGINE_VERSION = "3.2.1";
 export const PROMPT_VERSION = "3.2.1";
-export const TOOL_VERSION = "3.2.0";
+export const TOOL_VERSION = "3.2.1";
 export const AGENT_PROTOCOL_VERSION = "3.2";
 export const CACHE_SCHEMA_VERSION = "1";
