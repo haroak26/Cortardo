@@ -111,7 +111,37 @@ test("failing touched-file tests fail verification even when the reproduction pa
   const { context, deps } = depsFor("disproven", { testExit: 1 });
   const reports = await verifyRepairs([repairFor()], [candidate()], context, deps);
   assert.equal(reports.c_test01.passed, false);
-  assert.equal(reports.c_test01.steps.find((step) => step.kind === "targeted_tests")?.passed, false);
+  const step = reports.c_test01.steps.find((entry) => entry.kind === "targeted_tests");
+  assert.equal(step?.passed, false);
+  assert.match(step?.reason ?? "", /failed twice/);
+});
+
+test("a flaky targeted test is re-run once and a stable pass verifies the fix", async () => {
+  const c = candidate();
+  const context = contextWith([{ path: "src/a.ts", content: "const x = undefined" }], { tests: ["src/a.test.ts"] });
+  let testRuns = 0;
+  const sandbox = new MemorySandbox({
+    files: { "src/a.ts": "const x = 1", "src/a.test.ts": "test" },
+    profile: { testCommand: "npm test", testSingle: (file: string) => `npx vitest run ${file}`, typecheckCommand: "npx tsc --noEmit" },
+    execHandler: (command) => {
+      if (command.includes("a.test.ts")) {
+        testRuns += 1;
+        return { exitCode: testRuns === 1 ? 1 : 0, stdout: "flaky" };
+      }
+      return { exitCode: 0, stdout: "ok" };
+    },
+  });
+  const reports = await verifyRepairs([repairFor()], [c], context, {
+    sandbox,
+    profile: { packageManager: "npm", installCommand: "npm ci", hasNodeModules: true, hasTests: true, testCommand: "npm test", testSingle: (file: string) => `npx vitest run ${file}`, typecheckCommand: "npx tsc --noEmit", scripts: {} },
+    proveOne: async () => ({ ...proof(c, "disproven"), explanation: "proof disproven" }),
+    baselineTypecheckPassed: true,
+    logger: silentLogger,
+  });
+  assert.equal(testRuns, 2, "the failed test command runs exactly twice");
+  assert.equal(reports.c_test01.passed, true);
+  const step = reports.c_test01.steps.find((entry) => entry.kind === "targeted_tests");
+  assert.match(step?.reason ?? "", /flake: failed first run, passed on re-run/);
 });
 
 test("batch proof and typecheck run once and are shared across repairs", async () => {

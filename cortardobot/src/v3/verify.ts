@@ -33,6 +33,16 @@ interface CommandOutcome {
   passed: boolean;
   output: string;
   durationMs: number;
+  /** True when a failed first run was retried once (3.2 flake handling). */
+  reran?: boolean;
+  /** True when the retry passed after the first run failed. */
+  flaky?: boolean;
+}
+
+/** True when a failed first run was retried once (3.2 flake handling). */
+function flakeNote(outcome: CommandOutcome): string {
+  if (!outcome.reran) return "";
+  return outcome.flaky ? " (flake: failed first run, passed on re-run)" : " (failed twice)";
 }
 
 /**
@@ -154,15 +164,28 @@ export async function verifyRepairs(
 
   // 4. Targeted tests: one run per unique command, shared across repairs.
   const commandCache = new Map<string, CommandOutcome>();
-  const runCommand = async (command: string): Promise<CommandOutcome> => {
-    const cached = commandCache.get(command);
-    if (cached) return cached;
+  const runOnce = async (command: string): Promise<CommandOutcome> => {
     const result = await deps.sandbox.exec(command, { cwd: deps.sandbox.root, timeoutMs: 120_000, allowFailure: true });
-    const outcome: CommandOutcome = {
+    return {
       passed: result.exitCode === 0 && !result.timedOut,
       output: truncate(`${result.stdout}\n${result.stderr}`, 1200),
       durationMs: result.durationMs,
     };
+  };
+  const runCommand = async (command: string): Promise<CommandOutcome> => {
+    const cached = commandCache.get(command);
+    if (cached) return cached;
+    const first = await runOnce(command);
+    let outcome = first;
+    if (!first.passed) {
+      const retry = await runOnce(command);
+      outcome = {
+        ...retry,
+        durationMs: first.durationMs + retry.durationMs,
+        reran: true,
+        flaky: retry.passed,
+      };
+    }
     commandCache.set(command, outcome);
     return outcome;
   };
@@ -212,7 +235,7 @@ export async function verifyRepairs(
       command: deps.profile.testCommand,
       passed: outcome.passed,
       skipped: false,
-      reason: "full test suite after the fix (baseline was green)",
+      reason: "full test suite after the fix (baseline was green)" + flakeNote(outcome),
       durationMs: outcome.durationMs,
       output: outcome.output,
     };
@@ -249,7 +272,7 @@ export async function verifyRepairs(
           command: promotedProbe.command,
           passed: outcome.passed,
           skipped: false,
-          reason: "model-authored probe that failed before the fix must pass after it",
+          reason: `model-authored probe that failed before the fix must pass after it${flakeNote(outcome)}`,
           durationMs: outcome.durationMs,
           output: outcome.output,
         });
@@ -274,7 +297,7 @@ export async function verifyRepairs(
         command,
         passed: outcome.passed,
         skipped: false,
-        reason: `tests covering ${entry.candidate.file}`,
+        reason: `tests covering ${entry.candidate.file}${flakeNote(outcome)}`,
         durationMs: outcome.durationMs,
         output: outcome.output,
       });
