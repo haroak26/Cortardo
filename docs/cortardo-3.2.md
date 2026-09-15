@@ -1,6 +1,6 @@
 # CortardoBot 3.2 — Upgrade Plan, Status and Handoff
 
-Engine version: `3.2.0` · Baseline: `3.1.0` (`docs/cortardo-3.1.md`) · Last updated: 2026-09-15
+Engine version: `3.2.1` · Baseline: `3.1.0` (`docs/cortardo-3.1.md`) · Last updated: 2026-09-15
 Goal: a fully autonomous review bot whose moat is **prove by execution → fix → live-test in E2B → understand why it failed → try a materially different fix → verify no regressions**, with broad multi-language coverage and a benchmark that proves it against CodeRabbit and Greptile.
 
 > **How to use this document:** the "Remaining work" section is an ordered checklist. A new
@@ -22,17 +22,17 @@ Goal: a fully autonomous review bot whose moat is **prove by execution → fix �
 | --- | --- | --- |
 | 0 | Version bump, cost budget, swarm budgets, telemetry | **done** except `bench/` skeleton (part of D) |
 | A | Agentic read-only swarm | **done, validated in real E2B** |
-| B | Self-diagnosing repair loop | **B1, B2, B3, B4 done; B5 pending** |
-| C | Coverage, multi-language adapters, product surface, auto-commit | **pending** |
+| B | Self-diagnosing repair loop | **B1–B5 done** incl. probe promotion, flake re-run and auto-commit |
+| C | Coverage, multi-language adapters, product surface | **pending** (auto-commit settings shipped in B5) |
 | D | Eval harness + competitive benchmark | **pending** (skeleton not created) |
 | E | Ops hardening | **pending** |
 
 Gates at the time of writing (all green):
 
 ```
-cd cortardobot && npm run verify:v3   # typecheck + 58/58 v3 tests
+cd cortardobot && npm run verify:v3   # typecheck + 71/71 v3 tests
 cd cortardobot && npm test            # legacy 2.0 suites 1048/1048
-npx tsc --noEmit && npm test          # root: tsc clean + 30/30 server/publisher tests
+npx tsc --noEmit && npm test          # root: tsc clean + 39/39 server/publisher tests
 ```
 
 Zero-spend E2B validation (2026-09-15, PR6, scripted models): **PASS** — 3 confirmed /
@@ -70,12 +70,12 @@ Key files: `src/v3/swarm-agent.ts` (new), `src/v3/swarm.ts`, `src/v3/agent/conte
   lessons are rendered as "Lessons from other repair attempts in this run".
 - Files: `agent/loop.ts`, `agent/prompts.ts`, `repair.ts`.
 
-### B3 sandbox truth (done, one item left)
+### B3 sandbox truth (done)
 - Every attempt snapshots **all** paths it edits and restores them on failure.
 - Partial multi-file `apply_edit` rolls back inside `agent/tools.ts`.
 - Probes run with `profile.testSingle` (repo runner) instead of hardcoded vitest.
-- **Left:** promote a model-authored failing probe into first-class verification evidence
-  (today probes are deleted after each attempt; the transcript still records them).
+- **Done (3.2.1):** the last pre-fix failing probe is promoted into an `authored_probe`
+  verification step and included in the review evidence (see B3/B4 leftovers below).
 
 ### B4 batched verification (done)
 - `verify.ts` batches: one app boot for all browser proofs (`proveMany`), one typecheck, one
@@ -84,51 +84,58 @@ Key files: `src/v3/swarm-agent.ts` (new), `src/v3/swarm.ts`, `src/v3/agent/conte
   pristine head at setup (`baselineTests`, budget `baselineMs`, `CORTADO_BASELINE_MS=0` disables).
   Verification adds an `affected_tests` step: runs the full suite once after fixes when the
   baseline was green; skips honestly when the baseline was red / missing / the change is tiny.
-- **Left:** flake re-run for intermittent failures; per-repo (not just size-based) gating of
-  the full suite for large monorepos.
+- Failed commands are re-run once (flakes labelled); **left:** per-repo (not just
+  size-based) gating of the full suite for large monorepos.
 
-### B5 learnings + auto-commit (next)
-- `ReviewRequest.learnings` (`types.ts`) is still unused and `runner.ts` hardcodes
-  `learnings: []`, `autoCommitFixes: false`.
-- Plan: read `learnings: string[]` + `autoCommitFixes` from repository settings; feed
-  learnings into swarm context, repair packs and judge prompts; implement
-  `server/lib/review/autocommit.ts` that commits **only** `isVerifiedFix()` findings through
-  the GitHub commit API (signed bot identity, max-N per run, re-check head SHA moved, never
-  lockfiles/tests/workflows, idempotent, records a check-run note).
+### B5 learnings + auto-commit (done, 3.2.1)
+- `ReviewRequest.learnings` is read from `repository.settings.learnings` in `runner.ts`,
+  normalized in the engine (`util.ts:normalizeLearnings`) and injected into the swarm
+  context pack, repair packs, the judge prompt and the Astra prompt. Learnings and
+  instructions are hashed into the swarm/judge/repair/final-review cache keys, so settings
+  changes can never serve stale context.
+- `server/lib/review/autocommit.ts` commits only `isVerifiedFix()` findings in one atomic
+  git-data commit on the PR branch: `contents:write` gate, max N per run (default 3),
+  head-SHA re-check, deny-list for lockfiles/tests/workflows/env/vendored paths, per-run
+  idempotency trailer (`Cortado-Autocommit: <runId>`), and an auto-commit note appended to
+  the check run. Gated by `repository.settings.autoCommitFixes` (default off).
+- Repo settings UI (`client/src/components/review/RepositoryReviewSettings.tsx`) exposes
+  the auto-commit toggle, max fixes per run and a learnings editor; `PATCH
+  /api/repositories/:id` merges settings instead of replacing the jsonb blob.
+
+### B3/B4 leftovers (done, 3.2.1)
+- Model-authored probes are captured with their exact content and command; the last pre-fix
+  failing probe of the verified attempt is re-materialized and run as an `authored_probe`
+  verification step, failing verification if it fails after the fix.
+- Failed targeted/affected/probe commands are re-run once; only a stable failure is a
+  regression, and flaky runs are labelled in the step reason.
+- P0 fixed: `HttpModelClient` falls back from `max_tokens` to `max_completion_tokens` once
+  per client (`models.ts`), so `final_review` no longer silently drops to the deterministic
+  review on `gpt-6-astra`.
+- Leftovers: `CORTADO_SWARM_MODE=agentic|single-shot` override implemented; previous bot
+  reviews are only dismissed when `APPROVED`/`CHANGES_REQUESTED` (COMMENTED reviews can no
+  longer 422); the review footer reports the engine version and swarm telemetry.
 
 ## Remaining work (ordered)
 
-1. **Astra `max_tokens` bug (P0, from the 3.1 live report).** `src/v3/models.ts` sends
-   `max_tokens`; `gpt-6-astra` rejects it (`use max_completion_tokens`) so `final_review`
-   falls back to the deterministic review. Add automatic fallback to `max_completion_tokens`
-   (same pattern as the JSON-mode / reasoning fallbacks) and a test with a fake fetch.
-2. **B5** learnings plumbing + opt-in auto-commit (see above).
-3. **Probe promotion** (B3 leftover): keep the last model-authored failing probe per finding,
-   run it as the first `targeted_tests` step (or an `authored_probe` step) post-fix, include it
-   in the review evidence.
-4. **Flake handling:** re-run a failed targeted/affected test once; only treat a stable
-   failure as a verification failure (mirror the browser two-run confirmation).
-5. **Phase C — language adapters.** New `src/v3/languages/` with a `LanguageAdapter`
+1. **Phase C — language adapters.** New `src/v3/languages/` with a `LanguageAdapter`
    contract (detect, detectors, symbols, resolveImport, affectedTests, testSingle, proofKind,
    repairRules). Generalize `RepoProfile` beyond npm (pip/poetry/uv, go.mod, Maven/Gradle,
    bundler, composer, nuget). Tiers: T1 TS/JS deep (done) → T2 Python, Go → T3 Java, Ruby,
    PHP, C#, Rust (detector + test-proof + repair, no browser).
-6. **Phase C — detector packs:** secrets, dependency/CVE-lite, API contract/breaking changes,
+2. **Phase C — detector packs:** secrets, dependency/CVE-lite, API contract/breaking changes,
    test-gap, config/migrations; each with dry fixtures and false-positive gates.
-7. **Phase C — product surface:** PR walkthrough summary, file-level notes, `@cortado`
+3. **Phase C — product surface:** PR walkthrough summary, file-level notes, `@cortado`
    commands (`fix`, `rerun`, `ignore`), learnings capture from replies, wire the deferred
-   model picker (`client/src/components/PromptInput.tsx`) + repo settings.
-8. **Phase D — `bench/`:** corpus ≥ 20 PRs across T1–T3 with oracle labels; scorer
+   model picker (`client/src/components/PromptInput.tsx`).
+4. **Phase D — `bench/`:** corpus ≥ 20 PRs across T1–T3 with oracle labels; scorer
    (precision/recall/F1, FP/PR, confirmed-fix rate, verified-fix correctness, regression-free
    rate, p50/p95 latency, model $ + E2B seconds/PR); `bench:offline` vs spend-gated
    `bench:live`; CI thresholds; run CodeRabbit/Greptile on the same corpus and score with the
-   same oracle; publish `docs/cortardo-3.2-bench.md`.
-9. **Phase E — ops:** E2B warm snapshots/pool + dependency cache, parallel proof/verify,
+   same oracle; publish `docs/cortardo-3.2-bench.md`. Blocked on a labelled corpus (none yet)
+   and competitor access; build the offline corpus/scorer skeleton when starting.
+5. **Phase E — ops:** E2B warm snapshots/pool + dependency cache, parallel proof/verify,
    per-repo concurrency + cancellation, model-outage degradation, cost dashboards,
    replay-from-cache, leak/restart tests.
-10. **Small leftovers:** implement/remove the documented-but-missing `CORTADO_SWARM_MODE`
-    override; `dismissPreviousBotReviews` cannot dismiss `COMMENTED` reviews (GitHub 422);
-    publisher footer does not yet surface swarm telemetry.
 
 ## Where things live
 
@@ -140,26 +147,29 @@ cortardobot/src/v3/
   agent/loop.ts       repair agent, failure classification, diagnosis, run memory
   agent/prompts.ts    repair + diagnosis + failure-report rendering
   agent/tools.ts      toolbelt (read-only guard lives in swarm-agent)
-  repair.ts           per-finding repair, cache, per-run memory
-  verify.ts           batched, baseline-aware verification
+  repair.ts           per-finding repair, cache, per-run memory, probe capture
+  verify.ts           batched, baseline-aware, flake-tolerant verification
   proof.ts            two-run browser confirmation / targeted tests
   engine.ts           ordering (sandbox → swarm context → swarm → merge → judge → proof →
                       repair → verify → astra), caches, telemetry, budgets
-  models.ts           HTTP client (note the max_tokens fallback TODO), ModelRouter + cost cap
-  config.ts           budgets/env, resolveV3Config
-  version.ts          3.2.0 (bump on behaviour changes to invalidate caches)
-  types.ts            FailureReport, SwarmReport, budgets, ReviewResult.swarm
+  models.ts           HTTP client (max_tokens → max_completion_tokens fallback), ModelRouter + cost cap
+  config.ts           budgets/env (incl. CORTADO_SWARM_MODE), resolveV3Config
+  version.ts          3.2.1 (bump on behaviour changes to invalidate caches)
+  types.ts            FailureReport, AuthoredProbe, SwarmMode, SwarmReport, budgets, ReviewResult.swarm
 server/lib/review/
-  runner.ts           webhook → engine, persists stats (including swarm), publishing
-  publisher.ts        honest state → review, inline suggestions, check run
-  autocommit.ts       (to create) verified-fix commits
-cortardobot/tests/v3/ swarm-agent.test.ts, engine.test.ts, repair.test.ts, verify.test.ts, ...
+  runner.ts           webhook → engine, persists stats (including swarm + autoCommit), publishing
+  publisher.ts        honest state → review, inline suggestions, check run, swarm footer
+  autocommit.ts       verified-fix commits (contents:write, deny-list, idempotent)
+client/src/components/review/
+  RepositoryReviewSettings.tsx  auto-commit toggle, max fixes, learnings editor
+cortardobot/tests/v3/ swarm-agent.test.ts, engine.test.ts, repair.test.ts, verify.test.ts, learnings.test.ts, ...
 docs/cortardo-3.2.md  this file
 ```
 
 ## Configuration
 
 ```
+CORTADO_SWARM_MODE=auto        # auto | agentic | single-shot (forces the diff-only path)
 CORTADO_SWARM_TURNS=3          # investigation turns per investigator
 CORTADO_SWARM_TOOLS=3          # tool calls per investigator turn
 CORTADO_MAX_COST_USD=0.25      # hard per-run provider-spend ceiling (0 disables)
@@ -167,8 +177,11 @@ CORTADO_BASELINE_MS=180000     # baseline full test-suite budget (0 disables)
 CORTADO_MAX_TOKENS_* / CORTADO_AGENT_* / CORTADO_MODEL_* / cache envs unchanged
 ```
 
-The `3.2.0` version bump invalidates every cache layer automatically; any behaviour change
+The `3.2.1` version bump invalidates every cache layer automatically; any behaviour change
 must bump `ENGINE_VERSION`/`PROMPT_VERSION`/`TOOL_VERSION` in `src/v3/version.ts`.
+
+Repository settings (`repositories.settings` jsonb) now carry `autoCommitFixes` (bool, default
+off), `autoCommitMaxFindings` (1–10, default 3) and `learnings` (string[]).
 
 ## Gates and validation
 
@@ -187,7 +200,8 @@ npx tsx .tmp/pr6-trigger.mts
 ```
 
 Live-run checks after each phase: `review_runs.stats.swarm` has agent counts and hypotheses >
-0 for a PR with real defects; `$` spend stays under cap; the published review and check run
+0 for a PR with real defects; `review_runs.stats.autoCommit` lists committed/skipped findings
+when enabled; `$` spend stays under cap; the published review (with swarm footer) and check run
 still reflect `isVerifiedFix()` only.
 
 ## Risks / open questions
@@ -197,5 +211,6 @@ still reflect `isVerifiedFix()` only.
   detector + test-proof + repair only.
 - The bench spend must be enforced by the engine (`maxCostUsd`), not the harness.
 - Bench thresholds (recall, FP rate, verified-fix correctness) still need sign-off before D.
-- Pre-existing unrelated WIP exists in the working tree (client files, migrations); do not
-  commit it with 3.2 engine changes.
+- Pre-existing unrelated WIP remains uncommitted by design (client review-workspace
+  redesign, `shared/schema.ts` app changes, `.tmp-e2e` scratch); do not fold it into 3.2
+  engine commits — `git status` shows engine/server commits already landed.
