@@ -20,6 +20,8 @@ export class HttpModelClient implements ModelClient {
   jsonModeSupported = true;
   /** Set once the gateway rejects reasoning_effort for this model. */
   private reasoningDisabled = false;
+  /** Set once the gateway rejects max_tokens (e.g. gpt-6-astra) for this model. */
+  private maxTokensParam: "max_tokens" | "max_completion_tokens" = "max_tokens";
 
   constructor(options: { role: "luna" | "terra" | "astra"; model: string; config: ModelsConfig; fetchImpl?: typeof fetch }) {
     this.role = options.role;
@@ -74,7 +76,7 @@ export class HttpModelClient implements ModelClient {
             { role: "user", content: task.user },
           ],
           temperature: this.role === "luna" ? 0.1 : 0.2,
-          max_tokens: Math.min(16_000, this.maxTokens(task)),
+          [this.maxTokensParam]: Math.min(16_000, this.maxTokens(task)),
           ...(useJsonMode ? { response_format: { type: "json_object" } } : {}),
           ...(reasoning && useReasoning ? { reasoning_effort: reasoning } : {}),
         }),
@@ -94,6 +96,10 @@ export class HttpModelClient implements ModelClient {
       if (/response_format|json_object|json_schema|capability_unavailable/i.test(raw)) {
         this.jsonModeSupported = false;
         return this.request(task, false, useReasoning);
+      }
+      if (this.maxTokensParam === "max_tokens" && /max_tokens|max_completion_tokens/i.test(raw)) {
+        this.maxTokensParam = "max_completion_tokens";
+        return this.request(task, useJsonMode, useReasoning);
       }
       if (
         useReasoning &&

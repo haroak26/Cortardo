@@ -86,6 +86,26 @@ test("HttpModelClient retries without reasoning_effort when the gateway rejects 
   assert.ok(!("reasoning_effort" in calls[1]));
 });
 
+test("HttpModelClient falls back to max_completion_tokens when the gateway rejects max_tokens", async () => {
+  const calls: Array<Record<string, unknown>> = [];
+  const fetchImpl = (async (_url: string, init: RequestInit) => {
+    const body = JSON.parse(String(init.body)) as Record<string, unknown>;
+    calls.push(body);
+    if ("max_tokens" in body) {
+      return new Response("Unsupported parameter: 'max_tokens' is not supported with this model. Use 'max_completion_tokens' instead.", { status: 400 });
+    }
+    return new Response(JSON.stringify({ choices: [{ message: { content: '{"reviews":[]}' } }], usage: { prompt_tokens: 10, completion_tokens: 5 } }), { status: 200 });
+  }) as unknown as typeof fetch;
+  const config = resolveV3Config({ models: { astra: "openai/gpt-6-astra" } });
+  const client = new HttpModelClient({ role: "astra", model: config.models.astra, config: config.models, fetchImpl });
+  const response = await client.complete(task({ role: "astra", kind: "final_review" }));
+  assert.equal(response.text, '{"reviews":[]}');
+  assert.equal(calls.length, 2);
+  assert.ok("max_tokens" in calls[0]);
+  assert.ok("max_completion_tokens" in calls[1]);
+  assert.ok(!("max_tokens" in calls[1]));
+});
+
 test("HttpModelClient falls back to non-JSON mode and reports cached tokens + catalog cost", async () => {
   const fetchImpl = (async (_url: string, init: RequestInit) => {
     const body = JSON.parse(String(init.body)) as Record<string, unknown>;
