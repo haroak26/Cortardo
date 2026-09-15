@@ -1,6 +1,6 @@
 # CortardoBot 3.2 — Upgrade Plan, Status and Handoff
 
-Engine version: `3.2.1` · Baseline: `3.1.0` (`docs/cortardo-3.1.md`) · Last updated: 2026-09-15
+Engine version: `3.2.2` · Baseline: `3.1.0` (`docs/cortardo-3.1.md`) · Last updated: 2026-09-15
 Goal: a fully autonomous review bot whose moat is **prove by execution → fix → live-test in E2B → understand why it failed → try a materially different fix → verify no regressions**, with broad multi-language coverage and a benchmark that proves it against CodeRabbit and Greptile.
 
 > **How to use this document:** the "Remaining work" section is an ordered checklist. A new
@@ -30,13 +30,21 @@ Goal: a fully autonomous review bot whose moat is **prove by execution → fix �
 Gates at the time of writing (all green):
 
 ```
-cd cortardobot && npm run verify:v3   # typecheck + 71/71 v3 tests
+cd cortardobot && npm run verify:v3   # typecheck + 72/72 v3 tests
 cd cortardobot && npm test            # legacy 2.0 suites 1048/1048
 npx tsc --noEmit && npm test          # root: tsc clean + 39/39 server/publisher tests
 ```
 
 Zero-spend E2B validation (2026-09-15, PR6, scripted models): **PASS** — 3 confirmed /
-3 fixed / 3 verified in 182.3s through the new sandbox-before-swarm path.
+3 fixed / 3 verified in 160.8s through the new sandbox-before-swarm path (ran on 3.2.1;
+3.2.2 only changed model transport).
+
+Live validation (2026-09-15, PR6, real gateway + real E2B):
+- direct engine run (3.2.2): **PASS** — 3/3 verified, 4 agentic investigators, $0.064,
+  0 fallbacks.
+- full server path (3.2.2, run `831befdd`): **PASS** — 3/3 verified in 200s, $0.112,
+  `stats.swarm` populated, published review footer shows `engine 3.2.2` and
+  `Swarm: agentic, 4 agent(s)`, Astra reviews model-authored.
 
 ## Phase A — agentic swarm (done)
 
@@ -74,7 +82,7 @@ Key files: `src/v3/swarm-agent.ts` (new), `src/v3/swarm.ts`, `src/v3/agent/conte
 - Every attempt snapshots **all** paths it edits and restores them on failure.
 - Partial multi-file `apply_edit` rolls back inside `agent/tools.ts`.
 - Probes run with `profile.testSingle` (repo runner) instead of hardcoded vitest.
-- **Done (3.2.1):** the last pre-fix failing probe is promoted into an `authored_probe`
+- **Done:** the last pre-fix failing probe is promoted into an `authored_probe`
   verification step and included in the review evidence (see B3/B4 leftovers below).
 
 ### B4 batched verification (done)
@@ -87,7 +95,7 @@ Key files: `src/v3/swarm-agent.ts` (new), `src/v3/swarm.ts`, `src/v3/agent/conte
 - Failed commands are re-run once (flakes labelled); **left:** per-repo (not just
   size-based) gating of the full suite for large monorepos.
 
-### B5 learnings + auto-commit (done, 3.2.1)
+### B5 learnings + auto-commit (done)
 - `ReviewRequest.learnings` is read from `repository.settings.learnings` in `runner.ts`,
   normalized in the engine (`util.ts:normalizeLearnings`) and injected into the swarm
   context pack, repair packs, the judge prompt and the Astra prompt. Learnings and
@@ -102,15 +110,17 @@ Key files: `src/v3/swarm-agent.ts` (new), `src/v3/swarm.ts`, `src/v3/agent/conte
   the auto-commit toggle, max fixes per run and a learnings editor; `PATCH
   /api/repositories/:id` merges settings instead of replacing the jsonb blob.
 
-### B3/B4 leftovers (done, 3.2.1)
+### B3/B4 leftovers (done)
 - Model-authored probes are captured with their exact content and command; the last pre-fix
   failing probe of the verified attempt is re-materialized and run as an `authored_probe`
   verification step, failing verification if it fails after the fix.
 - Failed targeted/affected/probe commands are re-run once; only a stable failure is a
   regression, and flaky runs are labelled in the step reason.
-- P0 fixed: `HttpModelClient` falls back from `max_tokens` to `max_completion_tokens` once
-  per client (`models.ts`), so `final_review` no longer silently drops to the deterministic
-  review on `gpt-6-astra`.
+- P0 fixed and verified live: the gateway rejects `max_tokens` **and**
+  `max_completion_tokens` for `gpt-6-astra` with the same misleading message, then rejects
+  non-default temperature. `HttpModelClient` degrades one capability per retry
+  (`max_tokens` → `max_completion_tokens` → omitted, temperature dropped, reasoning_effort
+  dropped), and `final_review` is model-authored on the live PR6 run.
 - Leftovers: `CORTADO_SWARM_MODE=agentic|single-shot` override implemented; previous bot
   reviews are only dismissed when `APPROVED`/`CHANGES_REQUESTED` (COMMENTED reviews can no
   longer 422); the review footer reports the engine version and swarm telemetry.
@@ -154,7 +164,7 @@ cortardobot/src/v3/
                       repair → verify → astra), caches, telemetry, budgets
   models.ts           HTTP client (max_tokens → max_completion_tokens fallback), ModelRouter + cost cap
   config.ts           budgets/env (incl. CORTADO_SWARM_MODE), resolveV3Config
-  version.ts          3.2.1 (bump on behaviour changes to invalidate caches)
+  version.ts          3.2.2 (bump on behaviour changes to invalidate caches)
   types.ts            FailureReport, AuthoredProbe, SwarmMode, SwarmReport, budgets, ReviewResult.swarm
 server/lib/review/
   runner.ts           webhook → engine, persists stats (including swarm + autoCommit), publishing
@@ -177,7 +187,7 @@ CORTADO_BASELINE_MS=180000     # baseline full test-suite budget (0 disables)
 CORTADO_MAX_TOKENS_* / CORTADO_AGENT_* / CORTADO_MODEL_* / cache envs unchanged
 ```
 
-The `3.2.1` version bump invalidates every cache layer automatically; any behaviour change
+The `3.2.2` version bump invalidates every cache layer automatically; any behaviour change
 must bump `ENGINE_VERSION`/`PROMPT_VERSION`/`TOOL_VERSION` in `src/v3/version.ts`.
 
 Repository settings (`repositories.settings` jsonb) now carry `autoCommitFixes` (bool, default
