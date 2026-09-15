@@ -20,8 +20,10 @@ export class HttpModelClient implements ModelClient {
   jsonModeSupported = true;
   /** Set once the gateway rejects reasoning_effort for this model. */
   private reasoningDisabled = false;
+  /** Set once the gateway rejects a non-default temperature for this model. */
+  private temperatureDisabled = false;
   /** Set once the gateway rejects max_tokens (e.g. gpt-6-astra) for this model. */
-  private maxTokensParam: "max_tokens" | "max_completion_tokens" = "max_tokens";
+  private maxTokensParam: "max_tokens" | "max_completion_tokens" | "none" = "max_tokens";
 
   constructor(options: { role: "luna" | "terra" | "astra"; model: string; config: ModelsConfig; fetchImpl?: typeof fetch }) {
     this.role = options.role;
@@ -75,8 +77,8 @@ export class HttpModelClient implements ModelClient {
             ...(task.history ?? []).map((message) => ({ role: message.role, content: message.content })),
             { role: "user", content: task.user },
           ],
-          temperature: this.role === "luna" ? 0.1 : 0.2,
-          [this.maxTokensParam]: Math.min(16_000, this.maxTokens(task)),
+          ...(this.temperatureDisabled ? {} : { temperature: this.role === "luna" ? 0.1 : 0.2 }),
+          ...(this.maxTokensParam !== "none" ? { [this.maxTokensParam]: Math.min(16_000, this.maxTokens(task)) } : {}),
           ...(useJsonMode ? { response_format: { type: "json_object" } } : {}),
           ...(reasoning && useReasoning ? { reasoning_effort: reasoning } : {}),
         }),
@@ -97,8 +99,10 @@ export class HttpModelClient implements ModelClient {
         this.jsonModeSupported = false;
         return this.request(task, false, useReasoning);
       }
-      if (this.maxTokensParam === "max_tokens" && /max_tokens|max_completion_tokens/i.test(raw)) {
-        this.maxTokensParam = "max_completion_tokens";
+      if (this.maxTokensParam !== "none" && /max_tokens|max_completion_tokens/i.test(raw)) {
+        // Some gateways reject both spellings with the same misleading message;
+        // the final fallback is to omit the token cap entirely.
+        this.maxTokensParam = this.maxTokensParam === "max_tokens" ? "max_completion_tokens" : "none";
         return this.request(task, useJsonMode, useReasoning);
       }
       if (
@@ -107,6 +111,11 @@ export class HttpModelClient implements ModelClient {
       ) {
         this.reasoningDisabled = true;
         return this.request(task, useJsonMode, false);
+      }
+      if (!this.temperatureDisabled && /temperature/i.test(raw)) {
+        // Reasoning-style models often only support the provider default.
+        this.temperatureDisabled = true;
+        return this.request(task, useJsonMode, useReasoning);
       }
       throw new ModelError(`model request failed with status ${response.status}: ${raw.slice(0, 200)}`, false);
     }

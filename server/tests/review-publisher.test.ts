@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Finding, ReviewResult } from "../../cortardobot/src/v3/types.ts";
 import { buildInlineComments, buildReviewBody, decideCheckConclusion, decideReviewEvent, shouldDismissBotReview } from "../lib/review/publisher";
+import { ENGINE_VERSION } from "../../cortardobot/src/v3/version";
 
 const CONTENT = ["const a = 1;", "const x = undefined;", "export default a;"].join("\n");
 
@@ -181,7 +182,7 @@ test("review footer reports the engine version and swarm telemetry", () => {
     },
   });
   const body = buildReviewBody(value);
-  assert.match(body, /engine 3\.2\.1/);
+  assert.match(body, new RegExp(`engine ${ENGINE_VERSION.replace(/\./g, "\\.")}`));
   assert.match(body, /Swarm: agentic, 1 agent\(s\), 1 hypothesis\(es\), 1 candidate\(s\)/);
 });
 

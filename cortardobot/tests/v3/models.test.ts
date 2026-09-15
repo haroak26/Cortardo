@@ -119,6 +119,38 @@ test("HttpModelClient falls back to max_completion_tokens when the gateway rejec
   assert.ok(!("max_tokens" in calls[1]));
 });
 
+test("HttpModelClient strips unsupported parameters one by one until the gateway accepts", async () => {
+  const calls: Array<Record<string, unknown>> = [];
+  const fetchImpl = (async (_url: string, init: RequestInit) => {
+    const body = JSON.parse(String(init.body)) as Record<string, unknown>;
+    calls.push(body);
+    if ("max_tokens" in body || "max_completion_tokens" in body) {
+      return new Response("Unsupported parameter: 'max_tokens' is not supported with this model. Use 'max_completion_tokens' instead.", { status: 400 });
+    }
+    if ("temperature" in body) {
+      return new Response("Unsupported value: 'temperature' does not support 0.2 with this model. Only the default (1) value is supported.", { status: 400 });
+    }
+    if ("reasoning_effort" in body) {
+      return new Response("Unknown parameter: reasoning_effort", { status: 400 });
+    }
+    return new Response(JSON.stringify({ choices: [{ message: { content: '{"reviews":[]}' } }], usage: { prompt_tokens: 10, completion_tokens: 5 } }), { status: 200 });
+  }) as unknown as typeof fetch;
+  const config = resolveV3Config({ models: { astra: "openai/gpt-6-astra" } });
+  const client = new HttpModelClient({ role: "astra", model: config.models.astra, config: config.models, fetchImpl });
+  const response = await client.complete(task({ role: "astra", kind: "final_review" }));
+  assert.equal(response.text, '{"reviews":[]}');
+  assert.equal(calls.length, 5);
+  assert.ok("max_tokens" in calls[0]);
+  assert.ok("max_completion_tokens" in calls[1]);
+  assert.ok(!("max_tokens" in calls[2]) && !("max_completion_tokens" in calls[2]) && "temperature" in calls[2]);
+  assert.ok(!("temperature" in calls[3]) && "reasoning_effort" in calls[3]);
+  const final = calls[4];
+  for (const key of ["max_tokens", "max_completion_tokens", "temperature", "reasoning_effort"]) {
+    assert.ok(!(key in final), `${key} must be omitted from the accepted request`);
+  }
+  assert.ok("response_format" in final);
+});
+
 test("HttpModelClient falls back to non-JSON mode and reports cached tokens + catalog cost", async () => {
   const fetchImpl = (async (_url: string, init: RequestInit) => {
     const body = JSON.parse(String(init.body)) as Record<string, unknown>;
