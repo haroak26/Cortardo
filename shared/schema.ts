@@ -13,6 +13,7 @@ import {
   primaryKey,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
+import { sql } from "drizzle-orm";
 import { z } from "zod";
 import type { CodeGraphConnection, CodeGraphFile, CodeGraphSymbol, CodeGraphSymbolEdge } from "./codegraph";
 
@@ -1017,6 +1018,13 @@ export const reviewRuns = pgTable("review_runs", {
   title: text("title"),
   instructions: text("instructions"),
   model: text("model"),
+  /** Reviewed commit; enables idempotency + cache keys. */
+  headSha: text("head_sha"),
+  engineVersion: text("engine_version"),
+  /** In-memory queue lease (recovered on restart when expired). */
+  leaseOwner: text("lease_owner"),
+  leaseExpiresAt: timestamp("lease_expires_at"),
+  heartbeatAt: timestamp("heartbeat_at"),
   plan: jsonb("plan").$type<Record<string, unknown>>().default({}).notNull(),
   summary: text("summary"),
   stats: jsonb("stats").$type<Record<string, unknown>>().default({}).notNull(),
@@ -1032,6 +1040,9 @@ export const reviewRuns = pgTable("review_runs", {
 }, (t) => [
   index("review_runs_repository_idx").on(t.repositoryId),
   index("review_runs_status_idx").on(t.status),
+  uniqueIndex("review_runs_active_head_idx")
+    .on(t.repositoryId, t.headSha, t.engineVersion)
+    .where(sql`${t.status} in ('queued','running')`),
 ]);
 
 export type ReviewRun = typeof reviewRuns.$inferSelect;
@@ -1064,6 +1075,35 @@ export const reviewFindings = pgTable("review_findings", {
 
 export type ReviewFinding = typeof reviewFindings.$inferSelect;
 export type NewReviewFinding = typeof reviewFindings.$inferInsert;
+
+/**
+ * CortardoBot 3.1 cache. Every key embeds engine/prompt/tool/model versions and
+ * content hashes, so deploys and model changes invalidate entries implicitly.
+ */
+export const reviewCacheEntries = pgTable("review_cache_entries", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  cacheKey: text("cache_key").notNull().unique(),
+  kind: text("kind").notNull(),
+  engineVersion: text("engine_version"),
+  promptVersion: text("prompt_version"),
+  toolVersion: text("tool_version"),
+  modelId: text("model_id"),
+  repoFullName: text("repo_full_name"),
+  headSha: text("head_sha"),
+  payload: jsonb("payload").$type<unknown>(),
+  meta: jsonb("meta").$type<Record<string, unknown>>().default({}).notNull(),
+  hits: integer("hits").notNull().default(0),
+  expiresAt: timestamp("expires_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (t) => [
+  index("review_cache_kind_idx").on(t.kind),
+  index("review_cache_repo_idx").on(t.repoFullName),
+  index("review_cache_expires_idx").on(t.expiresAt),
+]);
+
+export type ReviewCacheEntry = typeof reviewCacheEntries.$inferSelect;
+export type NewReviewCacheEntry = typeof reviewCacheEntries.$inferInsert;
 
 export const webhookDeliveries = pgTable("webhook_deliveries", {
   id: uuid("id").primaryKey().defaultRandom(),

@@ -12,6 +12,7 @@ import { storage } from "../storage";
 import { db } from "../db";
 import { desc, eq } from "drizzle-orm";
 import { reviewFindings, reviewRuns } from "@shared/schema";
+import { DEFAULT_MODELS, DEFAULT_REASONING, MODEL_CATALOG, type ModelRole, type ReasoningEffort } from "@shared/models";
 import { enqueueReview, listReviewRuns } from "../lib/review/runner";
 import { apiRateLimiter, audit, requireAuth } from "./helpers";
 import { getGithubAppConfig } from "../lib/github/app";
@@ -727,6 +728,16 @@ export function registerGithubRoutes(app: Express): void {
     }
   });
 
+  /** Model catalog for the review UI (GPT defaults for 3.1). */
+  app.get("/api/models", requireAuth, (_req: Request, res: Response) => {
+    return res.json({
+      defaults: DEFAULT_MODELS,
+      reasoning: DEFAULT_REASONING,
+      models: MODEL_CATALOG,
+      roles: ["luna", "terra", "astra"] satisfies ModelRole[],
+    });
+  });
+
   app.post("/api/repositories/:id/runs", requireAuth, apiRateLimiter, async (req: Request, res: Response) => {
     try {
       const repository = await loadRepository(req, res, String(req.params.id));
@@ -735,11 +746,21 @@ export function registerGithubRoutes(app: Express): void {
       if (!Number.isInteger(number) || number <= 0) {
         return res.status(400).json({ message: "pullRequestNumber is required" });
       }
+      const models =
+        req.body?.models && typeof req.body.models === "object"
+          ? (req.body.models as Partial<Record<"luna" | "terra" | "astra", string>>)
+          : undefined;
+      const reasoning =
+        req.body?.reasoning && typeof req.body.reasoning === "object"
+          ? (req.body.reasoning as Partial<Record<"luna" | "terra" | "astra", ReasoningEffort>>)
+          : undefined;
       const runId = await enqueueReview({
         repositoryId: repository.id,
         pullRequestNumber: number,
         trigger: "manual",
         instructions: typeof req.body?.instructions === "string" ? req.body.instructions : undefined,
+        models,
+        reasoning,
         workspaceId: repository.workspaceId,
         userId: currentUser(req).id,
       });

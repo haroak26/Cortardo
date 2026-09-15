@@ -506,6 +506,55 @@ export async function createPullRequestReview(
 }
 
 /** Commit titles for a pull request (context for the reviewer). */
+export interface PullRequestReviewSummary {
+  id: number;
+  userLogin: string | null;
+  userType: string | null;
+  state: string;
+  commitId: string | null;
+  submittedAt: string | null;
+  body: string;
+}
+
+/** List reviews on a pull request (used for idempotent re-reviews). */
+export async function listPullRequestReviews(
+  installationId: string | number,
+  fullName: string,
+  number: number,
+): Promise<PullRequestReviewSummary[]> {
+  const { owner, repo } = splitFullName(fullName);
+  const octokit = getInstallationOctokit(installationId);
+  const { data } = await octokit.rest.pulls.listReviews({ owner, repo, pull_number: number, per_page: 100 });
+  return data.map((review) => ({
+    id: review.id,
+    userLogin: review.user?.login ?? null,
+    userType: review.user?.type ?? null,
+    state: review.state ?? "COMMENTED",
+    commitId: review.commit_id ?? null,
+    submittedAt: review.submitted_at ?? null,
+    body: review.body ?? "",
+  }));
+}
+
+/** Dismiss a submitted review (best effort; requires write access). */
+export async function dismissPullRequestReview(
+  installationId: string | number,
+  fullName: string,
+  number: number,
+  reviewId: number,
+  message: string,
+): Promise<void> {
+  const { owner, repo } = splitFullName(fullName);
+  const octokit = getInstallationOctokit(installationId);
+  await octokit.rest.pulls.dismissReview({
+    owner,
+    repo,
+    pull_number: number,
+    review_id: reviewId,
+    message,
+  });
+}
+
 export async function listPullRequestCommits(
   installationId: string | number,
   fullName: string,
