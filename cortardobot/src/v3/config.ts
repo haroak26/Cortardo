@@ -1,4 +1,4 @@
-import type { BudgetConfig } from "./types";
+import type { BudgetConfig, SwarmMode } from "./types";
 import type { ModelRole, ReasoningEffort } from "../../../shared/models.ts";
 import {
   DEFAULT_MODELS,
@@ -41,6 +41,8 @@ export interface CacheConfig {
 
 export interface V3Config {
   mode: "live" | "dry";
+  /** Investigation mode; "auto" uses the agentic swarm when a sandbox pack exists. */
+  swarmMode: SwarmMode;
   models: ModelsConfig;
   sandbox: SandboxConfig;
   cache: CacheConfig;
@@ -98,9 +100,17 @@ function envBool(name: string, fallback: boolean): boolean {
   return !["0", "false", "off", "no"].includes(value.trim().toLowerCase());
 }
 
+function envSwarmMode(name: string, fallback: SwarmMode): SwarmMode {
+  const value = (process.env[name] ?? "").trim().toLowerCase();
+  if (value === "agentic") return "agentic";
+  if (["single-shot", "single_shot", "single", "off", "0", "false"].includes(value)) return "single-shot";
+  return fallback;
+}
+
 export interface V3ConfigOverrides {
   budgets?: Partial<BudgetConfig>;
   mode?: "live" | "dry";
+  swarmMode?: SwarmMode;
   models?: Partial<ModelsConfig>;
   sandbox?: Partial<SandboxConfig>;
   cache?: Partial<CacheConfig>;
@@ -135,6 +145,7 @@ export function resolveV3Config(overrides: V3ConfigOverrides = {}): V3Config {
   };
   return {
     mode: overrides.mode ?? (apiKey ? "live" : "dry"),
+    swarmMode: overrides.swarmMode ?? envSwarmMode("CORTADO_SWARM_MODE", "auto"),
     models: {
       luna: ids.luna,
       terra: ids.terra,

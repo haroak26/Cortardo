@@ -298,6 +298,7 @@ export class CortadoV3Engine {
               pack: swarmPack,
               maxTurns: config.budgets.maxSwarmTurns,
               maxToolsPerTurn: config.budgets.maxSwarmToolsPerTurn,
+              mode: config.swarmMode,
             }),
           config.budgets.swarmMs + 30_000,
           { candidates: [] as Candidate[], report: undefined as SwarmReport | undefined },

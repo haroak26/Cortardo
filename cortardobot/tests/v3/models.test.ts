@@ -30,6 +30,19 @@ test("model env overrides win and legacy CORTARDO_* keys are honoured", () => {
   process.env = previous;
 });
 
+test("CORTADO_SWARM_MODE overrides the inferred swarm mode", () => {
+  const previous = { ...process.env };
+  delete process.env.CORTADO_SWARM_MODE;
+  assert.equal(resolveV3Config().swarmMode, "auto");
+  process.env.CORTADO_SWARM_MODE = "single-shot";
+  assert.equal(resolveV3Config().swarmMode, "single-shot");
+  process.env.CORTADO_SWARM_MODE = "agentic";
+  assert.equal(resolveV3Config().swarmMode, "agentic");
+  process.env.CORTADO_SWARM_MODE = "bogus";
+  assert.equal(resolveV3Config().swarmMode, "auto");
+  process.env = previous;
+});
+
 test("preflight fails when a configured model is not served", async () => {
   const fetchImpl = (async () =>
     new Response(JSON.stringify({ data: [{ id: "openai/gpt-5.6-luna" }, { id: "openai/gpt-5.6-terra" }] }), { status: 200 })) as unknown as typeof fetch;

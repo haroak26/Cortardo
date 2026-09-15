@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Finding, ReviewResult } from "../../cortardobot/src/v3/types.ts";
-import { buildInlineComments, buildReviewBody, decideCheckConclusion, decideReviewEvent } from "../lib/review/publisher";
+import { buildInlineComments, buildReviewBody, decideCheckConclusion, decideReviewEvent, shouldDismissBotReview } from "../lib/review/publisher";
 
 const CONTENT = ["const a = 1;", "const x = undefined;", "export default a;"].join("\n");
 
@@ -168,4 +168,29 @@ test("an unresolved high finding requests changes and fails the check", () => {
 test("a degraded run never reports a green check", () => {
   const value = result([finding()], { degraded: true, degradedReason: "verify skipped" });
   assert.equal(decideCheckConclusion(value), "neutral");
+});
+
+test("review footer reports the engine version and swarm telemetry", () => {
+  const value = result([finding()], {
+    swarm: {
+      mode: "agentic",
+      agents: [{ id: "luna-bug", kind: "bug", title: "Bug investigator", status: "completed", turns: 2, toolCalls: 3, hypotheses: 1, candidates: 1, durationMs: 5 }],
+      hypotheses: 1,
+      candidates: 1,
+      durationMs: 5,
+    },
+  });
+  const body = buildReviewBody(value);
+  assert.match(body, /engine 3\.2\.1/);
+  assert.match(body, /Swarm: agentic, 1 agent\(s\), 1 hypothesis\(es\), 1 candidate\(s\)/);
+});
+
+test("only dismissable bot review states are selected for dismissal", () => {
+  const base = { commitId: "sha", body: "## Cortado Review\n…", userType: "Bot", userLogin: "cortado[bot]" };
+  assert.equal(shouldDismissBotReview({ ...base, state: "COMMENTED" }, "sha"), false);
+  assert.equal(shouldDismissBotReview({ ...base, state: "DISMISSED" }, "sha"), false);
+  assert.equal(shouldDismissBotReview({ ...base, state: "APPROVED" }, "sha"), true);
+  assert.equal(shouldDismissBotReview({ ...base, state: "CHANGES_REQUESTED" }, "sha"), true);
+  assert.equal(shouldDismissBotReview({ ...base, state: "APPROVED", commitId: "other" }, "sha"), false);
+  assert.equal(shouldDismissBotReview({ ...base, state: "APPROVED", userType: "User", userLogin: "human" }, "sha"), false);
 });

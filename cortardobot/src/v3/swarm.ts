@@ -1,4 +1,4 @@
-import type { Candidate, ContextPack, PRContext, ReviewRequest, SwarmAgentReport, SwarmReport } from "./types";
+import type { Candidate, ContextPack, PRContext, ReviewRequest, SwarmAgentReport, SwarmMode, SwarmReport } from "./types";
 import type { ModelRouter } from "./models";
 import type { RepoProfile, Sandbox } from "./sandbox";
 import { mapLimit, extractJson, truncate, type Logger } from "./util";
@@ -89,6 +89,8 @@ export interface SwarmOptions {
   pack?: ContextPack;
   maxTurns?: number;
   maxToolsPerTurn?: number;
+  /** "single-shot" forces the 3.1 diff-only path; "agentic" requires a pack. */
+  mode?: SwarmMode;
 }
 
 export interface SwarmOutcome {
@@ -144,7 +146,13 @@ export async function runSwarm(
     .map((candidate) => `- ${candidate.evidence[0] ?? candidate.file ?? "?"}: ${candidate.claim.slice(0, 140)}`)
     .join("\n");
 
-  if (options.sandbox && options.pack) {
+  const canRunAgentic = Boolean(options.sandbox && options.pack);
+  const agentic = options.mode === "single-shot" ? false : canRunAgentic;
+  if (options.mode === "agentic" && !canRunAgentic) {
+    logger.warn("CORTADO_SWARM_MODE=agentic but no sandbox context pack is available; falling back to single-shot");
+  }
+
+  if (agentic && options.sandbox && options.pack) {
     const sandbox = options.sandbox;
     const pack = options.pack;
     const profile = options.profile ?? EMPTY_PROFILE;

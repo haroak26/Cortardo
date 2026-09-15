@@ -13,6 +13,9 @@ export type PRSize = "tiny" | "normal" | "complex";
 
 export type ProofKind = "existing_test" | "targeted_test" | "script" | "browser" | "app_boot" | "none";
 
+/** Swarm investigation mode override (`CORTADO_SWARM_MODE`). */
+export type SwarmMode = "auto" | "agentic" | "single-shot";
+
 export type ProofStatus = "confirmed" | "disproven" | "likely" | "error";
 
 export type RepairExit = "VERIFIED" | "UNRESOLVED" | "UNSAFE" | "BUDGET_EXHAUSTED";

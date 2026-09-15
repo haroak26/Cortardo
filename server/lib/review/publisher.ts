@@ -1,6 +1,7 @@
 import type { Finding, ReviewResult } from "../../../cortardobot/src/v3/types.ts";
 import { locateEdit } from "../../../cortardobot/src/v3/patch.ts";
 import { findingState, isVerifiedFix, patchHasHunks } from "../../../cortardobot/src/v3/result.ts";
+import { ENGINE_VERSION } from "../../../cortardobot/src/v3/version.ts";
 import {
   createCheckRun,
   createPullRequestReview,
@@ -180,7 +181,13 @@ export function buildReviewBody(result: ReviewResult): string {
   }
 
   lines.push("---");
-  lines.push(`_Cortado investigated ${result.candidates.length} candidate(s), proved ${result.proofs.filter((proof) => proof.status === "confirmed").length} by execution and verified ${summary.issuesVerified} fix(es). Run \`${result.runId}\` (engine 3.1). Cache: ${summary.cacheHits} hit / ${summary.cacheMisses} miss._`);
+  const swarm = result.swarm;
+  const swarmNote = swarm
+    ? ` Swarm: ${swarm.mode}, ${swarm.agents.length} agent(s), ${swarm.hypotheses} hypothesis(es), ${swarm.candidates} candidate(s).`
+    : "";
+  lines.push(
+    `_Cortado investigated ${result.candidates.length} candidate(s), proved ${result.proofs.filter((proof) => proof.status === "confirmed").length} by execution and verified ${summary.issuesVerified} fix(es). Run \`${result.runId}\` (engine ${ENGINE_VERSION}).${swarmNote} Cache: ${summary.cacheHits} hit / ${summary.cacheMisses} miss._`,
+  );
   return lines.join("\n");
 }
 
@@ -302,6 +309,23 @@ export async function finishCheckRun(input: PublishInput): Promise<void> {
 }
 
 /**
+ * GitHub only allows dismissing APPROVED / CHANGES_REQUESTED reviews; a
+ * COMMENTED review returns 422, so it is never selected here.
+ */
+export function shouldDismissBotReview(
+  review: { state?: string | null; commitId?: string | null; body?: string | null; userType?: string | null; userLogin?: string | null },
+  headSha: string,
+): boolean {
+  const dismissableState = review.state === "APPROVED" || review.state === "CHANGES_REQUESTED";
+  return (
+    dismissableState &&
+    review.commitId === headSha &&
+    (review.body ?? "").startsWith("## Cortado Review") &&
+    (review.userType === "Bot" || (review.userLogin ?? "").toLowerCase().includes("cortado"))
+  );
+}
+
+/**
  * Idempotent publishing: dismiss the bot's previous review for the same head
  * SHA so a re-run replaces the old verdict instead of stacking new reviews.
  */
@@ -314,13 +338,7 @@ export async function dismissPreviousBotReviews(input: {
 }): Promise<void> {
   try {
     const reviews = await listPullRequestReviews(input.installationId, input.fullName, input.prNumber);
-    const stale = reviews.filter(
-      (review) =>
-        review.commitId === input.headSha &&
-        review.state !== "DISMISSED" &&
-        review.body.startsWith("## Cortado Review") &&
-        (review.userType === "Bot" || (review.userLogin ?? "").toLowerCase().includes("cortado")),
-    );
+    const stale = reviews.filter((review) => shouldDismissBotReview(review, input.headSha));
     for (const review of stale) {
       try {
         await dismissPullRequestReview(

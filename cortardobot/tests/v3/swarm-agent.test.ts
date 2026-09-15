@@ -197,3 +197,22 @@ test("runSwarm is agentic with a context pack and falls back to single-shot with
   assert.equal(singleShot.report.hypotheses, 4);
   assert.ok(singleShotRouter.usage.calls >= 4);
 });
+
+test("CORTADO_SWARM_MODE single-shot forces the diff-only path even with a pack", async () => {
+  const script = [JSON.stringify({ hypotheses: [] })];
+  const box = sandbox();
+  const ctx = context();
+  const profile = await box.profile();
+  const pack = await buildSwarmContext({ context: ctx, sandbox: box, profile });
+  const forced = await runSwarm(ctx, request(), [], router(lunaWith(script)), silentLogger, 60_000, {
+    sandbox: box,
+    profile,
+    pack,
+    mode: "single-shot",
+    maxTurns: 2,
+    maxToolsPerTurn: 2,
+  });
+  assert.equal(forced.report.mode, "single-shot");
+  assert.equal(forced.report.agents[0]?.turns, 1);
+  assert.equal(forced.report.agents[0]?.toolCalls, 0);
+});
