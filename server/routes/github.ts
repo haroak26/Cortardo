@@ -501,7 +501,9 @@ export function registerGithubRoutes(app: Express): void {
 
       const updated = await storage.updateRepository(repository.id, {
         ...(parsed.data.reviewEnabled !== undefined ? { reviewEnabled: parsed.data.reviewEnabled } : {}),
-        ...(parsed.data.settings !== undefined ? { settings: parsed.data.settings } : {}),
+        ...(parsed.data.settings !== undefined
+          ? { settings: { ...((repository.settings as Record<string, unknown> | null) ?? {}), ...parsed.data.settings } }
+          : {}),
       });
       return res.json(updated);
     } catch (error: any) {

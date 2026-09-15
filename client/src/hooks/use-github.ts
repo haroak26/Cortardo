@@ -317,7 +317,7 @@ export function useDisconnectGithubInstallation() {
 export function useUpdateRepository() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, ...patch }: { id: string; reviewEnabled?: boolean }) =>
+    mutationFn: ({ id, ...patch }: { id: string; reviewEnabled?: boolean; settings?: Record<string, unknown> }) =>
       sendJson<ApiRepository>("PATCH", `/api/repositories/${id}`, patch),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/repositories"] });

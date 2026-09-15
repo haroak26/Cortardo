@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronDown, FolderGit2, Plus, Search } from 'lucide-react';
+import { ChevronDown, FolderGit2, Plus, Search, Settings2 } from 'lucide-react';
 import { ReviewPageShell } from '@/components/review/bits';
+import { RepositoryReviewSettingsDialog } from '@/components/review/RepositoryReviewSettings';
 import { Badge } from '@/components/ds';
 import { Button } from '@/components/button';
 import { SettingsCardSkeleton } from '@/components/skeleton-cards';
@@ -43,6 +44,7 @@ export default function RepositoriesPage() {
   const [overrides, setOverrides] = useState<Record<string, boolean>>({});
   const [pickerOpen, setPickerOpen] = useState(false);
   const [mapRepository, setMapRepository] = useState<ApiRepository | null>(null);
+  const [settingsRepository, setSettingsRepository] = useState<ApiRepository | null>(null);
   const filterRef = useRef<HTMLDivElement>(null);
 
   const statusQuery = useGithubStatus(activeWorkspaceId);
@@ -279,11 +281,21 @@ export default function RepositoriesPage() {
                           </span>
                         }
                       >
-                        <TinyToggle
-                          checked={enabled}
-                          onCheckedChange={(checked) => handleToggle(repo, checked)}
-                          aria-label={`${enabled ? 'Pause' : 'Resume'} reviews for ${repo.fullName}`}
-                        />
+                        <div className="flex items-center gap-1">
+                          <Button
+                            design="ghost"
+                            size="xs"
+                            icon={Settings2}
+                            onClick={() => setSettingsRepository(repo)}
+                            aria-label={`Review settings for ${repo.fullName}`}
+                            title="Review settings"
+                          />
+                          <TinyToggle
+                            checked={enabled}
+                            onCheckedChange={(checked) => handleToggle(repo, checked)}
+                            aria-label={`${enabled ? 'Pause' : 'Resume'} reviews for ${repo.fullName}`}
+                          />
+                        </div>
                       </SettingsRow>
                     </div>
                   </SettingsCard>
@@ -299,6 +311,13 @@ export default function RepositoriesPage() {
         onOpenChange={setPickerOpen}
         installation={installation}
       />
+
+      {settingsRepository && (
+        <RepositoryReviewSettingsDialog
+          repository={settingsRepository}
+          onClose={() => setSettingsRepository(null)}
+        />
+      )}
 
       {mapRepository && (
         <Dialog
