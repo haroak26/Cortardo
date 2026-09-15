@@ -142,6 +142,8 @@ export interface PRContext {
   hasTests: boolean;
   hasTypecheck: boolean;
   hasBuild: boolean;
+  /** Repository learnings supplied by humans, already normalized (3.2). */
+  learnings?: string[];
 }
 
 export interface Candidate {
@@ -423,6 +425,8 @@ export interface ContextPack {
   check?: BrowserCheck;
   detectorEvidence: string[];
   instructions?: string;
+  /** Repository learnings injected into this pack (3.2). */
+  learnings?: string[];
   hash: string;
 }
 

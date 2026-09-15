@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { AstraReview, Candidate, ProofResult, RepairResult, VerificationReport } from "./types";
 import type { ModelRouter } from "./models";
-import { extractJson, truncate, type Logger } from "./util";
+import { extractJson, renderLearnings, truncate, type Logger } from "./util";
 
 const reviewSchema = z.object({
   reviews: z
@@ -53,7 +53,7 @@ export function fallbackReviews(items: AstraInput[]): AstraReview[] {
   });
 }
 
-export async function finalReview(items: AstraInput[], models: ModelRouter, logger: Logger): Promise<AstraReview[]> {
+export async function finalReview(items: AstraInput[], models: ModelRouter, logger: Logger, learnings?: string[]): Promise<AstraReview[]> {
   if (items.length === 0) return [];
   try {
     const blocks = items
@@ -78,11 +78,18 @@ export async function finalReview(items: AstraInput[], models: ModelRouter, logg
         ].join("\n");
       })
       .join("\n\n");
+    const learningsText = renderLearnings(learnings);
     const response = await models.complete({
       role: "astra",
       kind: "final_review",
       system: SYSTEM,
-      user: `Findings:\n${blocks}\n\nReturn the review JSON now.`,
+      user: [
+        `Findings:\n${blocks}`,
+        learningsText ? `Repository learnings (respect these when reviewing):\n${learningsText}` : "",
+        "Return the review JSON now.",
+      ]
+        .filter(Boolean)
+        .join("\n\n"),
       expectJson: true,
       label: "astra-final",
     });

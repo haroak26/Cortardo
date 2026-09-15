@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { Candidate, JudgeDecision, PRContext } from "./types";
 import type { ModelRouter } from "./models";
-import { extractJson, type Logger } from "./util";
+import { extractJson, renderLearnings, type Logger } from "./util";
 
 const decisionSchema = z.object({
   candidateId: z.string().min(1),
@@ -60,11 +60,19 @@ export async function judgeCandidates(
           `- id=${candidate.id} severity=${candidate.severity} confidence=${candidate.confidence.toFixed(2)} file=${candidate.file ?? "n/a"}:${candidate.line ?? "?"} provable=${Boolean(candidate.check) || candidate.suggestedProof !== "none"} claim=${candidate.claim.slice(0, 260)}`,
       )
       .join("\n");
+    const learnings = renderLearnings(context.learnings);
     const response = await models.complete({
       role: "terra",
       kind: "judge",
       system: SYSTEM,
-      user: `PR: ${context.title}\nCandidates:\n${list}\nReturn the JSON decision now.`,
+      user: [
+        `PR: ${context.title}`,
+        learnings ? `Repository learnings (respect these when judging):\n${learnings}` : "",
+        `Candidates:\n${list}`,
+        "Return the JSON decision now.",
+      ]
+        .filter(Boolean)
+        .join("\n\n"),
       expectJson: true,
       label: "terra-judge",
     });

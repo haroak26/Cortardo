@@ -1,7 +1,7 @@
 import type { Candidate, ContextPack, ContextPackFile, PRContext, ProofResult } from "../types";
 import type { RepoProfile, Sandbox } from "../sandbox";
 import { renderCompactDiff, renderNumberedFile } from "../patch";
-import { hashContent, stableStringify, truncate } from "../util";
+import { hashContent, normalizeLearnings, renderLearnings, stableStringify, truncate } from "../util";
 
 const MAX_FILES = 6;
 const MAX_PACK_CHARS = 60_000;
@@ -172,6 +172,7 @@ export async function buildContextPack(input: BuildContextPackInput): Promise<Co
     check: candidate.check,
     detectorEvidence: candidate.evidence,
     instructions: input.instructions,
+    learnings: normalizeLearnings(context.learnings),
     hash: "",
   };
   pack.hash = hashContent(
@@ -180,6 +181,7 @@ export async function buildContextPack(input: BuildContextPackInput): Promise<Co
       reproduction: pack.reproduction,
       check: pack.check ?? null,
       diff: pack.diff,
+      learnings: pack.learnings ?? [],
     }),
   );
   return pack;
@@ -228,6 +230,7 @@ export async function buildSwarmContext(input: BuildSwarmContextInput): Promise<
     reproduction: "",
     detectorEvidence: [],
     instructions: input.instructions,
+    learnings: normalizeLearnings(context.learnings),
     hash: "",
   };
   pack.hash = hashContent(
@@ -236,6 +239,7 @@ export async function buildSwarmContext(input: BuildSwarmContextInput): Promise<
       diff,
       tests: pack.tests,
       profile: [profile.testCommand ?? "", profile.typecheckCommand ?? "", profile.buildCommand ?? ""],
+      learnings: pack.learnings ?? [],
     }),
   );
   return pack;
@@ -252,6 +256,8 @@ export function renderSwarmContext(pack: ContextPack): string {
   if (pack.routes.length > 0) blocks.push(`### Routes\n- ${pack.routes.join("\n- ")}`);
   if (pack.symbols.length > 0) blocks.push(`### Symbols changed by this PR\n- ${pack.symbols.join("\n- ")}`);
   if (pack.instructions) blocks.push(`### Reviewer instructions\n${truncate(pack.instructions, 800)}`);
+  const learnings = renderLearnings(pack.learnings);
+  if (learnings) blocks.push(`### Repository learnings (follow these)\n${learnings}`);
   blocks.push('Use the read-only tools (read_file, list_dir, find_files, search_code, get_symbols, find_references, get_tests_for, read_test, git_diff) to inspect anything that is not shown here.');
   return blocks.join("\n\n");
 }
@@ -272,5 +278,7 @@ export function renderContextPack(pack: ContextPack): string {
   if (pack.reproduction) blocks.push(`### Reproduction evidence (pre-fix)\n${pack.reproduction}`);
   if (pack.detectorEvidence.length > 0) blocks.push(`### Evidence anchors\n- ${pack.detectorEvidence.join("\n- ")}`);
   if (pack.instructions) blocks.push(`### Reviewer instructions\n${truncate(pack.instructions, 800)}`);
+  const learnings = renderLearnings(pack.learnings);
+  if (learnings) blocks.push(`### Repository learnings (follow these)\n${learnings}`);
   return blocks.join("\n\n");
 }

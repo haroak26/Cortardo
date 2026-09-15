@@ -34,6 +34,34 @@ export function truncate(value: string, max: number): string {
   return `${value.slice(0, max)}\n... [truncated ${value.length - max} chars]`;
 }
 
+const MAX_LEARNINGS = 20;
+const MAX_LEARNING_CHARS = 300;
+
+/** Trim, dedupe and bound repository learnings before they enter any prompt. */
+export function normalizeLearnings(learnings?: string[]): string[] {
+  if (!Array.isArray(learnings)) return [];
+  const seen = new Set<string>();
+  const items: string[] = [];
+  for (const raw of learnings) {
+    const value = String(raw ?? "").trim().replace(/\s+/g, " ");
+    if (!value) continue;
+    const item = value.length > MAX_LEARNING_CHARS ? `${value.slice(0, MAX_LEARNING_CHARS - 3)}...` : value;
+    const key = item.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    items.push(item);
+    if (items.length >= MAX_LEARNINGS) break;
+  }
+  return items;
+}
+
+/** Renders bounded learnings for prompt injection; undefined when there are none. */
+export function renderLearnings(learnings?: string[], maxChars = 1_200): string | undefined {
+  const items = normalizeLearnings(learnings);
+  if (items.length === 0) return undefined;
+  return truncate(items.map((item) => `- ${item}`).join("\n"), maxChars);
+}
+
 export async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T, index: number) => Promise<R>): Promise<R[]> {
   const results: R[] = new Array(items.length);
   let cursor = 0;

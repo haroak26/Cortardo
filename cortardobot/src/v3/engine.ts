@@ -13,7 +13,7 @@ import { ModelRouter, preflightModels } from "./models";
 import { MemorySandbox } from "./sandbox-memory";
 import type { RepoProfile, Sandbox } from "./sandbox";
 import type { CacheStatsSnapshot, Candidate, ContextPack, ModelClient, ReviewRequest, ReviewResult, StageEvent, SwarmReport } from "./types";
-import { createLogger, hashContent, withTimeout, type Logger } from "./util";
+import { createLogger, hashContent, normalizeLearnings, stableStringify, withTimeout, type Logger } from "./util";
 import { cacheKey } from "./cache/keys";
 import { emptyCacheStats, type CacheStore } from "./cache/store";
 import { buildContextPack, buildSwarmContext } from "./agent/context-pack";
@@ -170,6 +170,11 @@ export class CortadoV3Engine {
 
     try {
       const context = analyzeChanges(request);
+      const learnings = normalizeLearnings(request.learnings);
+      if (learnings.length > 0) context.learnings = learnings;
+      const settingsFingerprint = hashContent(
+        stableStringify({ instructions: request.settings?.instructions ?? "", learnings }),
+      );
       emit("change_intelligence", "completed", `${context.files.length} changed file(s), +${context.additions}/-${context.deletions}`);
       timings.change_intelligence = 0;
       const detectors = runDetectors(context);
@@ -242,7 +247,7 @@ export class CortadoV3Engine {
           repo: repoKey,
           headSha,
           fileHashes,
-          payload: { profile: [profile.testCommand ?? "", profile.typecheckCommand ?? "", profile.buildCommand ?? ""] },
+          payload: { profile: [profile.testCommand ?? "", profile.typecheckCommand ?? "", profile.buildCommand ?? ""], settings: settingsFingerprint },
         });
         const cachedPack = await readCache<ContextPack>("swarm_context", swarmContextKey);
         if (cachedPack && Array.isArray(cachedPack.files) && cachedPack.hash) {
@@ -269,7 +274,7 @@ export class CortadoV3Engine {
         headSha,
         fileHashes,
         model: models.luna,
-        payload: { detectors: detectors.map((candidate) => candidate.id), title: request.pr.title, turns: config.budgets.maxSwarmTurns },
+        payload: { detectors: detectors.map((candidate) => candidate.id), title: request.pr.title, turns: config.budgets.maxSwarmTurns, settings: settingsFingerprint },
       });
       const cachedSwarm = await readCache<Candidate[] | { candidates: Candidate[]; report?: SwarmReport }>("swarm", swarmKey);
       let lunaCandidates: Candidate[];
@@ -331,7 +336,7 @@ export class CortadoV3Engine {
         headSha,
         fileHashes,
         model: models.terra,
-        payload: { candidates: candidates.map((candidate) => [candidate.id, candidate.severity, candidate.evidence]), maxToProve: config.budgets.maxToProve },
+        payload: { candidates: candidates.map((candidate) => [candidate.id, candidate.severity, candidate.evidence]), maxToProve: config.budgets.maxToProve, settings: settingsFingerprint },
       });
       const cachedJudge = await readCache<{ decisions: ReviewResult["decisions"]; source: string }>("judge", judgeKey);
       let judge;
@@ -422,7 +427,7 @@ export class CortadoV3Engine {
           repo: repoKey,
           headSha,
           fileHashes: candidate.file ? { [candidate.file]: fileHash } : {},
-          payload: { candidateId: candidate.id, pack: ENGINE_VERSION },
+          payload: { candidateId: candidate.id, pack: ENGINE_VERSION, settings: settingsFingerprint },
         });
         const hit = await readCache<ContextPack>("context_pack", key);
         if (hit && Array.isArray(hit.files) && hit.hash) {
@@ -503,6 +508,7 @@ export class CortadoV3Engine {
             finding.verification?.passed ?? false,
             finding.repair?.finalPatch ? hashContent(finding.repair.finalPatch) : "",
           ]),
+          settings: settingsFingerprint,
         },
       });
       const cachedReviews = await readCache<ReviewResult["reviews"]>("final_review", reviewKey);
@@ -519,6 +525,7 @@ export class CortadoV3Engine {
               findings.map((finding) => ({ candidate: finding.candidate, proof: finding.proof, repair: finding.repair, verification: finding.verification })),
               modelRouter,
               logger,
+              learnings,
             ),
           config.budgets.astraMs,
           [],

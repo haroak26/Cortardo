@@ -243,6 +243,9 @@ async function processRun(job: QueuedJob): Promise<void> {
       (repositorySettings.reasoning as Partial<Record<"luna" | "terra" | "astra", ReasoningEffort>> | undefined) ??
       resolveReasoning();
     const instructions = input.instructions ?? (typeof repositorySettings.instructions === "string" ? repositorySettings.instructions : undefined);
+    const learnings = Array.isArray(repositorySettings.learnings)
+      ? repositorySettings.learnings.filter((item): item is string => typeof item === "string")
+      : [];
 
     const config = resolveV3Config({ mode: "live", models });
     const request: ReviewRequest = {
@@ -267,7 +270,7 @@ async function processRun(job: QueuedJob): Promise<void> {
       },
       files: changedFiles,
       rules: [],
-      learnings: [],
+      learnings,
       settings: {
         autoCommitFixes: false,
         models,
