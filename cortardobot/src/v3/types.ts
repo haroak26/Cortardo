@@ -1,4 +1,11 @@
+import type { ModelSelection, ReasoningEffort } from "../../../shared/models.ts";
+
+export type { ModelSelection, ReasoningEffort };
+
 export type Severity = "critical" | "high" | "medium" | "low" | "info";
+
+/** Honest terminal state of a finding. Published text must match exactly. */
+export type FindingState = "VERIFIED_FIX" | "UNRESOLVED" | "UNSUPPORTED" | "FAILED";
 
 export type Classification = "AUTH" | "API" | "DATABASE" | "UI" | "PERFORMANCE" | "CONFIG" | "UNKNOWN";
 
@@ -45,7 +52,14 @@ export interface ReviewRequest {
   files: ChangedFileInput[];
   rules?: string[];
   learnings?: string[];
-  settings?: { autoCommitFixes?: boolean };
+  settings?: {
+    autoCommitFixes?: boolean;
+    /** Per-run model selection (usually taken from repository settings). */
+    models?: Partial<Record<"luna" | "terra" | "astra", string>>;
+    reasoning?: Partial<Record<"luna" | "terra" | "astra", ReasoningEffort>>;
+    /** Reviewer instructions supplied by a human or the app. */
+    instructions?: string;
+  };
   budgets?: Partial<BudgetConfig>;
 }
 
@@ -58,12 +72,26 @@ export interface BudgetConfig {
   repairMs: number;
   verifyMs: number;
   astraMs: number;
+  /** Budget for the baseline test-suite run captured at setup; 0 disables it. */
+  baselineMs: number;
   maxModelCalls: number;
   maxRepairAttempts: number;
   maxCandidates: number;
   maxToProve: number;
   maxRepairs: number;
   maxBrowserChecks: number;
+  /** Model-driven repair attempts before the deterministic fallback (default 2). */
+  maxAgentAttempts: number;
+  /** Model turns allowed within a single repair attempt (default 3). */
+  maxAgentTurns: number;
+  /** Tool calls allowed within a single turn (default 4). */
+  maxToolCallsPerTurn: number;
+  /** Investigation turns allowed per swarm investigator (default 3). */
+  maxSwarmTurns: number;
+  /** Tool calls allowed per swarm investigator turn (default 3). */
+  maxSwarmToolsPerTurn: number;
+  /** Hard ceiling on provider spend for one run in USD; 0 disables the check. */
+  maxCostUsd: number;
 }
 
 export interface DiffLine {
@@ -176,6 +204,8 @@ export interface BrowserCheckResult {
   consoleErrors: string[];
   detail: string;
   durationMs: number;
+  /** True when the harness itself failed (navigation, click, timeout) — never a defect signal. */
+  harnessError?: boolean;
 }
 
 export interface ProofResult {
@@ -186,12 +216,39 @@ export interface ProofResult {
   reproduction: string;
   explanation: string;
   durationMs: number;
+  servedFromCache?: boolean;
 }
 
 export interface RepairEdit {
   path: string;
   find: string;
   replace: string;
+}
+
+export type FailureCategory =
+  | "apply_failed"
+  | "no_edit"
+  | "test_failed"
+  | "typecheck_failed"
+  | "reproduction_still_confirms"
+  | "harness_error"
+  | "model_error"
+  | "timeout"
+  | "unsafe";
+
+/** Structured "why did the attempt fail" report fed into the next attempt. */
+export interface FailureReport {
+  category: FailureCategory;
+  /** One-paragraph explanation of the failure (model-diagnosed when available). */
+  summary: string;
+  /** Truncated failing output / apply reason used as evidence. */
+  evidence: string;
+  /** Diff produced by the failed attempt, when it applied edits. */
+  attemptedDiff?: string;
+  /** Files the failed attempt touched. */
+  files: string[];
+  /** Materially different approach the next attempt must take. */
+  nextStrategy: string;
 }
 
 export interface RepairAttempt {
@@ -201,9 +258,17 @@ export interface RepairAttempt {
   applied: boolean;
   applyReason?: string;
   diagnosis?: string;
+  /** Structured failure report for this attempt (3.2). */
+  failure?: FailureReport;
   testPassed: boolean;
   testOutput?: string;
   exit?: RepairExit;
+  /** Agent turns used in this attempt. */
+  turns?: number;
+  /** Tool calls executed in this attempt. */
+  tools?: number;
+  /** True when the attempt's edit produced no content change (rejected). */
+  noop?: boolean;
 }
 
 export interface RepairResult {
@@ -216,6 +281,9 @@ export interface RepairResult {
   durationMs: number;
   toolCalls: number;
   reason: string;
+  agentTurns?: number;
+  servedFromCache?: boolean;
+  transcript?: AgentTranscript;
 }
 
 export interface VerificationStep {
@@ -252,6 +320,148 @@ export interface Finding {
   review?: AstraReview;
 }
 
+// ── Agentic repair ──────────────────────────────────────────────────────────
+
+export type ToolName =
+  | "read_file"
+  | "list_dir"
+  | "find_files"
+  | "search_code"
+  | "get_symbols"
+  | "find_references"
+  | "get_tests_for"
+  | "read_test"
+  | "run_test_file"
+  | "run_typecheck"
+  | "run_build"
+  | "apply_edit"
+  | "git_diff"
+  | "write_probe"
+  | "run_probe"
+  | "run_reproduction"
+  | "finish";
+
+export interface ToolCall {
+  tool: ToolName;
+  args: Record<string, unknown>;
+}
+
+export interface ToolObservation {
+  tool: ToolName;
+  ok: boolean;
+  summary: string;
+  detail: string;
+  durationMs: number;
+}
+
+export interface AgentAction {
+  thought?: string;
+  actions?: ToolCall[];
+  strategy?: string;
+  rationale?: string;
+  done?: boolean;
+  summary?: string;
+}
+
+export interface AgentTurn {
+  turn: number;
+  thought?: string;
+  actions: ToolCall[];
+  observations: ToolObservation[];
+  modelId: string;
+  durationMs: number;
+}
+
+export interface AgentTranscript {
+  candidateId: string;
+  turns: AgentTurn[];
+  toolCalls: number;
+  truncated: boolean;
+}
+
+// ── Agentic swarm ───────────────────────────────────────────────────────────
+
+export interface SwarmAgentReport {
+  id: string;
+  kind: AgentKind;
+  title: string;
+  status: "completed" | "error" | "budget";
+  turns: number;
+  toolCalls: number;
+  hypotheses: number;
+  candidates: number;
+  durationMs: number;
+  error?: string;
+  transcript?: AgentTranscript;
+}
+
+export interface SwarmReport {
+  mode: "agentic" | "single-shot";
+  agents: SwarmAgentReport[];
+  hypotheses: number;
+  candidates: number;
+  durationMs: number;
+}
+
+export interface ContextPackFile {
+  path: string;
+  content: string;
+  numbered: string;
+  hash: string;
+  changed: boolean;
+}
+
+export interface ContextPack {
+  candidateId: string;
+  files: ContextPackFile[];
+  imports: string[];
+  symbols: string[];
+  tests: string[];
+  routes: string[];
+  diff: string;
+  reproduction: string;
+  check?: BrowserCheck;
+  detectorEvidence: string[];
+  instructions?: string;
+  hash: string;
+}
+
+// ── Cache ───────────────────────────────────────────────────────────────────
+
+export interface CacheHit<T> {
+  value: T;
+  key: string;
+  createdAt: number;
+  hits: number;
+  meta?: Record<string, unknown>;
+}
+
+export interface CacheSetInput<T> {
+  key: string;
+  kind: string;
+  value: T;
+  /** Optional TTL in milliseconds. */
+  ttlMs?: number;
+  meta?: Record<string, unknown>;
+}
+
+export interface CacheStatsSnapshot {
+  hits: number;
+  misses: number;
+  writes: number;
+  byKind: Record<string, { hits: number; misses: number; writes: number }>;
+  creditsSavedUsd: number;
+}
+
+export interface RepairCachePayload {
+  candidateId: string;
+  exit: RepairExit;
+  finalEdits: RepairEdit[];
+  finalPatch: string;
+  reason: string;
+  attempts: RepairAttempt[];
+}
+
 export interface StageEvent {
   stage: string;
   status: "started" | "completed" | "failed" | "skipped";
@@ -265,6 +475,8 @@ export interface Usage {
   byRole: Record<string, number>;
   tokensIn: number;
   tokensOut: number;
+  /** Tokens served from provider-side prompt cache (billed cheaper). */
+  cachedTokensIn: number;
   costUsd: number;
   modelMs: number;
 }
@@ -282,9 +494,14 @@ export interface ReviewResult {
   verifications: Record<string, VerificationReport>;
   findings: Finding[];
   reviews: AstraReview[];
+  swarm?: SwarmReport;
   events: StageEvent[];
   timings: Record<string, number>;
   usage: Usage;
+  models: ModelSelection;
+  cache: CacheStatsSnapshot;
+  degraded?: boolean;
+  degradedReason?: string;
   summary: {
     issuesFound: number;
     issuesConfirmed: number;
@@ -295,8 +512,17 @@ export interface ReviewResult {
     durationMs: number;
     modelCalls: number;
     costUsd: number;
+    cacheHits: number;
+    cacheMisses: number;
+    creditsSavedUsd: number;
+    maxAttempts: number;
   };
   markdown: string;
+}
+
+export interface ModelMessage {
+  role: "user" | "assistant";
+  content: string;
 }
 
 export interface ModelTask {
@@ -304,6 +530,8 @@ export interface ModelTask {
   kind: string;
   system: string;
   user: string;
+  /** Prior conversation turns (kept stable so provider prompt caching can apply). */
+  history?: ModelMessage[];
   expectJson?: boolean;
   timeoutMs?: number;
   maxTokens?: number;
@@ -316,6 +544,7 @@ export interface ModelResponse {
   model: string;
   tokensIn: number;
   tokensOut: number;
+  cachedTokensIn?: number;
   durationMs: number;
   costUsd?: number;
 }

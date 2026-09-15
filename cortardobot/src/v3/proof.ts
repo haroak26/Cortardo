@@ -6,6 +6,7 @@ export interface ProofDeps {
   sandbox: Sandbox;
   profile: RepoProfile;
   logger: Logger;
+  context?: PRContext;
   now?: () => number;
 }
 
@@ -18,6 +19,66 @@ function emptyResult(candidate: Candidate, status: ProofResult["status"], explan
     reproduction: explanation,
     explanation,
     durationMs: now() - started,
+  };
+}
+
+function isHarnessFailure(result: BrowserCheckResult | undefined): boolean {
+  if (!result) return true;
+  return Boolean(result.harnessError) || /failed to run|harness error/i.test(result.detail);
+}
+
+/** Source file -> test file that covers it, using the host test list. */
+export function relatedTestFile(candidate: Candidate, profile: RepoProfile, context?: PRContext): string | undefined {
+  if (!candidate.file || !context || !profile.testSingle) return undefined;
+  const base = candidate.file.split("/").pop()?.replace(/\.[^.]+$/, "") ?? "";
+  if (base.length < 3) return undefined;
+  const match = context.tests.find((test) => test.toLowerCase().includes(base.toLowerCase()));
+  return match;
+}
+
+function testCommandFor(candidate: Candidate, profile: RepoProfile, context?: PRContext): string | undefined {
+  const related = relatedTestFile(candidate, profile, context);
+  if (related) return profile.testSingle!(related);
+  if (candidate.suggestedProof === "existing_test" && profile.testCommand) return profile.testCommand;
+  return undefined;
+}
+
+/**
+ * Runs a browser batch and re-runs any check that passed. A single pass must
+ * never be the only evidence that a defect is gone; the confirmation run is
+ * authoritative and a harness error is reported as error, never as a pass.
+ */
+async function runBrowserBatchWithConfirmation(
+  entries: Array<{ id: string; check: NonNullable<Candidate["check"]> }>,
+  deps: ProofDeps,
+  appUrl: string,
+): Promise<Map<string, BrowserCheckResult>> {
+  const first = await deps.sandbox.browserChecks(entries, appUrl);
+  const byId = new Map(first.map((result) => [result.id, result]));
+  const passed = first.filter((result) => result.passed && !isHarnessFailure(result)).map((result) => result.id);
+  if (passed.length > 0) {
+    const again = await deps.sandbox.browserChecks(
+      entries.filter((entry) => passed.includes(entry.id)),
+      appUrl,
+    );
+    for (const result of again) byId.set(result.id, result);
+  }
+  return byId;
+}
+
+function browserAttempt(candidate: Candidate, result: BrowserCheckResult, confirmed: boolean): ProofAttempt {
+  return {
+    strategy: "browser",
+    command: `playwright ${candidate.check?.label ?? "check"} @ ${candidate.check?.path ?? "/"}${candidate.check?.clickText ? ` (click "${candidate.check.clickText}")` : ""}`,
+    exitCode: confirmed ? 1 : 0,
+    timedOut: false,
+    output: truncate(
+      [result.detail, ...result.pageErrors.map((error) => `[pageerror] ${error}`), ...result.consoleErrors.slice(0, 3).map((error) => `[console] ${error}`)].join("\n"),
+      2400,
+    ),
+    matched: confirmed,
+    durationMs: result.durationMs,
+    checks: [result],
   };
 }
 
@@ -39,49 +100,36 @@ export async function proveCandidates(
     try {
       deps.logger.info(`proof: starting app for ${browserCandidates.length} browser check(s)`);
       app = await deps.sandbox.startApp({ port: 4173, readyPath: browserCandidates[0].check?.path });
-      const checks = browserCandidates.map((candidate) => ({ id: candidate.id, check: candidate.check! }));
       const started = now();
-      const checkResults = await deps.sandbox.browserChecks(checks, app.url);
+      const checkResults = await runBrowserBatchWithConfirmation(
+        browserCandidates.map((candidate) => ({ id: candidate.id, check: candidate.check! })),
+        deps,
+        app.url,
+      );
       const duration = now() - started;
-      const byId = new Map<string, BrowserCheckResult>(checkResults.map((result) => [result.id, result]));
       for (const candidate of browserCandidates) {
-        const result = byId.get(candidate.id);
-        if (!result || /failed to run/.test(result.detail)) {
-          results.push(
-            emptyResult(candidate, "error", `browser check could not run: ${result?.detail ?? "no result"}`, startedAll, now),
-          );
+        const result = checkResults.get(candidate.id);
+        if (isHarnessFailure(result)) {
+          results.push(emptyResult(candidate, "error", `browser check could not run: ${result?.detail ?? "no result"}`, startedAll, now));
           continue;
         }
-        const confirmed = !result.passed;
-        const attempt: ProofAttempt = {
-          strategy: "browser",
-          command: `playwright ${candidate.check!.label} @ ${candidate.check!.path}${candidate.check!.clickText ? ` (click "${candidate.check!.clickText}")` : ""}`,
-          exitCode: confirmed ? 1 : 0,
-          timedOut: false,
-          output: truncate(
-            [result.detail, ...result.pageErrors.map((error) => `[pageerror] ${error}`), ...result.consoleErrors.slice(0, 3).map((error) => `[console] ${error}`)].join("\n"),
-            2400,
-          ),
-          matched: confirmed,
-          durationMs: result.durationMs,
-          checks: [result],
-        };
+        const confirmed = !result!.passed;
         results.push({
           candidateId: candidate.id,
           status: confirmed ? "confirmed" : "disproven",
           strategy: "browser",
-          attempts: [attempt],
+          attempts: [browserAttempt(candidate, result!, confirmed)],
           reproduction: truncate(
-            `${candidate.check!.label} at ${candidate.check!.path}\n${result.detail}${result.pageErrors.length > 0 ? `\n${result.pageErrors[0]}` : ""}`,
+            `${candidate.check!.label} at ${candidate.check!.path}\n${result!.detail}${result!.pageErrors.length > 0 ? `\n${result!.pageErrors[0]}` : ""}`,
             900,
           ),
           explanation: confirmed
-            ? `Reproduced in a real browser: ${result.detail}`
-            : `Browser check passed on the PR head; the claim did not reproduce: ${result.detail}`,
-          durationMs: result.durationMs,
+            ? `Reproduced in a real browser: ${result!.detail}`
+            : `Browser check passed twice on the PR head; the claim did not reproduce: ${result!.detail}`,
+          durationMs: result!.durationMs,
         });
       }
-      appLog = checkResults
+      appLog = [...checkResults.values()]
         .map((result) => `${result.path}: ${result.detail}${result.pageErrors.length > 0 ? ` | ${result.pageErrors[0].split("\n")[0]}` : ""}`)
         .join("\n");
       deps.logger.info(`proof: browser batch finished in ${duration}ms`);
@@ -98,12 +146,15 @@ export async function proveCandidates(
 
   for (const candidate of testCandidates) {
     const started = now();
-    const testFile = candidate.file && deps.profile.testSingle ? candidate.file : undefined;
-    const command = testFile ? deps.profile.testSingle!(testFile) : deps.profile.testCommand!;
+    const command = testCommandFor(candidate, deps.profile, deps.context ?? context);
+    if (!command) {
+      results.push(emptyResult(candidate, "error", `no repository test covers ${candidate.file ?? "this candidate"}`, started, now));
+      continue;
+    }
     const exec = await deps.sandbox.exec(command, { cwd: deps.sandbox.root, timeoutMs: 120_000, allowFailure: true });
     const output = `${exec.stdout}\n${exec.stderr}`;
-    const basename = (candidate.file ?? "").split("/").pop() ?? "";
-    const mentionsTarget = basename.length > 0 && output.toLowerCase().includes(basename.toLowerCase().split(".")[0]);
+    const targetName = (candidate.file ?? "").split("/").pop()?.split(".")[0] ?? "";
+    const mentionsTarget = targetName.length > 0 && output.toLowerCase().includes(targetName.toLowerCase());
     const failed = exec.exitCode !== 0 && !exec.timedOut;
     const confirmed = failed && mentionsTarget;
     const attempt: ProofAttempt = {
@@ -117,7 +168,13 @@ export async function proveCandidates(
     };
     results.push({
       candidateId: candidate.id,
-      status: confirmed ? "confirmed" : exec.timedOut || /not found|no test files|missing script/i.test(output) ? "error" : failed ? "likely" : "disproven",
+      status: confirmed
+        ? "confirmed"
+        : exec.timedOut || /not found|no test files|missing script|no repository test/i.test(output)
+          ? "error"
+          : failed
+            ? "likely"
+            : "disproven",
       strategy: "targeted_test",
       attempts: [attempt],
       reproduction: `${command}\n${truncate(output, 700)}`,
@@ -141,63 +198,53 @@ export async function proveOne(candidate: Candidate, deps: ProofDeps): Promise<P
   const now = deps.now ?? (() => Date.now());
   const started = now();
   if (!candidate.check) {
-    if (candidate.suggestedProof === "targeted_test" && deps.profile.testCommand) {
-      const command = candidate.file && deps.profile.testSingle ? deps.profile.testSingle(candidate.file) : deps.profile.testCommand;
-      const exec = await deps.sandbox.exec(command, { cwd: deps.sandbox.root, timeoutMs: 120_000, allowFailure: true });
-      const failed = exec.exitCode !== 0 && !exec.timedOut;
-      return {
-        candidateId: candidate.id,
-        status: failed ? "likely" : "disproven",
-        strategy: "targeted_test",
-        attempts: [
-          {
-            strategy: "targeted_test",
-            command,
-            exitCode: exec.exitCode,
-            timedOut: exec.timedOut,
-            output: truncate(`${exec.stdout}\n${exec.stderr}`, 2000),
-            matched: failed,
-            durationMs: exec.durationMs,
-          },
-        ],
-        reproduction: `${command}\n${truncate(exec.stdout + exec.stderr, 600)}`,
-        explanation: failed ? "targeted test still failing" : "targeted test passes",
-        durationMs: now() - started,
-      };
+    const command = testCommandFor(candidate, deps.profile, deps.context);
+    if (!command) return emptyResult(candidate, "error", "no executable proof available", started, now);
+    const exec = await deps.sandbox.exec(command, { cwd: deps.sandbox.root, timeoutMs: 120_000, allowFailure: true });
+    if (exec.timedOut || /not found|no test files|missing script|no repository test/i.test(`${exec.stdout}\n${exec.stderr}`)) {
+      return emptyResult(candidate, "error", `targeted test could not run: ${truncate(exec.stderr || exec.stdout, 300)}`, started, now);
     }
-    return emptyResult(candidate, "error", "no executable proof available", started, now);
+    const failed = exec.exitCode !== 0;
+    return {
+      candidateId: candidate.id,
+      status: failed ? "likely" : "disproven",
+      strategy: "targeted_test",
+      attempts: [
+        {
+          strategy: "targeted_test",
+          command,
+          exitCode: exec.exitCode,
+          timedOut: exec.timedOut,
+          output: truncate(`${exec.stdout}\n${exec.stderr}`, 2000),
+          matched: failed,
+          durationMs: exec.durationMs,
+        },
+      ],
+      reproduction: `${command}\n${truncate(exec.stdout + exec.stderr, 600)}`,
+      explanation: failed ? "targeted test still failing" : "targeted test passes",
+      durationMs: now() - started,
+    };
   }
 
   let app: { url: string; stop: () => Promise<void> } | undefined;
   try {
     app = await deps.sandbox.startApp({ port: 4173, readyPath: candidate.check.path });
-    const [result] = await deps.sandbox.browserChecks([{ id: candidate.id, check: candidate.check }], app.url);
-    if (!result || /failed to run/.test(result.detail)) {
+    const results = await runBrowserBatchWithConfirmation([{ id: candidate.id, check: candidate.check }], deps, app.url);
+    const result = results.get(candidate.id);
+    if (isHarnessFailure(result)) {
       return emptyResult(candidate, "error", `browser check could not run: ${result?.detail ?? "no result"}`, started, now);
     }
-    const confirmed = !result.passed;
+    const confirmed = !result!.passed;
     return {
       candidateId: candidate.id,
       status: confirmed ? "confirmed" : "disproven",
       strategy: "browser",
-      attempts: [
-        {
-          strategy: "browser",
-          command: `playwright ${candidate.check.label} @ ${candidate.check.path}`,
-          exitCode: confirmed ? 1 : 0,
-          timedOut: false,
-          output: truncate(
-            [result.detail, ...result.pageErrors.map((error) => `[pageerror] ${error}`), ...result.consoleErrors.slice(0, 2)].join("\n"),
-            2000,
-          ),
-          matched: confirmed,
-          durationMs: result.durationMs,
-          checks: [result],
-        },
-      ],
-      reproduction: `${candidate.check.label} at ${candidate.check.path}\n${result.detail}${result.pageErrors[0] ? `\n${result.pageErrors[0]}` : ""}`,
-      explanation: confirmed ? `Reproduction still fails: ${result.detail}` : `Reproduction passes: ${result.detail}`,
-      durationMs: result.durationMs,
+      attempts: [browserAttempt(candidate, result!, confirmed)],
+      reproduction: `${candidate.check.label} at ${candidate.check.path}\n${result!.detail}${result!.pageErrors[0] ? `\n${result!.pageErrors[0]}` : ""}`,
+      explanation: confirmed
+        ? `Reproduction still fails: ${result!.detail}`
+        : `Reproduction passes twice on a fresh boot: ${result!.detail}`,
+      durationMs: result!.durationMs,
     };
   } catch (error) {
     return emptyResult(candidate, "error", `app boot failed: ${error instanceof Error ? error.message : String(error)}`, started, now);

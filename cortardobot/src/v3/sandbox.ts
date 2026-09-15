@@ -31,10 +31,22 @@ export interface Sandbox {
   cleanup(): Promise<void>;
 }
 
+/**
+ * Playwright check script executed inside the sandbox.
+ *
+ * Reliability rules (3.1):
+ * - never use fixed sleeps as the primary signal; poll with timeouts,
+ * - harness failures are explicit (`harnessError`) and never count as a
+ *   defect signal,
+ * - a navigation is retried once before giving up.
+ */
 export function buildBrowserScript(): string {
   return `const fs = require("fs");
-const path = require("path");
 const { chromium } = require("playwright");
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 (async () => {
   const input = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
@@ -53,31 +65,74 @@ const { chromium } = require("playwright");
       if (message.type() === "error") consoleErrors.push(message.text());
     });
     let passed = false;
+    let assertionPassed = false;
+    let harnessError = false;
     let detail = "";
+    const timeoutMs = typeof check.timeoutMs === "number" && check.timeoutMs > 0 ? check.timeoutMs : 20000;
     try {
-      await page.goto(baseUrl + check.path, { waitUntil: "load", timeout: 45000 });
-      await page.waitForTimeout(1800);
-      if (check.clickText) {
-        await page.getByText(check.clickText, { exact: false }).first().click({ timeout: 15000 });
-        await page.waitForTimeout(1200);
+      let loaded = false;
+      let lastError = "";
+      for (let attempt = 1; attempt <= 2 && !loaded; attempt++) {
+        try {
+          await page.goto(baseUrl + check.path, { waitUntil: "load", timeout: 45000 });
+          await page.waitForLoadState("networkidle", { timeout: 15000 }).catch(() => {});
+          await page
+            .waitForFunction("document.body && document.body.innerText && document.body.innerText.trim().length > 0", null, { timeout: 20000 })
+            .catch(() => {});
+          loaded = true;
+        } catch (error) {
+          lastError = String(error && error.message ? error.message : error);
+        }
       }
-      let assertionPassed = false;
+      if (!loaded) throw new Error("navigation failed: " + lastError);
+
+      if (check.clickText) {
+        const locator = page.getByText(check.clickText, { exact: false }).first();
+        await locator.waitFor({ state: "visible", timeout: timeoutMs });
+        await locator.click({ timeout: timeoutMs });
+        await sleep(350);
+      }
+
       if (check.assert.type === "noPageError") {
+        await sleep(1500);
         assertionPassed = pageErrors.length === 0;
       } else if (check.assert.type === "pathEquals") {
-        assertionPassed = new URL(page.url()).pathname === check.assert.value;
+        const expected = String(check.assert.value);
+        const deadline = Date.now() + timeoutMs;
+        let current = new URL(page.url()).pathname;
+        while (Date.now() < deadline && current !== expected) {
+          await sleep(250);
+          current = new URL(page.url()).pathname;
+        }
+        assertionPassed = current === expected;
       } else if (check.assert.type === "textContains") {
-        const body = (await page.locator("body").innerText({ timeout: 15000 })).toLowerCase();
-        assertionPassed = body.includes(String(check.assert.value).toLowerCase());
+        const needle = String(check.assert.value).toLowerCase();
+        const deadline = Date.now() + timeoutMs;
+        let body = "";
+        do {
+          body = (await page.locator("body").innerText().catch(() => "")) || "";
+          if (!body.toLowerCase().includes(needle)) await sleep(300);
+        } while (Date.now() < deadline && !body.toLowerCase().includes(needle));
+        assertionPassed = body.toLowerCase().includes(needle);
       } else if (check.assert.type === "textAbsent") {
-        const body = (await page.locator("body").innerText({ timeout: 15000 })).toLowerCase();
-        assertionPassed = !body.includes(String(check.assert.value).toLowerCase());
+        const needle = String(check.assert.value).toLowerCase();
+        await sleep(1500);
+        const body = (await page.locator("body").innerText().catch(() => "")) || "";
+        assertionPassed = !body.toLowerCase().includes(needle);
       }
+
       passed = check.expected === "pass" ? assertionPassed : !assertionPassed;
-      detail = "assertion " + (assertionPassed ? "passed" : "failed") + " (expected " + check.expected + ") at " + page.url();
+      detail =
+        "assertion " +
+        (assertionPassed ? "passed" : "failed") +
+        " (expected " +
+        check.expected +
+        ") at " +
+        page.url();
     } catch (error) {
-      passed = check.expected === "fail";
-      detail = "error: " + String(error && error.message ? error.message : error).split("\\n")[0];
+      harnessError = true;
+      passed = false;
+      detail = "harness error: " + String(error && error.message ? error.message : error).split("\\n")[0];
     }
     results.push({
       id: entry.id,
@@ -87,8 +142,9 @@ const { chromium } = require("playwright");
       consoleErrors,
       detail,
       durationMs: Date.now() - started,
+      harnessError,
     });
-    await context.close();
+    await context.close().catch(() => {});
   }
   await browser.close();
   process.stdout.write(JSON.stringify({ results }));

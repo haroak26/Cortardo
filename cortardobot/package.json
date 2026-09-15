@@ -21,7 +21,9 @@
     "test:final": "node --import tsx --test tests/final/*.test.ts",
     "final": "node --import tsx scripts/run-final.ts",
     "test:hardening": "node --import tsx --test tests/hardening/*.test.ts",
-    "hardening": "node --import tsx scripts/run-hardening.ts"
+    "hardening": "node --import tsx scripts/run-hardening.ts",
+    "test:v3": "node --import tsx --test tests/v3/*.test.ts",
+    "verify:v3": "node --import tsx scripts/verify-v3.ts"
   },
   "dependencies": {
     "@langchain/core": "^1.2.11",

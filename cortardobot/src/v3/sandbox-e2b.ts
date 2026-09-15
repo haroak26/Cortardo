@@ -216,9 +216,22 @@ export class E2BSandboxInstance implements Sandbox {
     return result.stdout;
   }
 
+  private async resolveDevCommand(port: number): Promise<string> {
+    const hasVite = (await this.exists(`${this.root}/vite.config.ts`)) || (await this.exists(`${this.root}/vite.config.js`)) || (await this.exists(`${this.root}/vite.config.mjs`));
+    if (hasVite) return `npx vite --host 127.0.0.1 --port ${port} --strictPort --clearScreen false`;
+    const packageJson = await this.read(`${this.root}/package.json`).catch(() => "{}");
+    try {
+      const scripts = (JSON.parse(packageJson) as { scripts?: Record<string, string> }).scripts ?? {};
+      if (scripts.dev) return `npm run dev -- --host 127.0.0.1 --port ${port}`;
+    } catch {
+      // fall through to the vite default
+    }
+    return `npx vite --host 127.0.0.1 --port ${port} --strictPort --clearScreen false`;
+  }
+
   async startApp(options: { port?: number; command?: string; readyPath?: string } = {}): Promise<{ url: string; stop: () => Promise<void> }> {
     const port = options.port ?? 4173;
-    const command = options.command ?? `npx vite --host 127.0.0.1 --port ${port} --strictPort --clearScreen false`;
+    const command = options.command ?? (await this.resolveDevCommand(port));
     await this.exec("pkill -f 'vite' || true", { timeoutMs: 15_000, allowFailure: true }).catch(() => undefined);
     await new Promise((resolve) => setTimeout(resolve, 800));
     const handle = await this.box.commands.run(command, {
@@ -279,6 +292,7 @@ export class E2BSandboxInstance implements Sandbox {
         consoleErrors: [],
         detail: `browser check failed to run: ${error instanceof Error ? error.message : String(error)} ${result.stderr.slice(0, 200)}`,
         durationMs: 0,
+        harnessError: true,
       }));
     }
   }

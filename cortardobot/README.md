@@ -1,5 +1,12 @@
 # Cortado 2.0 — Fast Autonomous Code Review Engine
 
+> **CortardoBot 3.2 lives in `src/v3/` and is the production path.** It adds an agentic
+> read-only swarm, GPT-class model defaults, a tool-using repair agent, self-authored probes,
+> strict fix-verification invariants, a multi-layer cache and a crash-safe run queue. See
+> [`docs/cortardo-3.2.md`](../docs/cortardo-3.2.md) and
+> [`docs/cortardo-3.1.md`](../docs/cortardo-3.1.md). The sections below describe the
+> legacy 2.0 engine and its 1,048-case dry matrix.
+
 Cortado is an agentic code review engine that does not just review code. It **investigates → proves → fixes → fails → understands why → fixes again → verifies**.
 
 It is built on [LangGraph](https://langchain-ai.github.io/langgraphjs/) for a reliable, inspectable, customisable pipeline, and it runs **100% deterministically in dry mode** with zero AI API calls, which is what the 250-case dry test matrix exercises.

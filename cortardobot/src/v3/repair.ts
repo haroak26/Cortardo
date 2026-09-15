@@ -1,25 +1,13 @@
-import { z } from "zod";
-import type { Candidate, PRContext, ProofResult, RepairAttempt, RepairEdit, RepairExit, RepairResult } from "./types";
+import type { Candidate, ContextPack, PRContext, ProofResult, RepairAttempt, RepairCachePayload, RepairEdit, RepairExit, RepairResult } from "./types";
 import type { RepoProfile, Sandbox } from "./sandbox";
 import type { ModelRouter } from "./models";
-import { extractJson, truncate, type Logger } from "./util";
-import { renderNumberedFile, unifiedDiffFromEdits } from "./patch";
-import { assessEdits } from "./safety";
-
-const repairSchema = z.object({
-  strategy: z.string().min(3).max(300),
-  rationale: z.string().max(700).optional().default(""),
-  edits: z
-    .array(
-      z.object({
-        path: z.string().min(1),
-        find: z.string().min(1),
-        replace: z.string(),
-      }),
-    )
-    .min(1)
-    .max(4),
-});
+import type { CacheStore } from "./cache/store";
+import { cacheKey } from "./cache/keys";
+import { hashContent } from "./util";
+import { unifiedDiffFromEdits } from "./patch";
+import { buildContextPack } from "./agent/context-pack";
+import { createRepairRunMemory, runRepairAgent } from "./agent/loop";
+import type { Logger } from "./util";
 
 export interface RepairDeps {
   sandbox: Sandbox;
@@ -28,86 +16,35 @@ export interface RepairDeps {
   logger: Logger;
   maxAttempts: number;
   maxRepairs: number;
+  maxTurns: number;
+  maxToolsPerTurn: number;
   proveCandidate: (candidate: Candidate) => Promise<ProofResult>;
+  /** Engine-provided, cache-aware context pack builder. */
+  contextPackFor?: (candidate: Candidate, proof: ProofResult) => Promise<ContextPack>;
+  cache?: CacheStore;
+  cacheTtlMs?: number;
+  repo?: string;
+  headSha?: string;
+  modelId?: string;
+  instructions?: string;
+  costNow?: () => number;
   now?: () => number;
 }
 
-function systemPrompt(): string {
-  return [
-    "You are Terra, the autonomous repair engineer for an agentic code review bot.",
-    "Produce the smallest correct fix for the reported defect.",
-    "Return JSON only: {\"strategy\":\"...\",\"rationale\":\"...\",\"edits\":[{\"path\":\"...\",\"find\":\"...\",\"replace\":\"...\"}]}.",
-    "Requirements for every edit:",
-    "- path must be the exact file path shown in the numbered source below.",
-    "- find must be copied verbatim from the numbered source (WITHOUT the line-number prefix) and must appear exactly once in the file.",
-    "- replace is the corrected text; use an empty string to delete the matched text.",
-    "- Fix the root cause only. Never weaken, delete, or skip tests. Never touch lockfiles, CI workflows, or .env files.",
-    "- Prefer one minimal edit. If the defect is an injected debug statement, delete it.",
-  ].join("\n");
-}
-
-function userPrompt(candidate: Candidate, filePath: string, content: string, proof: ProofResult, previousDiagnosis: string | undefined, attempt: number): string {
-  return [
-    `## Defect`,
-    candidate.claim,
-    `Severity: ${candidate.severity} | Confidence: ${candidate.confidence}`,
-    `Evidence: ${candidate.evidence.join(", ")}`,
-    `Reproduction: ${truncate(proof.reproduction, 900)}`,
-    previousDiagnosis ? `## Why the previous attempt failed\n${previousDiagnosis}\nChange your strategy materially.` : "",
-    `## Source file ${filePath} (line numbers are NOT part of the file content)`,
-    renderNumberedFile(content),
-    `## Task`,
-    `Attempt ${attempt}. Return the JSON fix for ${filePath} now.`,
-  ]
-    .filter(Boolean)
-    .join("\n\n");
-}
-
-async function generateEdits(
-  candidate: Candidate,
-  filePath: string,
-  content: string,
-  proof: ProofResult,
-  previousDiagnosis: string | undefined,
-  attempt: number,
-  deps: RepairDeps,
-): Promise<{ strategy: string; rationale: string; edits: RepairEdit[] } | undefined> {
-  const response = await deps.models.complete({
-    role: "terra",
-    kind: "repair",
-    system: systemPrompt(),
-    user: userPrompt(candidate, filePath, content, proof, previousDiagnosis, attempt),
-    expectJson: true,
-    maxTokens: 6000,
-    label: `repair-${candidate.id}-attempt-${attempt}`,
-  });
-  const parsed = repairSchema.safeParse(extractJson(response.text));
-  if (!parsed.success) {
-    deps.logger.warn(`repair produced invalid JSON for ${candidate.id}`, { error: parsed.error.message.slice(0, 200) });
-    return undefined;
-  }
-  return { strategy: parsed.data.strategy, rationale: parsed.data.rationale ?? "", edits: parsed.data.edits };
-}
-
-async function diagnose(candidate: Candidate, output: string, models: ModelRouter, logger: Logger): Promise<string> {
-  try {
-    const response = await models.complete({
-      role: "terra",
-      kind: "repair_diagnosis",
-      system:
-        'You are Terra diagnosing a failed repair. Explain precisely why the fix did not work and propose a materially different strategy. Return JSON only: {"reason":"...","nextStrategy":"..."}.',
-      user: `Defect: ${candidate.claim}\nEvidence: ${candidate.evidence.join(", ")}\nObserved after applying the fix:\n${truncate(output, 2200)}`,
-      expectJson: true,
-      label: `diagnosis-${candidate.id}`,
-    });
-    const parsed = z
-      .object({ reason: z.string().max(500), nextStrategy: z.string().max(400) })
-      .safeParse(extractJson(response.text));
-    if (parsed.success) return `${parsed.data.reason} Next: ${parsed.data.nextStrategy}`;
-  } catch (error) {
-    logger.warn(`diagnosis failed for ${candidate.id}`, { error: error instanceof Error ? error.message : String(error) });
-  }
-  return "The fix did not make the reproduction pass. Re-read the exact current file content and change the approach materially.";
+function repairCacheParts(deps: RepairDeps, candidate: Candidate, originalContent: string, packHash: string) {
+  return {
+    repo: deps.repo,
+    headSha: deps.headSha,
+    model: deps.modelId,
+    fileHashes: candidate.file ? { [candidate.file]: hashContent(originalContent) } : {},
+    payload: {
+      candidateId: candidate.id,
+      claim: candidate.claim,
+      evidence: candidate.evidence,
+      check: candidate.check ?? null,
+      packHash,
+    },
+  };
 }
 
 export async function repairFindings(
@@ -119,6 +56,7 @@ export async function repairFindings(
   const now = deps.now ?? (() => Date.now());
   const byId = new Map(candidates.map((candidate) => [candidate.id, candidate]));
   const results: RepairResult[] = [];
+  const runMemory = createRepairRunMemory();
 
   for (const proof of confirmed) {
     const candidate = byId.get(proof.candidateId);
@@ -126,14 +64,9 @@ export async function repairFindings(
     if (results.length >= deps.maxRepairs) break;
     if (!candidate.file) continue;
     const started = now();
-    const attempts: RepairAttempt[] = [];
-    let exit: RepairExit | undefined;
-    let reason = "";
-    let finalEdits: RepairEdit[] | undefined;
-    let finalPatch: string | undefined;
-    let previousDiagnosis: string | undefined;
-    let originalContent = "";
+    const costBefore = deps.costNow?.() ?? 0;
 
+    let originalContent: string;
     try {
       originalContent = await deps.sandbox.read(candidate.file);
     } catch (error) {
@@ -141,7 +74,7 @@ export async function repairFindings(
         candidateId: candidate.id,
         severity: candidate.severity,
         exit: "UNRESOLVED",
-        attempts,
+        attempts: [],
         durationMs: now() - started,
         toolCalls: 0,
         reason: `could not read ${candidate.file}: ${error instanceof Error ? error.message : String(error)}`,
@@ -149,124 +82,144 @@ export async function repairFindings(
       continue;
     }
 
-    for (let attempt = 1; attempt <= deps.maxAttempts; attempt++) {
-      if (exit) break;
-      const content = await deps.sandbox.read(candidate.file).catch(() => originalContent);
-      let generated:
-        | { strategy: string; rationale: string; edits: RepairEdit[] }
-        | undefined;
-      try {
-        generated = await generateEdits(candidate, candidate.file, content, proof, previousDiagnosis, attempt, deps);
-      } catch (error) {
-        deps.logger.warn(`repair model call failed for ${candidate.id}`, { error: error instanceof Error ? error.message : String(error) });
-      }
+    let pack: ContextPack;
+    try {
+      pack = deps.contextPackFor
+        ? await deps.contextPackFor(candidate, proof)
+        : await buildContextPack({ candidate, context, sandbox: deps.sandbox, profile: deps.profile, proof, instructions: deps.instructions });
+    } catch (error) {
+      deps.logger.warn(`context pack failed for ${candidate.id}`, { error: error instanceof Error ? error.message : String(error) });
+      pack = {
+        candidateId: candidate.id,
+        files: [],
+        imports: [],
+        symbols: [],
+        tests: [],
+        routes: [],
+        diff: "",
+        reproduction: proof.reproduction,
+        check: candidate.check,
+        detectorEvidence: candidate.evidence,
+        hash: hashContent(proof.reproduction),
+      };
+    }
 
-      if (attempt >= 2 && candidate.autoFix && candidate.autoFix.length > 0) {
-        deps.logger.info(`using deterministic fix for ${candidate.id} after a failed model attempt`);
-        generated = { strategy: "Apply the deterministic root-cause fix derived from the diff", rationale: "Engine-derived exact edit", edits: candidate.autoFix };
-      }
-      if (!generated || generated.edits.length === 0) {
-        attempts.push({ attempt, strategy: "none", edits: [], applied: false, applyReason: "model returned no editable fix", testPassed: false });
-        previousDiagnosis = "The model returned no usable edit. Produce a minimal exact find/replace edit copied from the current numbered file content.";
-        continue;
-      }
+    const parts = repairCacheParts(deps, candidate, originalContent, pack.hash);
+    const key = cacheKey("repair", parts);
 
-      const safety = assessEdits(generated.edits);
-      if (!safety.ok) {
-        attempts.push({
-          attempt,
-          strategy: generated.strategy,
-          edits: generated.edits,
-          applied: false,
-          applyReason: `rejected as unsafe: ${safety.reason}`,
-          testPassed: false,
-          exit: "UNSAFE",
-        });
-        exit = "UNSAFE";
-        reason = `fix rejected as unsafe: ${safety.reason}`;
-        break;
+    if (deps.cache) {
+      const hit = await deps.cache.get<RepairCachePayload>(key);
+      if (hit && hit.value.exit === "VERIFIED" && hit.value.finalEdits.length > 0) {
+        const apply = await deps.sandbox.applyEdits(hit.value.finalEdits);
+        if (apply.ok) {
+          const recheck = await deps.proveCandidate(candidate);
+          if (recheck.status === "disproven") {
+            const finalPatch = unifiedDiffFromEdits(candidate.file, originalContent, hit.value.finalEdits);
+            if (finalPatch.includes("@@")) {
+              const saved = typeof hit.meta?.costUsd === "number" ? hit.meta.costUsd : 0;
+              if (saved > 0) deps.cache.recordSaved(saved);
+              results.push({
+                candidateId: candidate.id,
+                severity: candidate.severity,
+                exit: "VERIFIED",
+                attempts: [
+                  {
+                    attempt: 1,
+                    strategy: "cached verified fix re-applied and re-verified",
+                    edits: hit.value.finalEdits,
+                    applied: true,
+                    testPassed: true,
+                    testOutput: recheck.explanation,
+                    exit: "VERIFIED",
+                  },
+                ],
+                finalPatch,
+                finalEdits: hit.value.finalEdits,
+                durationMs: now() - started,
+                toolCalls: 0,
+                reason: "cached fix re-verified against the current file content",
+                servedFromCache: true,
+              });
+              continue;
+            }
+          }
+        }
+        await deps.cache.delete(key);
+      } else {
+        deps.cache.recordMiss("repair");
       }
+    }
 
-      const apply = await deps.sandbox.applyEdits(generated.edits);
-      if (!apply.ok) {
-        const failure = apply.failed.map((entry) => `${entry.edit.path}: ${entry.reason}`).join("; ");
-        const diagnosis = await diagnose(candidate, `Apply failure: ${failure}`, deps.models, deps.logger);
-        attempts.push({
-          attempt,
-          strategy: generated.strategy,
-          edits: generated.edits,
-          applied: false,
-          applyReason: failure,
-          diagnosis,
-          testPassed: false,
-        });
-        previousDiagnosis = `The edit could not be applied: ${failure}. ${diagnosis}`;
-        continue;
-      }
-
-      const verified = await deps.proveCandidate(candidate);
-      if (verified.status === "confirmed") {
-        attempts.push({
-          attempt,
-          strategy: generated.strategy,
-          edits: generated.edits,
-          applied: true,
-          testPassed: false,
-          testOutput: verified.explanation,
-        });
-        exit = "UNRESOLVED";
-        reason = "the fix did not change the reproduction";
-        previousDiagnosis = "The edit applied but the reproduction still fails. The defect is elsewhere; target a different statement.";
-        continue;
-      }
-
-      if (verified.status === "error" || verified.status === "likely") {
-        const diagnosis = await diagnose(candidate, verified.explanation, deps.models, deps.logger);
-        attempts.push({
-          attempt,
-          strategy: generated.strategy,
-          edits: generated.edits,
-          applied: true,
-          testPassed: false,
-          testOutput: verified.explanation,
-          diagnosis,
-        });
-        previousDiagnosis = `Reproduction was inconclusive after the edit: ${verified.explanation}. ${diagnosis}`;
-        continue;
-      }
-
-      attempts.push({
-        attempt,
-        strategy: generated.strategy,
-        edits: generated.edits,
-        applied: true,
-        testPassed: true,
-        testOutput: verified.explanation,
-        exit: "VERIFIED",
+    let outcome;
+    try {
+      outcome = await runRepairAgent({
+        sandbox: deps.sandbox,
+        profile: deps.profile,
+        models: deps.models,
+        candidate,
+        context,
+        proof,
+        contextPack: pack,
+        originalContent,
+        logger: deps.logger,
+        maxAttempts: deps.maxAttempts,
+        maxTurns: Math.max(1, deps.maxTurns),
+        maxToolsPerTurn: Math.max(1, deps.maxToolsPerTurn),
+        proveCandidate: () => deps.proveCandidate(candidate),
+        memory: runMemory,
+        now: deps.now,
       });
-      exit = "VERIFIED";
-      finalEdits = generated.edits;
-      finalPatch = unifiedDiffFromEdits(candidate.file, originalContent, generated.edits);
-      reason = `fix applied and the reproduction passes after ${attempt} attempt(s)`;
-      break;
+    } catch (error) {
+      await deps.sandbox.write(candidate.file, originalContent).catch(() => undefined);
+      results.push({
+        candidateId: candidate.id,
+        severity: candidate.severity,
+        exit: "UNRESOLVED",
+        attempts: [],
+        durationMs: now() - started,
+        toolCalls: 0,
+        reason: `repair agent crashed: ${error instanceof Error ? error.message : String(error)}`,
+      });
+      continue;
     }
 
-    if (!exit) {
-      exit = "UNRESOLVED";
-      reason = `fix not verified within ${deps.maxAttempts} attempt(s)`;
-    }
-
-    results.push({
+    const result: RepairResult = {
       candidateId: candidate.id,
       severity: candidate.severity,
-      exit,
-      attempts,
-      finalPatch,
-      finalEdits,
+      exit: outcome.exit,
+      attempts: outcome.attempts,
+      finalPatch: outcome.finalPatch,
+      finalEdits: outcome.finalEdits,
       durationMs: now() - started,
-      toolCalls: attempts.length,
-      reason,
-    });
+      toolCalls: outcome.toolCalls,
+      reason: outcome.reason,
+      agentTurns: outcome.turns,
+      transcript: outcome.transcript,
+    };
+    results.push(result);
+
+    if (deps.cache) {
+      if (outcome.exit === "VERIFIED" && outcome.finalEdits && outcome.finalPatch?.includes("@@")) {
+        const cost = Math.max(0, (deps.costNow?.() ?? costBefore) - costBefore);
+        const payload: RepairCachePayload = {
+          candidateId: candidate.id,
+          exit: "VERIFIED",
+          finalEdits: outcome.finalEdits,
+          finalPatch: outcome.finalPatch,
+          reason: outcome.reason,
+          attempts: outcome.attempts,
+        };
+        await deps.cache.set({
+          key,
+          kind: "repair",
+          value: payload,
+          ttlMs: deps.cacheTtlMs,
+          meta: { costUsd: Number(cost.toFixed(6)) },
+        });
+      } else {
+        await deps.cache.delete(key);
+      }
+    }
   }
 
   return results;

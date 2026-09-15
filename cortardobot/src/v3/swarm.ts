@@ -1,50 +1,20 @@
-import type { AgentKind, Candidate, PRContext, ReviewRequest, BrowserCheck } from "./types";
+import type { Candidate, ContextPack, PRContext, ReviewRequest, SwarmAgentReport, SwarmReport } from "./types";
 import type { ModelRouter } from "./models";
-import { mapLimit, stableId, extractJson, truncate, type Logger } from "./util";
+import type { RepoProfile, Sandbox } from "./sandbox";
+import { mapLimit, extractJson, truncate, type Logger } from "./util";
 import { renderCompactDiff } from "./patch";
-import { routeForPage } from "./intelligence";
-import { z } from "zod";
+import {
+  candidateFromHypothesis,
+  hypothesisListSchema,
+  runSwarmAgent,
+  type SwarmAgentSpec,
+  type SwarmHypothesis,
+} from "./swarm-agent";
 
-const hypothesisSchema = z.object({
-  claim: z
-    .string()
-    .min(8)
-    .transform((value) => (value.length > 499 ? `${value.slice(0, 496)}...` : value)),
-  evidence: z
-    .array(z.string().min(3))
-    .min(1)
-    .transform((entries) => entries.slice(0, 6)),
-  severity: z
-    .string()
-    .transform((value) => value.trim().toLowerCase())
-    .pipe(z.enum(["critical", "high", "medium", "low", "info"]).catch("medium")),
-  confidence: z
-    .union([z.number(), z.string()])
-    .transform((value) => {
-      const numeric = typeof value === "number" ? value : Number(String(value).replace("%", ""));
-      if (!Number.isFinite(numeric)) return 0.5;
-      return numeric > 1 ? numeric / 100 : numeric;
-    })
-    .pipe(z.number().min(0).max(1).catch(0.5)),
-  suggestedExperiment: z
-    .string()
-    .optional()
-    .default("")
-    .transform((value) => value.slice(0, 300)),
-});
+export { inferCheck, candidateFromHypothesis, hypothesisListSchema, READ_ONLY_TOOLS } from "./swarm-agent";
+export type { SwarmAgentSpec, SwarmHypothesis } from "./swarm-agent";
 
-const hypothesisListSchema = z.object({
-  hypotheses: z.array(hypothesisSchema).max(4),
-});
-
-interface AgentSpec {
-  id: string;
-  kind: AgentKind;
-  title: string;
-  focus: string;
-}
-
-const AGENTS: Record<string, AgentSpec> = {
+const AGENTS: Record<string, SwarmAgentSpec> = {
   bug: {
     id: "luna-bug",
     kind: "bug",
@@ -71,8 +41,8 @@ const AGENTS: Record<string, AgentSpec> = {
   },
 };
 
-export function selectAgents(context: PRContext): AgentSpec[] {
-  const selected: AgentSpec[] = [AGENTS.bug, AGENTS.regression];
+export function selectAgents(context: PRContext): SwarmAgentSpec[] {
+  const selected: SwarmAgentSpec[] = [AGENTS.bug, AGENTS.regression];
   const hasClient = context.files.some((file) => /\.(tsx|jsx)$/.test(file.path));
   const hasAuth = context.classification.includes("AUTH") || context.files.some((file) => /auth|session|login/i.test(file.path));
   if (hasClient) selected.push(AGENTS.ui);
@@ -84,7 +54,7 @@ export function selectAgents(context: PRContext): AgentSpec[] {
   return selected.slice(0, 4);
 }
 
-function systemPrompt(agent: AgentSpec): string {
+function singleShotSystemPrompt(agent: SwarmAgentSpec): string {
   return [
     `You are the ${agent.title} in an autonomous code review swarm. Focus: ${agent.focus}.`,
     "You are given the real changed code with line numbers. Report only defects introduced or exposed by this diff.",
@@ -95,11 +65,11 @@ function systemPrompt(agent: AgentSpec): string {
     "- confidence is a number between 0 and 1.",
     "- Do not report style, formatting, naming, or generic advice.",
     "- Do not repeat the deterministic findings list; only add distinct issues.",
-    "Return JSON only: {\"hypotheses\":[{\"claim\":\"...\",\"evidence\":[\"path:line\"],\"severity\":\"high\",\"confidence\":0.8,\"suggestedExperiment\":\"...\"}]}",
+    'Return JSON only: {"hypotheses":[{"claim":"...","evidence":["path:line"],"severity":"high","confidence":0.8,"suggestedExperiment":"..."}]}',
   ].join("\n");
 }
 
-function userPrompt(agent: AgentSpec, context: PRContext, request: ReviewRequest, detectorClaims: string, diff: string): string {
+function singleShotUserPrompt(agent: SwarmAgentSpec, context: PRContext, request: ReviewRequest, detectorClaims: string, diff: string): string {
   return [
     `PR #${request.pr.number}: ${request.pr.title}`,
     request.pr.body ? `Description: ${truncate(request.pr.body, 600)}` : "",
@@ -113,45 +83,50 @@ function userPrompt(agent: AgentSpec, context: PRContext, request: ReviewRequest
     .join("\n\n");
 }
 
-function parseEvidence(entry: string): { file: string; line: number } | undefined {
-  const cleaned = entry.trim().replace(/^`+|`+$/g, "").replace(/^\.\//, "");
-  const match = /^(.+?):(\d+)/.exec(cleaned);
-  if (!match) return undefined;
-  const file = match[1].trim();
-  if (!file || file.includes(" ")) return undefined;
-  return { file, line: Number(match[2]) };
+export interface SwarmOptions {
+  sandbox?: Sandbox;
+  profile?: RepoProfile;
+  pack?: ContextPack;
+  maxTurns?: number;
+  maxToolsPerTurn?: number;
 }
 
-function quoted(value: string): string | undefined {
-  const match = /["'`]([^"'`\n]{3,48})["'`]/.exec(value);
-  return match?.[1];
+export interface SwarmOutcome {
+  candidates: Candidate[];
+  report: SwarmReport;
 }
 
-export function inferCheck(candidate: { claim: string; file?: string; evidence: string[] }, context: PRContext): BrowserCheck | undefined {
-  const file = candidate.file;
-  if (!file) return undefined;
-  const route = routeForPage(file);
-  const isClientPage = Boolean(route) && context.files.some((entry) => entry.path === file);
-  if (!isClientPage || !route) return undefined;
-  const claim = candidate.claim.toLowerCase();
-  if (/(crash|throw|typeerror|referenceerror|undefined|blank|render|pageerror|500|uncaught)/.test(claim)) {
-    return { path: route, assert: { type: "noPageError" }, expected: "pass", label: "page must render without a runtime error" };
-  }
-  if (/(missing|removed|disappear|not rendered|hidden|absent)/.test(claim)) {
-    const text = quoted(candidate.claim);
-    if (text && text.length >= 3) {
-      return { path: route, assert: { type: "textContains", value: text }, expected: "pass", label: `page must contain "${text}"` };
-    }
-  }
-  if (/(redirect|navigat|send(s)? users|wrong page|goes to)/.test(claim)) {
-    const target = quoted(candidate.claim);
-    if (target && target.startsWith("/")) {
-      return { path: route, assert: { type: "pathEquals", value: target }, expected: "pass", label: `page must stay on or reach ${target}` };
-    }
-  }
-  return undefined;
+const EMPTY_PROFILE: RepoProfile = {
+  packageManager: "npm",
+  installCommand: "npm ci",
+  hasNodeModules: false,
+  hasTests: false,
+  scripts: {},
+};
+
+interface AgentOutcome {
+  candidates: Candidate[];
+  report: SwarmAgentReport;
 }
 
+function summarize(mode: SwarmReport["mode"], agents: AgentOutcome[], durationMs: number): SwarmOutcome {
+  const candidates = agents.flatMap((agent) => agent.candidates);
+  const report: SwarmReport = {
+    mode,
+    agents: agents.map((agent) => agent.report),
+    hypotheses: agents.reduce((total, agent) => total + agent.report.hypotheses, 0),
+    candidates: candidates.length,
+    durationMs,
+  };
+  return { candidates, report };
+}
+
+/**
+ * Runs the investigation swarm. With a prepared sandbox and a repo context pack
+ * the investigators are agentic and read-only: each one explores the real
+ * repository with tools before answering. Without a sandbox (dry mode, tests or
+ * a failed setup) it falls back to one diff-only call per agent.
+ */
 export async function runSwarm(
   context: PRContext,
   request: ReviewRequest,
@@ -159,28 +134,82 @@ export async function runSwarm(
   models: ModelRouter,
   logger: Logger,
   budgetMs = 150_000,
-): Promise<Candidate[]> {
+  options: SwarmOptions = {},
+): Promise<SwarmOutcome> {
+  const started = Date.now();
   const agents = selectAgents(context);
-  const deadline = Date.now() + budgetMs;
-  const diff = renderCompactDiff(context.files, { maxChars: 18_000, contextLines: 8 });
+  const deadline = started + budgetMs;
   const detectorClaims = detectors
     .slice(0, 6)
     .map((candidate) => `- ${candidate.evidence[0] ?? candidate.file ?? "?"}: ${candidate.claim.slice(0, 140)}`)
     .join("\n");
 
-  const results = await mapLimit(agents, 4, async (agent) => {
-    const started = Date.now();
+  if (options.sandbox && options.pack) {
+    const sandbox = options.sandbox;
+    const pack = options.pack;
+    const profile = options.profile ?? EMPTY_PROFILE;
+    const outcomes = await mapLimit(agents, 4, (agent) =>
+      runSwarmAgent({
+        agent,
+        context,
+        request,
+        detectorClaims,
+        models,
+        logger,
+        sandbox,
+        profile,
+        pack,
+        deadline,
+        maxTurns: Math.max(1, options.maxTurns ?? 3),
+        maxToolsPerTurn: Math.max(1, options.maxToolsPerTurn ?? 3),
+      }).catch((error) => {
+        const message = error instanceof Error ? error.message : String(error);
+        logger.warn(`swarm agent crashed: ${agent.id}`, { error: message.slice(0, 200) });
+        const report: SwarmAgentReport = {
+          id: agent.id,
+          kind: agent.kind,
+          title: agent.title,
+          status: "error",
+          turns: 0,
+          toolCalls: 0,
+          hypotheses: 0,
+          candidates: 0,
+          durationMs: Date.now() - started,
+          error: message,
+        };
+        return { candidates: [] as Candidate[], hypotheses: 0, report };
+      }),
+    );
+    return summarize("agentic", outcomes, Date.now() - started);
+  }
+
+  const diff = renderCompactDiff(context.files, { maxChars: 18_000, contextLines: 8 });
+  const outcomes = await mapLimit(agents, 4, async (agent): Promise<AgentOutcome> => {
+    const agentStarted = Date.now();
     const remaining = deadline - Date.now();
     if (remaining < 5_000) {
       logger.warn(`swarm budget exhausted before ${agent.id} could run`);
-      return [] as Candidate[];
+      return {
+        candidates: [],
+        report: {
+          id: agent.id,
+          kind: agent.kind,
+          title: agent.title,
+          status: "budget",
+          turns: 0,
+          toolCalls: 0,
+          hypotheses: 0,
+          candidates: 0,
+          durationMs: Date.now() - agentStarted,
+        },
+      };
     }
     try {
       const response = await models.complete({
         role: "luna",
         kind: "swarm_agent",
-        system: systemPrompt(agent),
-        user: userPrompt(agent, context, request, detectorClaims, diff),
+        system: singleShotSystemPrompt(agent),
+        user: singleShotUserPrompt(agent, context, request, detectorClaims, diff),
         expectJson: true,
         timeoutMs: Math.max(8_000, Math.min(remaining - 2_000, 40_000)),
         retries: 0,
@@ -189,40 +218,60 @@ export async function runSwarm(
       const parsed = hypothesisListSchema.safeParse(extractJson(response.text));
       if (!parsed.success) {
         logger.warn(`swarm agent produced invalid JSON: ${agent.id}`, { error: parsed.error.message.slice(0, 200) });
-        return [] as Candidate[];
-      }
-      logger.info(`swarm ${agent.id}: ${parsed.data.hypotheses.length} hypotheses in ${Date.now() - started}ms`);
-      return parsed.data.hypotheses.flatMap((hypothesis) => {
-        const evidence = hypothesis.evidence
-          .map(parseEvidence)
-          .filter((entry): entry is { file: string; line: number } => entry !== undefined && context.files.some((file) => file.path === entry.file));
-        if (evidence.length === 0) return [];
-        const first = evidence[0];
-        const candidate: Candidate = {
-          id: stableId("c", agent.id, hypothesis.claim.slice(0, 120), first.file, String(first.line)),
-          claim: hypothesis.claim.trim(),
-          severity: hypothesis.severity,
-          confidence: hypothesis.confidence,
-          file: first.file,
-          line: first.line,
-          evidence: evidence.map((entry) => `${entry.file}:${entry.line}`),
-          source: "luna",
-          agentKind: agent.kind,
-          suggestedProof: "none",
-          tags: [agent.kind],
-          occurrences: 1,
-          score: 0,
-          mergedFrom: [],
+        return {
+          candidates: [],
+          report: {
+            id: agent.id,
+            kind: agent.kind,
+            title: agent.title,
+            status: "error",
+            turns: 1,
+            toolCalls: 0,
+            hypotheses: 0,
+            candidates: 0,
+            durationMs: Date.now() - agentStarted,
+            error: `invalid JSON: ${parsed.error.message.slice(0, 160)}`,
+          },
         };
-        candidate.check = inferCheck(candidate, context);
-        candidate.suggestedProof = candidate.check ? "browser" : context.tests.some((test) => /auth|docs|pricing/i.test(test)) ? "targeted_test" : "none";
-        return [candidate];
+      }
+      const candidates = parsed.data.hypotheses.flatMap((hypothesis) => {
+        const candidate = candidateFromHypothesis(hypothesis as SwarmHypothesis, agent, context);
+        return candidate ? [candidate] : [];
       });
+      logger.info(`swarm ${agent.id}: ${parsed.data.hypotheses.length} hypotheses in ${Date.now() - agentStarted}ms (single-shot)`);
+      return {
+        candidates,
+        report: {
+          id: agent.id,
+          kind: agent.kind,
+          title: agent.title,
+          status: "completed",
+          turns: 1,
+          toolCalls: 0,
+          hypotheses: parsed.data.hypotheses.length,
+          candidates: candidates.length,
+          durationMs: Date.now() - agentStarted,
+        },
+      };
     } catch (error) {
-      logger.warn(`swarm agent failed: ${agent.id}`, { error: error instanceof Error ? error.message : String(error) });
-      return [] as Candidate[];
+      const message = error instanceof Error ? error.message : String(error);
+      logger.warn(`swarm agent failed: ${agent.id}`, { error: message.slice(0, 200) });
+      return {
+        candidates: [],
+        report: {
+          id: agent.id,
+          kind: agent.kind,
+          title: agent.title,
+          status: "error",
+          turns: 1,
+          toolCalls: 0,
+          hypotheses: 0,
+          candidates: 0,
+          durationMs: Date.now() - agentStarted,
+          error: message,
+        },
+      };
     }
   });
-
-  return results.flat();
+  return summarize("single-shot", outcomes, Date.now() - started);
 }

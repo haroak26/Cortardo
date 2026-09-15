@@ -1,5 +1,32 @@
+import { createHash } from "node:crypto";
+
 export function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
+}
+
+export function sha256(value: string): string {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+/** Short, stable content hash used in cache keys and evidence records. */
+export function hashContent(value: string): string {
+  return sha256(value).slice(0, 24);
+}
+
+/** Deterministic JSON stringify (sorted object keys, stable arrays). */
+export function stableStringify(value: unknown): string {
+  const seen = new WeakSet<object>();
+  const walk = (input: unknown): unknown => {
+    if (input === null || typeof input !== "object") return input;
+    if (seen.has(input as object)) return "[circular]";
+    seen.add(input as object);
+    if (Array.isArray(input)) return input.map(walk);
+    const record = input as Record<string, unknown>;
+    const out: Record<string, unknown> = {};
+    for (const key of Object.keys(record).sort()) out[key] = walk(record[key]);
+    return out;
+  };
+  return JSON.stringify(walk(value));
 }
 
 export function truncate(value: string, max: number): string {
