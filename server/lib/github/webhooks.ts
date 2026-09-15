@@ -18,9 +18,18 @@ export interface GithubWebhookStorage {
   upsertPullRequest(data: NewPullRequest): Promise<PullRequest>;
 }
 
+export interface TriggerReviewPayload {
+  repositoryId: string;
+  pullRequestNumber: number;
+  trigger: "webhook" | "mention" | "manual";
+  headSha?: string;
+  workspaceId?: string;
+}
+
 export interface GithubWebhookDeps {
   storage: GithubWebhookStorage;
   syncInstallationRepositories(installation: GithubInstallation): Promise<number>;
+  triggerReview?: (payload: TriggerReviewPayload) => Promise<unknown> | unknown;
 }
 
 export interface GithubWebhookResult {
@@ -60,6 +69,8 @@ export async function handleGithubWebhook(
       return handleInstallationRepositoriesEvent(payload, deps);
     case "pull_request":
       return handlePullRequestEvent(payload, deps);
+    case "issue_comment":
+      return handleIssueCommentEvent(payload, deps);
     default:
       return { handled: false, reason: `ignored event: ${event}` };
   }
@@ -141,5 +152,61 @@ async function handlePullRequestEvent(
     mapPullRequestPayload(repository.id, payload.pull_request),
   );
 
+  const reviewableActions = ["opened", "synchronize", "reopened", "ready_for_review"];
+  const installation = repository.installationId
+    ? await deps.storage.getGithubInstallationByInstallationId(repository.installationId)
+    : undefined;
+  const suspended = Boolean(installation?.suspendedAt);
+  if (
+    deps.triggerReview &&
+    reviewableActions.includes(action) &&
+    repository.reviewEnabled !== false &&
+    !suspended
+  ) {
+    void Promise.resolve(
+      deps.triggerReview({
+        repositoryId: repository.id,
+        pullRequestNumber: number,
+        trigger: "webhook",
+        headSha: payload?.pull_request?.head?.sha,
+        workspaceId: repository.workspaceId,
+      }),
+    ).catch(() => undefined);
+  }
+
+  return { handled: true, action };
+}
+
+async function handleIssueCommentEvent(
+  payload: any,
+  deps: GithubWebhookDeps,
+): Promise<GithubWebhookResult> {
+  const action = payload?.action;
+  if (action !== "created") return { handled: true, action, reason: "ignored issue_comment action" };
+  const body: string = payload?.comment?.body ?? "";
+  if (!/@cortardobot\b/i.test(body) && !/@cortado\b/i.test(body)) {
+    return { handled: true, action, reason: "no bot mention" };
+  }
+  if (!payload?.issue?.pull_request) return { handled: true, action, reason: "not a pull request comment" };
+  const externalId = payload?.repository?.id ? String(payload.repository.id) : "";
+  const number = payload?.issue?.number;
+  if (!externalId || !number) return { handled: false, reason: "missing repository or issue" };
+  const repository = await deps.storage.getRepositoryByExternalId(externalId);
+  if (!repository) return { handled: true, reason: "repository not connected", action };
+  if (repository.reviewEnabled === false) return { handled: true, reason: "reviews disabled", action };
+  const installation = repository.installationId
+    ? await deps.storage.getGithubInstallationByInstallationId(repository.installationId)
+    : undefined;
+  if (installation?.suspendedAt) return { handled: true, reason: "installation suspended", action };
+  if (deps.triggerReview) {
+    void Promise.resolve(
+      deps.triggerReview({
+        repositoryId: repository.id,
+        pullRequestNumber: number,
+        trigger: "mention",
+        workspaceId: repository.workspaceId,
+      }),
+    ).catch(() => undefined);
+  }
   return { handled: true, action };
 }

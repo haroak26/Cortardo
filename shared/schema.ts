@@ -1006,6 +1006,65 @@ export const pullRequests = pgTable("pull_requests", {
 export type PullRequest = typeof pullRequests.$inferSelect;
 export type NewPullRequest = typeof pullRequests.$inferInsert;
 
+export const reviewRuns = pgTable("review_runs", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  workspaceId: uuid("workspace_id"),
+  repositoryId: uuid("repository_id"),
+  pullRequestId: uuid("pull_request_id"),
+  userId: uuid("user_id"),
+  trigger: text("trigger").notNull().default("manual"),
+  status: text("status").notNull().default("queued"),
+  title: text("title"),
+  instructions: text("instructions"),
+  model: text("model"),
+  plan: jsonb("plan").$type<Record<string, unknown>>().default({}).notNull(),
+  summary: text("summary"),
+  stats: jsonb("stats").$type<Record<string, unknown>>().default({}).notNull(),
+  tokensIn: integer("tokens_in").notNull().default(0),
+  tokensOut: integer("tokens_out").notNull().default(0),
+  creditsHeld: real("credits_held").notNull().default(0),
+  creditsSettled: real("credits_settled").notNull().default(0),
+  error: text("error"),
+  startedAt: timestamp("started_at"),
+  finishedAt: timestamp("finished_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (t) => [
+  index("review_runs_repository_idx").on(t.repositoryId),
+  index("review_runs_status_idx").on(t.status),
+]);
+
+export type ReviewRun = typeof reviewRuns.$inferSelect;
+export type NewReviewRun = typeof reviewRuns.$inferInsert;
+
+export const reviewFindings = pgTable("review_findings", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  runId: uuid("run_id").notNull(),
+  repositoryId: uuid("repository_id"),
+  workspaceId: uuid("workspace_id"),
+  findingKey: text("finding_key").notNull(),
+  path: text("path"),
+  line: integer("line"),
+  category: text("category"),
+  severity: text("severity"),
+  verdict: text("verdict"),
+  confidence: real("confidence").notNull().default(0),
+  title: text("title").notNull(),
+  detail: text("detail"),
+  evidence: jsonb("evidence").$type<unknown[]>().default([]).notNull(),
+  models: jsonb("models").$type<Record<string, unknown>>().default({}).notNull(),
+  fix: jsonb("fix").$type<Record<string, unknown>>().default({}).notNull(),
+  status: text("status").notNull().default("open"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (t) => [
+  index("review_findings_run_idx").on(t.runId),
+  index("review_findings_repository_idx").on(t.repositoryId),
+]);
+
+export type ReviewFinding = typeof reviewFindings.$inferSelect;
+export type NewReviewFinding = typeof reviewFindings.$inferInsert;
+
 export const webhookDeliveries = pgTable("webhook_deliveries", {
   id: uuid("id").primaryKey().defaultRandom(),
   provider: text("provider").notNull().default("github"),

@@ -1,7 +1,7 @@
 {
   "name": "cortardobot",
   "version": "2.0.0",
-  "description": "Cortado 2.0 \u2014 Fast autonomous code review engine (investigate -> prove -> fix -> verify) built on LangGraph",
+  "description": "Cortado 2.0 — Fast autonomous code review engine (investigate -> prove -> fix -> verify) built on LangGraph",
   "private": true,
   "type": "module",
   "license": "MIT",
@@ -26,6 +26,7 @@
   "dependencies": {
     "@langchain/core": "^1.2.11",
     "@langchain/langgraph": "^1.4.15",
+    "e2b": "^2.49.1",
     "zod": "^3.25.76"
   },
   "devDependencies": {
