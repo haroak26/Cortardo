@@ -18,6 +18,8 @@ export interface PublishInput {
   headSha: string;
   result: ReviewResult;
   checkRunId?: number;
+  /** Outcome of opt-in auto-commit, surfaced on the check run (3.2). */
+  autoCommitNote?: string;
 }
 
 const SEVERITY_ORDER: Record<string, number> = { critical: 5, high: 4, medium: 3, low: 2, info: 1 };
@@ -290,7 +292,9 @@ export async function finishCheckRun(input: PublishInput): Promise<void> {
       status: "completed",
       conclusion: decideCheckConclusion(input.result) as any,
       title: verified > 0 ? `Cortado: ${verified} issue(s) fixed and verified` : confirmed > 0 ? `Cortado: ${confirmed} issue(s) confirmed` : "Cortado: no confirmed issues",
-      summary: `${input.result.summary.issuesFound} candidate(s) · ${confirmed} confirmed · ${verified} verified${input.result.degraded ? " · degraded run" : ""}`,
+      summary:
+        `${input.result.summary.issuesFound} candidate(s) · ${confirmed} confirmed · ${verified} verified${input.result.degraded ? " · degraded run" : ""}` +
+        (input.autoCommitNote ? `\n\n${input.autoCommitNote.slice(0, 900)}` : ""),
     });
   } catch {
     // check runs are best-effort

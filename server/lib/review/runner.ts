@@ -13,6 +13,7 @@ import { isVerifiedFix, findingState } from "../../../cortardobot/src/v3/result.
 import { resolveModelIds, resolveReasoning, type ReasoningEffort } from "@shared/models";
 import { DbCacheStore } from "./cache-store";
 import { ensureReviewSchema } from "./schema";
+import { autoCommitVerifiedFixes, type AutoCommitResult } from "./autocommit";
 import { finishCheckRun, publishReview, startReviewCheckRun } from "./publisher";
 
 const logger = createLogger("info", "cortado-runner");
@@ -246,6 +247,11 @@ async function processRun(job: QueuedJob): Promise<void> {
     const learnings = Array.isArray(repositorySettings.learnings)
       ? repositorySettings.learnings.filter((item): item is string => typeof item === "string")
       : [];
+    const autoCommitFixes = repositorySettings.autoCommitFixes === true;
+    const autoCommitMaxFindings =
+      typeof repositorySettings.autoCommitMaxFindings === "number" && repositorySettings.autoCommitMaxFindings > 0
+        ? Math.min(10, Math.floor(repositorySettings.autoCommitMaxFindings))
+        : undefined;
 
     const config = resolveV3Config({ mode: "live", models });
     const request: ReviewRequest = {
@@ -272,7 +278,7 @@ async function processRun(job: QueuedJob): Promise<void> {
       rules: [],
       learnings,
       settings: {
-        autoCommitFixes: false,
+        autoCommitFixes,
         models,
         reasoning,
         instructions,
@@ -303,6 +309,26 @@ async function processRun(job: QueuedJob): Promise<void> {
 
     const result = await engine.run(request);
     await persistFindings(runId, repository, result);
+
+    let autoCommit: AutoCommitResult | undefined;
+    if (autoCommitFixes && result.status !== "failed" && !result.degraded && result.findings.length > 0) {
+      try {
+        autoCommit = await autoCommitVerifiedFixes({
+          installationId: repository.installationId,
+          fullName: repository.fullName,
+          branch: request.pr.headBranch,
+          headSha,
+          runId,
+          findings: result.findings,
+          maxFindings: autoCommitMaxFindings,
+        });
+        if (autoCommit.committed.length > 0) logger.info(`[${runId.slice(0, 8)}] ${autoCommit.note}`);
+        else logger.info(`[${runId.slice(0, 8)}] auto-commit: ${autoCommit.note}`);
+      } catch (error) {
+        logger.warn(`[${runId.slice(0, 8)}] auto-commit failed`, { error: error instanceof Error ? error.message : String(error) });
+      }
+    }
+
     await db
       .update(reviewRuns)
       .set({
@@ -327,6 +353,7 @@ async function processRun(job: QueuedJob): Promise<void> {
           cache: result.cache,
           swarm: result.swarm ?? null,
           summary: result.summary,
+          autoCommit: autoCommit ?? null,
           degraded: result.degraded ?? false,
           degradedReason: result.degradedReason ?? null,
           checkRunId: checkRunId ?? null,
@@ -366,6 +393,7 @@ async function processRun(job: QueuedJob): Promise<void> {
       headSha,
       result,
       checkRunId,
+      autoCommitNote: autoCommit?.note,
     });
     logger.info(
       `[${runId.slice(0, 8)}] done: ${result.summary.issuesConfirmed} confirmed, ${result.summary.issuesVerified} verified, ` +

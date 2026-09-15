@@ -448,6 +448,92 @@ export async function createPullRequest(
   return { number: data.number, url: data.html_url ?? null };
 }
 
+// ── Git data API (atomic multi-file commits) ─────────────────────────────
+
+/** Create a blob for raw UTF-8 content and return its sha. */
+export async function createBlob(
+  installationId: string | number,
+  fullName: string,
+  content: string,
+): Promise<string> {
+  const { owner, repo } = splitFullName(fullName);
+  const octokit = getInstallationOctokit(installationId);
+  const { data } = await octokit.rest.git.createBlob({ owner, repo, content, encoding: "utf-8" });
+  return data.sha;
+}
+
+/** Tree of a commit (the base for an atomic multi-file commit). */
+export async function getCommitTreeSha(
+  installationId: string | number,
+  fullName: string,
+  sha: string,
+): Promise<string> {
+  const { owner, repo } = splitFullName(fullName);
+  const octokit = getInstallationOctokit(installationId);
+  const { data } = await octokit.rest.git.getCommit({ owner, repo, commit_sha: sha });
+  return data.tree.sha;
+}
+
+/** Commit message for a sha (used to keep bot commits idempotent). */
+export async function getCommitMessage(
+  installationId: string | number,
+  fullName: string,
+  sha: string,
+): Promise<string> {
+  const { owner, repo } = splitFullName(fullName);
+  const octokit = getInstallationOctokit(installationId);
+  const { data } = await octokit.rest.git.getCommit({ owner, repo, commit_sha: sha });
+  return data.message ?? "";
+}
+
+/** New tree replacing only the given paths on top of a base tree. */
+export async function createTreeWithChanges(
+  installationId: string | number,
+  fullName: string,
+  baseTreeSha: string,
+  entries: Array<{ path: string; blobSha: string }>,
+): Promise<string> {
+  const { owner, repo } = splitFullName(fullName);
+  const octokit = getInstallationOctokit(installationId);
+  const { data } = await octokit.rest.git.createTree({
+    owner,
+    repo,
+    base_tree: baseTreeSha,
+    tree: entries.map((entry) => ({ path: entry.path, mode: "100644" as const, type: "blob" as const, sha: entry.blobSha })),
+  });
+  return data.sha;
+}
+
+/** Commit a tree on top of a single parent. */
+export async function createCommit(
+  installationId: string | number,
+  fullName: string,
+  input: { message: string; treeSha: string; parentSha: string },
+): Promise<string> {
+  const { owner, repo } = splitFullName(fullName);
+  const octokit = getInstallationOctokit(installationId);
+  const { data } = await octokit.rest.git.createCommit({
+    owner,
+    repo,
+    message: input.message,
+    tree: input.treeSha,
+    parents: [input.parentSha],
+  });
+  return data.sha;
+}
+
+/** Fast-forward a branch ref; fails when the ref moved concurrently. */
+export async function updateRef(
+  installationId: string | number,
+  fullName: string,
+  branch: string,
+  sha: string,
+): Promise<void> {
+  const { owner, repo } = splitFullName(fullName);
+  const octokit = getInstallationOctokit(installationId);
+  await octokit.rest.git.updateRef({ owner, repo, ref: `heads/${branch}`, sha, force: false });
+}
+
 /** Raw file contents at a ref (null when missing or >1MB / not a file). */
 export async function getFileContent(
   installationId: string | number,
