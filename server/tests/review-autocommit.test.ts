@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import type { Finding } from "../../cortardobot/src/v3/types.ts";
+import type { Finding } from "../../cortardobot/src/types.ts";
 import {
   autoCommitVerifiedFixes,
   looksLikeSecret,
@@ -13,55 +13,38 @@ const CONTENT = ["const a = 1;", "const x = undefined;", "export default a;"].jo
 function finding(overrides: { id?: string; path?: string; fileContent?: string } = {}): Finding {
   const id = overrides.id ?? "c_1";
   const path = overrides.path ?? "src/a.ts";
-  const content = overrides.fileContent ?? CONTENT;
   return {
-    candidate: {
-      id,
-      claim: `${path} dereferences undefined`,
-      severity: "high",
-      confidence: 0.9,
-      file: path,
-      line: 2,
-      evidence: [`${path}:2`],
-      source: "detector",
-      agentKind: "runtime",
-      suggestedProof: "browser",
-      tags: ["test"],
-      occurrences: 1,
-      score: 5,
-      mergedFrom: [],
+    id,
+    claim: `${path} dereferences undefined`,
+    severity: "high",
+    confidence: 0.9,
+    file: path,
+    line: 2,
+    evidence: [`${path}:2`],
+    state: "verified_fix",
+    repro: {
+      artifact: { path: "repro.mjs", command: "node .cortado-probes/repro.mjs", content: "throw new Error('undefined');", hash: "h1", failures: 2 },
+      explanation: "the reproduction fails twice on the head",
+      output: "Error: undefined",
     },
-    proof: {
-      candidateId: id,
-      status: "confirmed",
-      strategy: "browser",
+    fix: {
+      state: "verified",
+      reason: "reproduction passes and gates pass; verified on a clean replay",
+      patch: `--- a/${path}\n+++ b/${path}\n@@ -1,3 +1,3 @@\n const a = 1;\n-const x = undefined;\n+const x = 1;\n export default a;`,
+      edits: [{ path, find: "const x = undefined;", replace: "const x = 1;" }],
       attempts: [],
-      reproduction: "assertion failed (expected pass)",
-      explanation: "Reproduced in a real browser",
-      durationMs: 10,
-    },
-    repair: {
-      candidateId: id,
-      severity: "high",
-      exit: "VERIFIED",
-      attempts: [],
-      finalPatch: `--- a/${path}\n+++ b/${path}\n@@ -1,3 +1,3 @@\n const a = 1;\n-const x = undefined;\n+const x = 1;\n export default a;`,
-      finalEdits: [{ path, find: "const x = undefined;", replace: "const x = 1;" }],
-      durationMs: 10,
-      toolCalls: 1,
-      reason: "fix applied and the reproduction passes",
-    },
-    verification: {
-      passed: true,
-      durationMs: 10,
-      steps: [{ kind: "reproduction", command: "browser", passed: true, skipped: false, reason: "passes twice", durationMs: 5 }],
+      verification: {
+        passed: true,
+        steps: [{ kind: "repro_1", passed: true, reason: "passes on the clean replay" }],
+      },
     },
   };
 }
 
 function unverifiedFinding(): Finding {
   const entry = finding({ id: "c_unverified", path: "src/b.ts" });
-  entry.verification = { passed: false, durationMs: 1, steps: [] };
+  entry.state = "fix_failed";
+  entry.fix = { state: "failed", reason: "the reproduction still fails", attempts: [] };
   return entry;
 }
 

@@ -1,331 +1,419 @@
-export type Severity = "critical" | "high" | "medium" | "low" | "info";
+/**
+ * CortardoBot 3.5 — engine types.
+ *
+ * Plain vocabulary only: a claim becomes a finding when a script fails because
+ * of it; a fix is verified only when a fresh sandbox replays it. Every
+ * candidate ends in exactly one terminal state.
+ */
+import type { ModelRole, ReasoningEffort, ModelSelection } from "../../shared/models.ts";
 
-export type PRClassification =
-  | "AUTH"
-  | "API"
-  | "DATABASE"
-  | "UI"
-  | "PERFORMANCE"
-  | "CONFIG"
-  | "UNKNOWN";
+export type { ModelRole, ReasoningEffort, ModelSelection };
 
-export type PRSize = "tiny" | "normal" | "complex";
+// ---------------------------------------------------------------------------
+// Models
+// ---------------------------------------------------------------------------
 
-export type PipelineStage =
-  | "change_intelligence"
-  | "sandbox_setup"
-  | "swarm"
-  | "evidence_merge"
-  | "judge"
-  | "proof"
-  | "repair"
-  | "verify"
-  | "findings"
-  | "final_review"
-  | "assemble"
-  | "cleanup";
+export interface ModelTask {
+  role: ModelRole;
+  /** Coarse call kind for logs and stats: plan | investigate | fix | diagnose | refresh | verify | report. */
+  kind: string;
+  system: string;
+  user: string;
+  history?: Array<{ role: "user" | "assistant"; content: string }>;
+  expectJson?: boolean;
+  maxTokens?: number;
+  timeoutMs?: number;
+  retries?: number;
+  signal?: AbortSignal;
+  label?: string;
+}
 
-export interface ChangedFileInput {
+export interface ModelResponse {
+  text: string;
+  model: string;
+  tokensIn: number;
+  tokensOut: number;
+  cachedTokensIn?: number;
+  durationMs: number;
+  costUsd?: number;
+}
+
+export interface ModelClient {
+  readonly id: string;
+  complete(task: ModelTask): Promise<ModelResponse>;
+}
+
+export interface Usage {
+  calls: number;
+  byRole: Partial<Record<ModelRole, number>>;
+  tokensIn: number;
+  tokensOut: number;
+  cachedTokensIn: number;
+  costUsd: number;
+  modelMs: number;
+}
+
+// ---------------------------------------------------------------------------
+// Repository graph (L0 from the server codegraph, L1 overlay in-engine)
+// ---------------------------------------------------------------------------
+
+export interface GraphFile {
   path: string;
-  status?: "added" | "modified" | "removed" | "renamed";
-  patch?: string;
-  content?: string;
-  additions?: number;
-  deletions?: number;
+  kind: string;
 }
 
-export interface PullRequestInput {
-  id?: string;
-  title: string;
-  body?: string;
-  author?: string;
-  baseBranch?: string;
-  headBranch?: string;
-  files: ChangedFileInput[];
-  repoRules?: string[];
+export interface GraphConnection {
+  source: string;
+  target: string;
+  kind: string;
 }
+
+export interface GraphSymbol {
+  id: string;
+  fileId: string;
+  name: string;
+  qualifiedName: string;
+  kind: string;
+  line: number;
+  endLine: number;
+  signature: string;
+  exported: boolean;
+}
+
+export interface GraphSymbolEdge {
+  source: string;
+  target: string;
+  kind: string;
+}
+
+export interface GraphStringRef {
+  path: string;
+  value: string;
+  line: number;
+}
+
+export interface RepoGraphInput {
+  files?: GraphFile[];
+  connections?: GraphConnection[];
+  symbols?: GraphSymbol[];
+  symbolEdges?: GraphSymbolEdge[];
+  strings?: GraphStringRef[];
+  knowledge?: Array<{ path: string; content: string }>;
+}
+
+// ---------------------------------------------------------------------------
+// Request / context
+// ---------------------------------------------------------------------------
 
 export interface ChangedFile {
   path: string;
   status: "added" | "modified" | "removed" | "renamed";
-  language: string;
-  additions: number;
-  deletions: number;
   patch?: string;
   content?: string;
-  addedLines: DiffLine[];
-  removedLines: DiffLine[];
+  additions: number;
+  deletions: number;
 }
 
 export interface DiffLine {
-  line: number;
+  type: "+" | "-" | " " | "\\";
   text: string;
+  newLine?: number;
+  oldLine?: number;
 }
 
-export type SymbolKind =
-  | "function"
-  | "method"
-  | "class"
-  | "interface"
-  | "type"
-  | "const"
-  | "route"
-  | "config"
-  | "test";
-
-export interface ChangedSymbol {
-  name: string;
-  kind: SymbolKind;
-  file: string;
-  line: number;
-  change: "added" | "modified" | "removed";
+export interface Hunk {
+  oldStart: number;
+  oldLines: number;
+  newStart: number;
+  newLines: number;
+  header: string;
+  lines: DiffLine[];
 }
 
-export interface DependencyEdge {
-  from: string;
-  to: string;
-  kind: "imports" | "calls" | "uses";
+export interface ParsedFile {
+  path: string;
+  previousPath?: string;
+  status: ChangedFile["status"];
+  language: string;
+  additions: number;
+  deletions: number;
+  hunks: Hunk[];
+  addedLines: DiffLine[];
+  removedLines: DiffLine[];
+  content?: string;
+  lines?: string[];
 }
 
-export interface RiskSignal {
-  id: string;
-  detail: string;
-  weight: number;
-}
-
-export interface PRContext {
-  id: string;
-  title: string;
-  body: string;
-  author?: string;
-  baseBranch?: string;
-  headBranch?: string;
+export interface ReviewRequest {
+  runId: string;
+  repo: {
+    fullName: string;
+    defaultBranch: string;
+    installationId: number;
+    cloneUrl: string;
+    token: string;
+  };
+  pr: {
+    number: number;
+    title: string;
+    body: string;
+    author?: string;
+    baseSha: string;
+    headSha: string;
+    baseBranch: string;
+    headBranch: string;
+    url?: string;
+  };
   files: ChangedFile[];
-  symbols: ChangedSymbol[];
-  dependencies: DependencyEdge[];
-  callers: string[];
-  tests: string[];
-  routes: string[];
-  configFiles: string[];
-  riskSignals: RiskSignal[];
-  classification: PRClassification[];
-  size: PRSize;
-  stats: { files: number; additions: number; deletions: number; changedLines: number };
-  repoRules: string[];
+  rules: string[];
+  learnings: string[];
+  settings: {
+    models?: Partial<Record<ModelRole, string>>;
+    reasoning?: Partial<Record<ModelRole, ReasoningEffort>>;
+    instructions?: string;
+    /** Runtime exercise can be turned off per repository. */
+    runtime?: boolean;
+  };
+  /** L0 context supplied by the server (stored code graph + docs). */
+  graph?: RepoGraphInput;
+  /** Small repo anchor files (package.json, .env.example) for capability detection. */
+  anchors?: Record<string, string>;
+  /** All repo file paths known from the code graph (used for capability detection). */
+  repoFiles?: string[];
 }
 
-export interface Hypothesis {
-  id: string;
-  claim: string;
-  evidence: string[];
-  severity: Severity;
-  confidence: number;
-  suggestedExperiment: string;
-  agent: string;
-  agentKind: AgentKind;
-  file?: string;
-  symbol?: string;
-  tags: string[];
-}
+// ---------------------------------------------------------------------------
+// Findings
+// ---------------------------------------------------------------------------
 
-export interface AgentSpec {
-  id: string;
-  kind: AgentKind;
-  title: string;
-  focus: string;
-  priority: number;
-}
+export type Severity = "critical" | "high" | "medium" | "low" | "info";
 
-export type AgentKind =
-  | "bug"
-  | "auth"
-  | "security"
-  | "regression"
-  | "runtime"
-  | "performance"
-  | "database"
-  | "api"
-  | "ui"
-  | "config";
+export type FindingState = "reproduced" | "fix_failed" | "verified_fix";
 
-export interface MergedCandidate {
-  id: string;
-  claim: string;
-  severity: Severity;
-  confidence: number;
-  evidence: string[];
-  suggestedExperiment: string;
-  file?: string;
-  symbol?: string;
-  tags: string[];
-  agent: string;
-  agentKind: AgentKind;
-  mergedFrom: string[];
-  occurrences: number;
-  score: number;
-}
+export type CandidateState = FindingState | "not_reproduced" | "error" | "deferred";
 
-export type JudgeVerdict = "PROVE" | "STATIC_ONLY" | "DISCARD";
+export type RuntimeSurface = "ui" | "api" | "cli";
 
-export interface JudgeDecision {
-  hypothesisId: string;
-  verdict: JudgeVerdict;
-  reason: string;
-  priority: number;
-  reproductionCommand?: string;
-}
-
-export type ProofStrategy =
-  | "existing_test"
-  | "targeted_test"
-  | "script"
-  | "http"
-  | "browser"
-  | "full_environment";
-
-export type ProofStatus = "confirmed" | "likely" | "disproven" | "error";
-
-export interface ProofStep {
-  strategy: ProofStrategy;
+export interface ReproArtifact {
+  /** Repo-relative path of the probe script inside the probe directory. */
+  path: string;
   command: string;
-  expectation: "fail" | "pass" | "marker";
-  marker?: string;
-  description: string;
+  content: string;
+  hash: string;
+  /** How many times the probe failed before it was accepted. Always >= 2. */
+  failures: number;
+  /** What the reproduction exercises. */
+  surface: "logic" | RuntimeSurface;
+  /** Shell commands run before the reproduction (start the app, seed data). */
+  setup?: string[];
+  /** Shell commands run after the reproduction, always (stop the app). */
+  teardown?: string[];
 }
 
-export interface ProofAttempt {
-  step: ProofStep;
-  exitCode: number | null;
-  timedOut: boolean;
-  output: string;
-  matched: boolean;
-  durationMs: number;
-}
-
-export interface ProofResult {
-  hypothesisId: string;
-  candidateId: string;
-  status: ProofStatus;
-  strategy: ProofStrategy;
-  attempts: ProofAttempt[];
-  command?: string;
-  output?: string;
-  durationMs: number;
+export interface ReproRecord {
+  artifact: ReproArtifact;
   explanation: string;
-  reproduction?: string;
+  /** Combined output of the accepted failing run (truncated). */
+  output: string;
 }
 
-export type RepairExitState = "VERIFIED" | "UNRESOLVED" | "UNSAFE" | "BUDGET_EXHAUSTED";
-
-export interface RepairAttempt {
+export interface FixAttempt {
   attempt: number;
-  strategy: string;
-  patch: string;
-  applied: boolean;
-  applyReason?: string;
-  diagnosis?: string;
-  testPassed: boolean;
-  testOutput?: string;
-  exit?: RepairExitState;
-}
-
-export interface RepairResult {
-  candidateId: string;
-  severity: Severity;
-  exit: RepairExitState;
-  attempts: RepairAttempt[];
-  finalPatch?: string;
-  durationMs: number;
+  summary: string;
+  edits: RepairEdit[];
+  failureCategory?:
+    | "repro_still_fails"
+    | "gate_failed"
+    | "apply_failed"
+    | "unsafe_edit"
+    | "model_error"
+    | "sandbox_error"
+    | "no_edit"
+    | "budget";
+  failureDetail?: string;
+  turns: number;
   toolCalls: number;
-  reason: string;
+  durationMs: number;
 }
 
 export interface VerificationStep {
-  kind: "reproduction" | "targeted_tests" | "affected_tests" | "typecheck" | "build";
-  command: string;
+  kind: "repro_1" | "repro_2" | "typecheck" | "tests" | "review";
   passed: boolean;
-  skipped: boolean;
+  skipped?: boolean;
   reason: string;
-  durationMs: number;
   output?: string;
 }
 
-export interface VerificationReport {
-  passed: boolean;
-  steps: VerificationStep[];
-  durationMs: number;
-}
-
-export interface FinalReview {
-  candidateId: string;
-  validity: "valid" | "uncertain" | "invalid";
-  fixCorrectness: "correct" | "partial" | "incorrect" | "none";
-  risk: "high" | "medium" | "low";
-  approval: "approve" | "approve_with_comments" | "request_changes";
+export interface ReviewVerdict {
+  approved: boolean;
+  risk: Severity;
   confidence: number;
   summary: string;
 }
 
+export interface FixRecord {
+  state: "pending_verify" | "verified" | "failed" | "skipped";
+  reason: string;
+  patch?: string;
+  edits?: RepairEdit[];
+  attempts: FixAttempt[];
+  verification?: {
+    passed: boolean;
+    steps: VerificationStep[];
+  };
+  reviewer?: ReviewVerdict;
+}
+
 export interface Finding {
   id: string;
-  candidateId: string;
-  title: string;
+  claim: string;
   severity: Severity;
   confidence: number;
-  file?: string;
+  file: string;
+  line?: number;
   evidence: string[];
-  proof: ProofResult;
-  repair?: RepairResult;
-  verification?: VerificationReport;
-  review?: FinalReview;
+  state: FindingState;
+  suggestedExperiment?: string;
+  repro: ReproRecord;
+  fix?: FixRecord;
+  /** Set for findings discovered by exercising the app at runtime. */
+  runtime?: {
+    surface: RuntimeSurface;
+    /** True when the same scenario also failed on the base revision. */
+    preExisting: boolean;
+    baseReason?: string;
+  };
 }
+
+export interface CandidateRecord {
+  candidateId: string;
+  claim: string;
+  severity: Severity;
+  file?: string;
+  state: CandidateState;
+  reason: string;
+  runtime?: {
+    surface: RuntimeSurface;
+    preExisting: boolean;
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Sandbox
+// ---------------------------------------------------------------------------
+
+export interface ExecResult {
+  command: string;
+  exitCode: number;
+  stdout: string;
+  stderr: string;
+  durationMs: number;
+  timedOut: boolean;
+}
+
+export interface RepairEdit {
+  path: string;
+  find: string;
+  replace: string;
+}
+
+export interface ApplyResult {
+  ok: boolean;
+  applied: RepairEdit[];
+  failed: Array<{ edit: RepairEdit; reason: string }>;
+}
+
+export interface RepoProfile {
+  packageManager: "npm" | "pnpm" | "yarn" | "unknown";
+  installCommand?: string;
+  hasNodeModules: boolean;
+  testCommand?: string;
+  typecheckCommand?: string;
+  buildCommand?: string;
+  devCommand?: string;
+  scripts: Record<string, string>;
+  testFiles: string[];
+}
+
+export interface Sandbox {
+  readonly id: string;
+  readonly root: string;
+  prepare(options: { cloneUrl: string; token: string; ref: string; headBranch?: string }): Promise<void>;
+  install(): Promise<void>;
+  profile(): Promise<RepoProfile>;
+  exec(command: string, options?: { cwd?: string; timeoutMs?: number; allowFailure?: boolean; signal?: AbortSignal }): Promise<ExecResult>;
+  read(path: string): Promise<string>;
+  write(path: string, content: string): Promise<void>;
+  exists(path: string): Promise<boolean>;
+  list(dir?: string): Promise<string[]>;
+  gitDiff(): Promise<string>;
+  startApp(options?: { port?: number; command?: string; readyPath?: string }): Promise<{ url: string; stop: () => Promise<void> }>;
+  cleanup(): Promise<void>;
+}
+
+// ---------------------------------------------------------------------------
+// Run result (server-facing)
+// ---------------------------------------------------------------------------
 
 export interface StageEvent {
-  stage: PipelineStage;
-  status: "started" | "completed" | "failed" | "skipped";
+  stage: string;
+  status: "started" | "completed" | "failed" | "timed_out" | "skipped";
+  detail?: string;
   at: number;
   durationMs?: number;
-  detail?: string;
 }
 
-export interface UsageSnapshot {
-  calls: number;
-  callsByRole: Record<string, number>;
-  tokensIn: number;
-  tokensOut: number;
-  credits: number;
-  modelMs: number;
-}
-
-export interface CortadoSummary {
+export interface RunSummary {
+  /** Every hypothesis raised by investigators. */
   issuesFound: number;
+  /** Findings reproduced by a failing script. */
   issuesConfirmed: number;
+  issuesReproduced: number;
+  /** Verified fixes (issuesConfirmed === issuesVerified after a clean verify). */
   issuesFixed: number;
   issuesVerified: number;
-  issuesStaticOnly: number;
-  issuesDiscarded: number;
+  /** Candidates recorded not_reproduced (advisory only). */
+  staticOnly: number;
+  deferred: number;
+  errors: number;
   durationMs: number;
   modelCalls: number;
-  credits: number;
-  exitStates: Record<RepairExitState, number>;
+  costUsd: number;
 }
 
-export interface CortadoResult {
+export interface RunReport {
+  verdict: {
+    decision: "approve" | "approve_with_comments" | "request_changes";
+    confidence: number;
+    rationale: string;
+  };
+  summary: string;
+  runtime?: {
+    status: "exercised" | "skipped";
+    surfaces: RuntimeSurface[];
+    reason?: string;
+  };
+  reproduced: Array<{ id: string; claim: string; severity: Severity; file: string; line?: number }>;
+  verified: Array<{ id: string; claim: string; severity: Severity; file: string; line?: number }>;
+  unresolved: Array<{ id: string; claim: string; severity: Severity; file: string; state: CandidateState; reason: string }>;
+  coverage: Array<{ id: string; claim: string; severity: Severity; state: CandidateState; reason: string }>;
+}
+
+export interface EngineResult {
   runId: string;
-  status: "completed" | "failed";
+  status: "done" | "failed";
   error?: string;
-  dryRun: boolean;
-  pr: { id: string; title: string; classification: PRClassification[]; size: PRSize };
-  context: PRContext | null;
-  candidates: MergedCandidate[];
-  decisions: JudgeDecision[];
-  proofs: ProofResult[];
-  repairs: RepairResult[];
+  degraded: boolean;
+  degradedReason?: string;
+  pr: { classification: string[]; size: string };
+  /** Parsed changed files (hunks + contents) for publishing and line mapping. */
+  files: ParsedFile[];
+  candidates: CandidateRecord[];
   findings: Finding[];
-  reviews: FinalReview[];
+  summary: RunSummary;
+  report: RunReport;
+  models: ModelSelection;
+  usage: Usage;
+  timings: Record<string, number>;
   events: StageEvent[];
-  timings: Partial<Record<PipelineStage, number>>;
-  usage: UsageSnapshot;
-  summary: CortadoSummary;
-  markdown: string;
 }

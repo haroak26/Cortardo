@@ -1,5 +1,11 @@
 # CortardoBot 3.4 — The Autonomous Loop Actually Runs
 
+> **Superseded by [3.5](cortardo-3.5.md).** The 3.4 engine was deleted after the
+> live PR7 run proved the loop could not execute probes on repositories without
+> a preinstalled test framework. This document is kept as the failure analysis
+> that 3.5 was built from; the engine code lives at the git tag
+> `cortardo-3.4-baseline`.
+
 Engine version: `3.4.0` · Baseline: `3.3.0` (`docs/cortardo-3.3.md`) · Status: Phases 0–3 landed; Phase 4 E2E gates pending (not run in this change)
 
 Goal: make the flagship autonomous loop — **investigate → prove → repair → verify** — the

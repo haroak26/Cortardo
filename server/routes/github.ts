@@ -731,13 +731,13 @@ export function registerGithubRoutes(app: Express): void {
     }
   });
 
-  /** Model catalog for the review UI (GPT defaults for 3.3). */
+  /** Model catalog for the review UI (3.5 roles). */
   app.get("/api/models", requireAuth, (_req: Request, res: Response) => {
     return res.json({
       defaults: DEFAULT_MODELS,
       reasoning: DEFAULT_REASONING,
       models: MODEL_CATALOG,
-      roles: ["luna", "terra", "codegen", "astra"] satisfies ModelRole[],
+      roles: ["investigator", "engineer", "reviewer"] satisfies ModelRole[],
     });
   });
 

@@ -1,5 +1,4 @@
-import type { Finding } from "../../../cortardobot/src/v3/types.ts";
-import { isVerifiedFix, patchHasHunks } from "../../../cortardobot/src/v3/result.ts";
+import type { Finding } from "../../../cortardobot/src/types.ts";
 import * as github from "../github/api";
 
 const DEFAULT_MAX_FINDINGS = 3;
@@ -148,21 +147,21 @@ export async function autoCommitVerifiedFixes(
   const eligible: Finding[] = [];
 
   for (const finding of options.findings) {
-    const repair = finding.repair;
-    if (!isVerifiedFix(finding) || !repair?.finalEdits?.length || !patchHasHunks(repair.finalPatch)) continue;
-    const paths = [...new Set(repair.finalEdits.map((edit) => edit.path))];
-    const secretEdit = repair.finalEdits.find((edit) => looksLikeSecret(edit.replace));
+    const repair = finding.fix;
+    if (finding.state !== "verified_fix" || !repair?.edits?.length) continue;
+    const paths = [...new Set(repair.edits.map((edit) => edit.path))];
+    const secretEdit = repair.edits.find((edit) => looksLikeSecret(edit.replace));
     if (secretEdit) {
-      skipped.push({ findingId: finding.candidate.id, paths, reason: `the fix introduces what looks like a secret in ${secretEdit.path}` });
+      skipped.push({ findingId: finding.id, paths, reason: `the fix introduces what looks like a secret in ${secretEdit.path}` });
       continue;
     }
     const blocked = paths.find((path) => protectedPathReason(path));
     if (blocked) {
-      skipped.push({ findingId: finding.candidate.id, paths, reason: `${protectedPathReason(blocked)} paths cannot be auto-committed (${blocked})` });
+      skipped.push({ findingId: finding.id, paths, reason: `${protectedPathReason(blocked)} paths cannot be auto-committed (${blocked})` });
       continue;
     }
     if (eligible.length >= maxFindings) {
-      skipped.push({ findingId: finding.candidate.id, paths, reason: `auto-commit limit reached (${maxFindings} per run)` });
+      skipped.push({ findingId: finding.id, paths, reason: `auto-commit limit reached (${maxFindings} per run)` });
       continue;
     }
     eligible.push(finding);
@@ -172,7 +171,7 @@ export async function autoCommitVerifiedFixes(
   }
 
   const allEligibleSkipped = (reason: string): AutoCommitResult => {
-    for (const finding of eligible) skipped.push({ findingId: finding.candidate.id, paths: [...new Set(finding.repair!.finalEdits!.map((edit) => edit.path))], reason });
+    for (const finding of eligible) skipped.push({ findingId: finding.id, paths: [...new Set(finding.fix!.edits!.map((edit) => edit.path))], reason });
     return emptyResult(true, skipped, `No fixes were auto-committed: ${reason}.`);
   };
 
@@ -199,7 +198,7 @@ export async function autoCommitVerifiedFixes(
   const committedByFinding: AutoCommitCommit[] = [];
 
   for (const finding of eligible) {
-    const edits = finding.repair!.finalEdits!;
+    const edits = finding.fix!.edits!;
     const paths = [...new Set(edits.map((edit) => edit.path))];
     const next = new Map(staged);
     let failure: string | undefined;
@@ -221,11 +220,11 @@ export async function autoCommitVerifiedFixes(
       next.set(path, applied.content);
     }
     if (failure) {
-      skipped.push({ findingId: finding.candidate.id, paths, reason: failure });
+      skipped.push({ findingId: finding.id, paths, reason: failure });
       continue;
     }
     for (const [path, content] of next) staged.set(path, content);
-    committedByFinding.push({ findingId: finding.candidate.id, paths, commitSha: "" });
+    committedByFinding.push({ findingId: finding.id, paths, commitSha: "" });
   }
 
   if (committedByFinding.length === 0) {
@@ -240,8 +239,8 @@ export async function autoCommitVerifiedFixes(
 
   const claims = committedByFinding
     .map((entry) => {
-      const finding = eligible.find((item) => item.candidate.id === entry.findingId);
-      return `- ${finding?.candidate.claim.slice(0, 160) ?? entry.findingId} (${entry.paths.join(", ")})`;
+      const finding = eligible.find((item) => item.id === entry.findingId);
+      return `- ${finding?.claim.slice(0, 160) ?? entry.findingId} (${entry.paths.join(", ")})`;
     })
     .join("\n");
   const message = [

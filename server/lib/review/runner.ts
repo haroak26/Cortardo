@@ -1,29 +1,23 @@
 import { randomUUID } from "node:crypto";
 import { and, desc, eq, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import { db } from "../../db";
-import {
-  botExclusions,
-  botSettings,
-  repositories,
-  repositoryLearnings,
-  repositoryRules,
-  reviewFindings,
-  reviewRuns,
-  type Repository,
-} from "@shared/schema";
-import { normalizeBotSettings } from "@shared/bot";
-import { matchesAnyGlob } from "../bot/glob";
+import { repositories, repositoryCodeFiles, repositoryCodegraphs, reviewFindings, reviewRuns, type Repository } from "@shared/schema";
 import { storage } from "../../storage";
 import * as githubApi from "../github/api";
 import { getInstallationToken } from "../github/app";
-import { createV3Engine, E2BSandboxInstance, resolveV3Config } from "../../../cortardobot/src/v3/index.ts";
-import type { ReviewRequest, ReviewResult, StageEvent } from "../../../cortardobot/src/v3/types.ts";
-import { createLogger, redactSecrets } from "../../../cortardobot/src/v3/util.ts";
-import { ENGINE_VERSION } from "../../../cortardobot/src/v3/version.ts";
-import { isVerifiedFix, findingState } from "../../../cortardobot/src/v3/result.ts";
+import {
+  createEngine,
+  E2BSandboxInstance,
+  ENGINE_VERSION,
+  publicModelSelection,
+  resolveEngineConfig,
+  type EngineResult,
+  type Finding,
+  type RepoGraphInput,
+  type ReviewRequest,
+} from "../../../cortardobot/src/index.ts";
+import { createLogger, redactSecrets } from "../../../cortardobot/src/util.ts";
 import { resolveModelIds, resolveReasoning, type ModelRole, type ReasoningEffort } from "@shared/models";
-import { DbCacheStore } from "./cache-store";
-import { ensureReviewSchema } from "./schema";
 import { autoCommitVerifiedFixes, type AutoCommitResult } from "./autocommit";
 import { failCheckRun, finishCheckRun, publishReview, startReviewCheckRun } from "./publisher";
 
@@ -65,14 +59,7 @@ const STALE_MS = Number(process.env.CORTADO_STALE_RUN_MS ?? 15 * 60_000);
 const RECOVERY_INTERVAL_MS = Number(process.env.CORTADO_RECOVERY_INTERVAL_MS ?? 2 * 60_000);
 const MAX_HEARTBEAT_FAILURES = 3;
 
-const cacheStore = new DbCacheStore();
-let schemaReady: Promise<void> | undefined;
 let recoveryTimer: NodeJS.Timeout | undefined;
-
-function ready(): Promise<void> {
-  schemaReady ??= ensureReviewSchema();
-  return schemaReady;
-}
 
 async function existingRunForHead(input: TriggerReviewInput): Promise<boolean> {
   const base = [eq(reviewRuns.repositoryId, input.repositoryId)];
@@ -80,24 +67,12 @@ async function existingRunForHead(input: TriggerReviewInput): Promise<boolean> {
     ? await db
         .select({ status: reviewRuns.status, publishState: reviewRuns.publishState })
         .from(reviewRuns)
-        .where(
-          and(
-            ...base,
-            eq(reviewRuns.headSha, input.headSha),
-            inArray(reviewRuns.status, ["queued", "running", "done"]),
-          ),
-        )
+        .where(and(...base, eq(reviewRuns.headSha, input.headSha), inArray(reviewRuns.status, ["queued", "running", "done"])))
         .limit(5)
     : await db
         .select({ status: reviewRuns.status, publishState: reviewRuns.publishState })
         .from(reviewRuns)
-        .where(
-          and(
-            ...base,
-            eq(reviewRuns.pullRequestNumber, input.pullRequestNumber),
-            inArray(reviewRuns.status, ["queued", "running"]),
-          ),
-        )
+        .where(and(...base, eq(reviewRuns.pullRequestNumber, input.pullRequestNumber), inArray(reviewRuns.status, ["queued", "running"])))
         .limit(5);
   // A finished run whose review never published may be retried; anything else
   // (active, or published) suppresses a duplicate.
@@ -110,7 +85,6 @@ async function existingRunForHead(input: TriggerReviewInput): Promise<boolean> {
  */
 export async function recoverStaleReviewRuns(): Promise<number> {
   try {
-    await ready();
     const cutoff = new Date(Date.now() - STALE_MS);
     const stale = await db
       .update(reviewRuns)
@@ -161,7 +135,6 @@ function scheduleRecovery(): void {
 
 export async function enqueueReview(input: TriggerReviewInput): Promise<EnqueueResult> {
   try {
-    await ready();
     scheduleRecovery();
     if (await existingRunForHead(input)) {
       logger.info(`skipping duplicate review for ${input.repositoryId}#${input.pullRequestNumber}`);
@@ -247,6 +220,35 @@ async function heartbeat(runId: string): Promise<boolean> {
   }
 }
 
+/** L0 context: the stored code graph plus per-file string references. */
+async function loadRepoGraph(repositoryId: string): Promise<RepoGraphInput | undefined> {
+  const [graph] = await db.select().from(repositoryCodegraphs).where(eq(repositoryCodegraphs.repositoryId, repositoryId)).limit(1);
+  if (!graph) return undefined;
+  const rows = await db
+    .select({ path: repositoryCodeFiles.path, parsed: repositoryCodeFiles.parsed })
+    .from(repositoryCodeFiles)
+    .where(eq(repositoryCodeFiles.repositoryId, repositoryId));
+  const strings: RepoGraphInput["strings"] = [];
+  for (const row of rows) {
+    const parsed = (row.parsed ?? {}) as { strings?: Array<{ value?: unknown; line?: unknown }> };
+    if (!Array.isArray(parsed.strings)) continue;
+    for (const entry of parsed.strings) {
+      if (typeof entry?.value !== "string") continue;
+      strings.push({ path: row.path, value: entry.value, line: typeof entry.line === "number" ? entry.line : 1 });
+      if (strings.length >= 40_000) break;
+    }
+    if (strings.length >= 40_000) break;
+  }
+  return {
+    files: (graph.files ?? []).map((file) => ({ path: file.path, kind: file.kind })),
+    connections: graph.connections ?? [],
+    symbols: graph.symbols ?? [],
+    symbolEdges: graph.symbolEdges ?? [],
+    strings,
+    knowledge: graph.knowledge ?? [],
+  };
+}
+
 async function processRun(job: QueuedJob): Promise<void> {
   const { runId, input } = job;
   const claimed = await claimRun(runId);
@@ -292,68 +294,10 @@ async function processRun(job: QueuedJob): Promise<void> {
       return;
     }
     const headSha = pr.headSha;
-    const [botSettingsRow] = await db
-      .select()
-      .from(botSettings)
-      .where(eq(botSettings.workspaceId, repository.workspaceId))
-      .limit(1);
-    const botConfig = normalizeBotSettings(botSettingsRow);
-    const exclusionRows = await db
-      .select({ pattern: botExclusions.pattern })
-      .from(botExclusions)
-      .where(
-        and(
-          eq(botExclusions.workspaceId, repository.workspaceId),
-          eq(botExclusions.enabled, true),
-          or(isNull(botExclusions.repositoryId), eq(botExclusions.repositoryId, repository.id)),
-        ),
-      );
-    const ruleRows = await db
-      .select({ instruction: repositoryRules.instruction, glob: repositoryRules.glob })
-      .from(repositoryRules)
-      .where(
-        and(
-          eq(repositoryRules.workspaceId, repository.workspaceId),
-          eq(repositoryRules.enabled, true),
-          or(isNull(repositoryRules.repositoryId), eq(repositoryRules.repositoryId, repository.id)),
-        ),
-      )
-      .orderBy(desc(repositoryRules.createdAt));
-    const learningRows = await db
-      .select({ text: repositoryLearnings.text })
-      .from(repositoryLearnings)
-      .where(
-        and(
-          eq(repositoryLearnings.workspaceId, repository.workspaceId),
-          eq(repositoryLearnings.active, true),
-          or(isNull(repositoryLearnings.repositoryId), eq(repositoryLearnings.repositoryId, repository.id)),
-        ),
-      )
-      .orderBy(desc(repositoryLearnings.createdAt));
-
-    const exclusionPatterns = exclusionRows.map((row) => row.pattern);
-    if (botConfig.settings.pullRequests.ignoreGenerated) {
-      exclusionPatterns.push(
-        "package-lock.json",
-        "yarn.lock",
-        "pnpm-lock.yaml",
-        "**/*.snap",
-        "**/dist/**",
-        "**/build/**",
-        "**/*.min.js",
-        "**/*.min.css",
-      );
-    }
-
     const files = await githubApi.listPullRequestFiles(repository.installationId, repository.fullName, input.pullRequestNumber);
-    const changedFiles = [];
+    const changedFiles: ReviewRequest["files"] = [];
     let truncatedFiles = 0;
-    let excludedFiles = 0;
     for (const file of files) {
-      if (matchesAnyGlob(file.filename, exclusionPatterns)) {
-        excludedFiles += 1;
-        continue;
-      }
       let content: string | undefined;
       if (file.status !== "removed" && (file.patch || file.changes > 0)) {
         if (file.additions + file.deletions > 0 || file.status === "added") {
@@ -366,7 +310,7 @@ async function processRun(job: QueuedJob): Promise<void> {
       }
       changedFiles.push({
         path: file.filename,
-        status: file.status as "added" | "modified" | "removed" | "renamed",
+        status: file.status as ReviewRequest["files"][number]["status"],
         patch: file.patch,
         content,
         additions: file.additions,
@@ -390,31 +334,51 @@ async function processRun(job: QueuedJob): Promise<void> {
       input.models ??
       (repositorySettings.models as Partial<Record<ModelRole, string>> | undefined) ??
       resolveModelIds();
-    const reasoning =
-      input.reasoning ??
-      (repositorySettings.reasoning as Partial<Record<ModelRole, ReasoningEffort>> | undefined) ??
-      resolveReasoning();
-    const workspaceInstructions = botConfig.settings.instructions.trim() || undefined;
-    const instructions =
-      input.instructions ??
-      (typeof repositorySettings.instructions === "string" ? repositorySettings.instructions : undefined) ??
-      workspaceInstructions;
-    const settingsLearnings = Array.isArray(repositorySettings.learnings)
+    const reasoning: Record<ModelRole, ReasoningEffort> = {
+      ...resolveReasoning(),
+      ...((repositorySettings.reasoning as Partial<Record<ModelRole, ReasoningEffort>> | undefined) ?? {}),
+      ...(input.reasoning ?? {}),
+    };
+    const instructions = input.instructions ?? (typeof repositorySettings.instructions === "string" ? repositorySettings.instructions : undefined);
+    const learnings = Array.isArray(repositorySettings.learnings)
       ? repositorySettings.learnings.filter((item): item is string => typeof item === "string")
       : [];
-    const learnings = Array.from(
-      new Set([...learningRows.map((row) => row.text.trim()).filter(Boolean), ...settingsLearnings]),
-    );
-    const rules = ruleRows
-      .map((row) => (row.glob ? `${row.instruction} (applies to ${row.glob})` : row.instruction))
-      .filter((rule) => rule.trim().length > 0);
     const autoCommitFixes = repositorySettings.autoCommitFixes === true;
     const autoCommitMaxFindings =
       typeof repositorySettings.autoCommitMaxFindings === "number" && repositorySettings.autoCommitMaxFindings > 0
         ? Math.min(10, Math.floor(repositorySettings.autoCommitMaxFindings))
         : undefined;
 
-    const config = resolveV3Config({ mode: "live", models });
+    const graph = await loadRepoGraph(repository.id).catch((error) => {
+      logger.warn(`[${runId.slice(0, 8)}] codegraph unavailable`, { error: error instanceof Error ? error.message : String(error) });
+      return undefined;
+    });
+
+    // Small anchor files let the engine detect runnable surfaces without a sandbox.
+    const anchors: Record<string, string> = {};
+    for (const path of ["package.json", ".env.example"]) {
+      const content = await githubApi.getFileContent(repository.installationId, repository.fullName, path, headSha).catch(() => undefined);
+      if (content && content.length <= 200_000) anchors[path] = content;
+    }
+
+    const engineConfig = resolveEngineConfig();
+    const sandboxOptions = {
+      template: engineConfig.sandbox.template,
+      apiKey: engineConfig.sandbox.apiKey,
+      timeoutMs: engineConfig.sandbox.timeoutMs,
+      repoDir: engineConfig.sandbox.repoDir,
+    };
+    const engine = createEngine({
+      config: {
+        models: { investigator: models.investigator, engineer: models.engineer, reviewer: models.reviewer, reasoning },
+        sandbox: engineConfig.sandbox,
+        budgets: { globalMs: Number(process.env.CORTADO_GLOBAL_TIMEOUT_MS ?? 1_800_000) },
+      },
+      sandboxFactory: async () => E2BSandboxInstance.create(sandboxOptions),
+      verificationSandboxFactory: async () => E2BSandboxInstance.create(sandboxOptions),
+      logger,
+    });
+
     const request: ReviewRequest = {
       runId,
       repo: {
@@ -436,43 +400,15 @@ async function processRun(job: QueuedJob): Promise<void> {
         url: pr.url ?? undefined,
       },
       files: changedFiles,
-      rules,
+      rules: [],
       learnings,
-      settings: {
-        autoCommitFixes,
-        models,
-        reasoning,
-        instructions,
-      },
+      settings: { models, reasoning, instructions, runtime: repositorySettings.runtime !== false },
+      graph,
+      anchors,
+      repoFiles: (graph?.files ?? []).map((file) => file.path),
     };
 
-    const eventStats: StageEvent[] = [];
-    const engine = createV3Engine({
-      config: {
-        mode: "live",
-        models,
-        budgets: { globalMs: Number(process.env.CORTADO_GLOBAL_TIMEOUT_MS ?? 900_000) },
-      },
-      sandboxFactory: async () =>
-        E2BSandboxInstance.create({
-          template: config.sandbox.template,
-          apiKey: config.sandbox.apiKey,
-          timeoutMs: config.sandbox.timeoutMs,
-          repoDir: config.sandbox.repoDir,
-        }),
-      cache: cacheStore,
-      logger,
-      onEvent: (event) => {
-        const safeEvent = event.detail ? { ...event, detail: redactSecrets(event.detail) } : event;
-        eventStats.push(safeEvent);
-        if (event.status !== "started") logger.info(`[${runId.slice(0, 8)}] ${event.stage} ${event.status}${safeEvent.detail ? ` — ${safeEvent.detail.slice(0, 160)}` : ""}`);
-      },
-    });
-
     const result = await engine.run(request);
-    if (excludedFiles > 0) {
-      logger.info(`[${runId.slice(0, 8)}] skipped ${excludedFiles} excluded file(s)`);
-    }
     if (truncatedFiles > 0) {
       result.degraded = true;
       const note = `${truncatedFiles} file(s) truncated to fit the review budget`;
@@ -482,7 +418,7 @@ async function processRun(job: QueuedJob): Promise<void> {
     await persistFindings(runId, repository, result);
 
     let autoCommit: AutoCommitResult | undefined;
-    if (autoCommitFixes && result.status !== "failed" && !result.degraded && result.findings.length > 0) {
+    if (autoCommitFixes && result.status !== "failed" && !result.degraded && result.findings.some((finding) => finding.state === "verified_fix")) {
       try {
         autoCommit = await autoCommitVerifiedFixes({
           installationId: repository.installationId,
@@ -505,38 +441,30 @@ async function processRun(job: QueuedJob): Promise<void> {
       .set({
         status: result.status === "failed" ? "error" : "done",
         error: result.error ?? null,
-        summary: `${result.summary.issuesConfirmed} confirmed · ${result.summary.issuesVerified} fixed and verified`,
+        summary: `${result.summary.issuesReproduced} reproduced · ${result.summary.issuesVerified} fixed and verified`,
         tokensIn: result.usage.tokensIn,
         tokensOut: result.usage.tokensOut,
         creditsSettled: Math.round(result.usage.costUsd * 1000 * 1000) / 1000,
         headSha,
         engineVersion: ENGINE_VERSION,
-        model: result.models.codegen,
-        plan: { candidates: result.candidates.length, proofs: result.proofs.length, repairs: result.repairs.length },
+        model: result.models.engineer,
+        plan: { candidates: result.candidates.length, findings: result.findings.length, verified: result.summary.issuesVerified },
         stats: {
           pullRequestNumber: input.pullRequestNumber,
           headSha,
           engineVersion: ENGINE_VERSION,
-          // Never persist the private model config (gateway key/base URL); only
-          // the public selection is recorded (3.4).
-          models: {
-            luna: result.models.luna,
-            terra: result.models.terra,
-            codegen: result.models.codegen,
-            astra: result.models.astra,
-            reasoning: result.models.reasoning,
-          },
+          models: result.models,
           timings: result.timings,
-          events: eventStats.slice(-120),
+          events: result.events.slice(-200),
           usage: result.usage,
-          cache: result.cache,
-          swarm: result.swarm ?? null,
-          report: result.reviewReport ?? null,
           summary: result.summary,
+          report: result.report,
+          coverage: result.candidates,
           autoCommit: autoCommit ?? null,
-          degraded: result.degraded ?? false,
+          degraded: result.degraded,
           degradedReason: result.degradedReason ?? null,
           checkRunId: checkRunId ?? null,
+          codegraph: graph ? { files: graph.files?.length ?? 0, symbols: graph.symbols?.length ?? 0, strings: graph.strings?.length ?? 0 } : null,
         },
         finishedAt: new Date(),
         updatedAt: new Date(),
@@ -557,7 +485,7 @@ async function processRun(job: QueuedJob): Promise<void> {
 
     let publishError: string | undefined;
     let publishedId: number | undefined;
-    if (result.status !== "failed" && (result.findings.length > 0 || result.summary.staticOnly > 0 || result.reviewReport)) {
+    if (result.status !== "failed" && (result.findings.length > 0 || result.candidates.length > 0 || result.report)) {
       const published = await publishReview(
         {
           installationId: repository.installationId,
@@ -577,8 +505,6 @@ async function processRun(job: QueuedJob): Promise<void> {
         logger.warn(`[${runId.slice(0, 8)}] review was not published; the run can be re-enqueued`);
       }
     }
-    // Only reachable after the fenced completion update cleared the lease, so
-    // no lease predicate here (it would match zero rows and lose the state).
     await db
       .update(reviewRuns)
       .set({
@@ -600,9 +526,8 @@ async function processRun(job: QueuedJob): Promise<void> {
       autoCommitNote: autoCommit?.note,
     });
     logger.info(
-      `[${runId.slice(0, 8)}] done: ${result.summary.issuesConfirmed} confirmed, ${result.summary.issuesVerified} verified, ` +
-        `${(result.summary.durationMs / 1000).toFixed(1)}s, $${result.summary.costUsd.toFixed(4)}, ` +
-        `cache ${result.summary.cacheHits}/${result.summary.cacheHits + result.summary.cacheMisses}`,
+      `[${runId.slice(0, 8)}] done: ${result.summary.issuesReproduced} reproduced, ${result.summary.issuesVerified} verified, ` +
+        `${(result.summary.durationMs / 1000).toFixed(1)}s, $${result.summary.costUsd.toFixed(4)}`,
     );
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -614,51 +539,40 @@ async function processRun(job: QueuedJob): Promise<void> {
   }
 }
 
-async function persistFindings(runId: string, repository: Repository, result: ReviewResult): Promise<void> {
-  const verifiedByCandidate = new Map(result.findings.map((finding) => [finding.candidate.id, isVerifiedFix(finding)]));
+async function persistFindings(runId: string, repository: Repository, result: EngineResult): Promise<void> {
+  const byId = new Map(result.findings.map((finding) => [finding.id, finding]));
   const rows = result.candidates.map((candidate) => {
-    const proof = result.proofs.find((entry) => entry.candidateId === candidate.id);
-    const repair = result.repairs.find((entry) => entry.candidateId === candidate.id);
-    const verification = result.verifications[candidate.id];
-    const review = result.reviews.find((entry) => entry.candidateId === candidate.id);
-    const decision = result.decisions.find((entry) => entry.candidateId === candidate.id);
-    const confirmed = proof?.status === "confirmed";
-    const finding = result.findings.find((entry) => entry.candidate.id === candidate.id);
-    const verified = verifiedByCandidate.get(candidate.id) ?? false;
-    const state = finding ? findingState(finding) : confirmed ? "UNRESOLVED" : "UNSUPPORTED";
-    const verdict = confirmed ? "confirmed" : decision?.verdict === "STATIC_ONLY" ? "static_only" : "dismissed";
+    const finding: Finding | undefined = byId.get(candidate.candidateId);
+    const verified = finding?.state === "verified_fix";
     return {
       runId,
       repositoryId: repository.id,
       workspaceId: repository.workspaceId,
-      findingKey: candidate.id,
+      findingKey: candidate.candidateId,
       path: candidate.file ?? null,
-      line: candidate.line ?? null,
-      category: candidate.agentKind,
+      line: finding?.line ?? null,
+      category: "finding",
       severity: candidate.severity,
-      verdict,
-      confidence: candidate.confidence,
+      verdict: candidate.state,
+      confidence: finding?.confidence ?? 0.5,
       title: candidate.claim.slice(0, 400),
-      detail: proof?.explanation ?? candidate.claim,
-      evidence: candidate.evidence,
+      detail: finding?.repro.explanation ?? candidate.reason,
+      evidence: finding?.evidence ?? [],
       models: {
-        luna: result.models.luna,
-        terra: result.models.terra,
-        codegen: result.models.codegen,
-        astra: result.models.astra,
-        proof: proof ?? null,
-        review: review ?? null,
-        decision: decision ?? null,
+        repro: finding?.repro.artifact ?? null,
+        reviewer: finding?.fix?.reviewer ?? null,
       },
-      fix: {
-        status: repair?.exit ?? "NOT_ATTEMPTED",
-        verified,
-        state,
-        patch: repair?.finalPatch ?? null,
-        reason: repair?.reason ?? null,
-        attempts: repair?.attempts.length ?? 0,
-        transcripts: repair?.transcript?.turns.length ?? 0,
-      },
+      fix: finding?.fix
+        ? {
+            status: finding.fix.state,
+            verified,
+            state: finding.state,
+            patch: finding.fix.patch ?? null,
+            reason: finding.fix.reason,
+            attempts: finding.fix.attempts.length,
+            verification: finding.fix.verification ?? null,
+          }
+        : { status: "NOT_ATTEMPTED", verified: false, state: candidate.state, attempts: 0 },
       status: verified ? "fixed" : "open",
     };
   });
@@ -732,3 +646,5 @@ export async function listReviewRuns(workspaceId: string | null, limit = 40) {
     : db.select(selection).from(reviewRuns);
   return base.orderBy(desc(reviewRuns.createdAt)).limit(Math.min(limit, 100));
 }
+
+export { publicModelSelection };

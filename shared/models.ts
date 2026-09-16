@@ -1,12 +1,13 @@
 /**
- * CortardoBot 3.1 — canonical model catalog.
+ * Canonical model catalog for CortardoBot 3.5.
  *
- * Single source of truth for model ids, roles, defaults and pricing. The
- * engine (`cortardobot`), the server runner and the app all read from here so a
- * run can never silently use a different model than the one selected.
+ * Three plain roles only: `investigator` finds and reproduces defects,
+ * `engineer` writes fixes, `reviewer` verifies independently. The engine, the
+ * server runner and the app all read from here so a run can never silently use
+ * a different model than the one selected.
  */
 
-export type ModelRole = "luna" | "terra" | "codegen" | "astra";
+export type ModelRole = "investigator" | "engineer" | "reviewer";
 
 export type ModelProvider = "openai" | "anthropic" | "google" | "zai" | "other";
 
@@ -25,47 +26,41 @@ export interface ModelCatalogEntry {
   isDefault: boolean;
 }
 
-/**
- * Defaults locked in for 3.3 — the GPT-class models selected for the product.
- * Luna investigates, Terra judges, Astra (gpt-6-astra) writes the fixes, and the
- * astra role reviews independently on Sol so the writer is never the reviewer.
- */
 export const DEFAULT_MODELS: Record<ModelRole, string> = {
-  luna: "openai/gpt-5.6-luna",
-  terra: "openai/gpt-5.6-terra",
-  codegen: "openai/gpt-6-astra",
-  astra: "openai/gpt-5.6-sol",
+  investigator: "openai/gpt-5.6-luna",
+  engineer: "openai/gpt-6-astra",
+  reviewer: "openai/gpt-5.6-sol",
 };
 
 export const MODEL_CATALOG: ModelCatalogEntry[] = [
   {
     id: "openai/gpt-5.6-luna",
-    role: "luna",
+    role: "investigator",
     label: "GPT 5.6 Luna",
     provider: "openai",
-    description: "Fast investigator for swarm and probe analysis.",
+    description: "Fast investigator: reads the code, reproduces defects with scripts.",
     inputCostPerMillion: 0.5,
     outputCostPerMillion: 1.5,
     supportsReasoning: true,
     isDefault: true,
   },
   {
-    id: "openai/gpt-5.6-terra",
-    role: "terra",
-    label: "GPT 5.6 Terra",
+    id: "openai/gpt-5.4-mini",
+    role: "investigator",
+    label: "GPT 5.4 Mini",
     provider: "openai",
-    description: "Judge and autonomous repair engineer.",
-    inputCostPerMillion: 3,
-    outputCostPerMillion: 15,
-    supportsReasoning: true,
-    isDefault: true,
+    description: "Low-cost investigator for very small diffs.",
+    inputCostPerMillion: 0.75,
+    outputCostPerMillion: 4.5,
+    supportsReasoning: false,
+    isDefault: false,
   },
   {
     id: "openai/gpt-6-astra",
-    role: "codegen",
+    role: "engineer",
     label: "GPT 6 Astra",
     provider: "openai",
-    description: "Autonomous repair engineer — writes and verifies fixes.",
+    description: "Autonomous repair engineer — writes fixes against the failing repro.",
     inputCostPerMillion: 5,
     outputCostPerMillion: 25,
     supportsReasoning: true,
@@ -73,7 +68,7 @@ export const MODEL_CATALOG: ModelCatalogEntry[] = [
   },
   {
     id: "openai/gpt-5.6-terra",
-    role: "codegen",
+    role: "engineer",
     label: "GPT 5.6 Terra",
     provider: "openai",
     description: "Cheaper alternative repair engineer.",
@@ -84,49 +79,35 @@ export const MODEL_CATALOG: ModelCatalogEntry[] = [
   },
   {
     id: "openai/gpt-5.6-sol",
-    role: "astra",
+    role: "reviewer",
     label: "GPT 5.6 Sol",
     provider: "openai",
-    description: "Independent flagship final reviewer.",
+    description: "Independent verifier of fixes and final PR report.",
     inputCostPerMillion: 7.5,
     outputCostPerMillion: 37.5,
     supportsReasoning: true,
     isDefault: true,
-  },
-  {
-    id: "openai/gpt-5.4-mini",
-    role: "luna",
-    label: "GPT 5.4 Mini",
-    provider: "openai",
-    description: "Low-cost investigator for very small diffs.",
-    inputCostPerMillion: 0.75,
-    outputCostPerMillion: 4.5,
-    supportsReasoning: false,
-    isDefault: false,
   },
 ];
 
 export type ReasoningEffort = "minimal" | "low" | "medium" | "high";
 
 export const DEFAULT_REASONING: Record<ModelRole, ReasoningEffort> = {
-  luna: "medium",
-  terra: "high",
-  codegen: "high",
-  astra: "high",
+  investigator: "medium",
+  engineer: "high",
+  reviewer: "high",
 };
 
-export const MODEL_ENV_KEYS: Record<ModelRole, { primary: string; legacy: string }> = {
-  luna: { primary: "CORTADO_MODEL_LUNA", legacy: "CORTARDO_MODEL_LUNA" },
-  terra: { primary: "CORTADO_MODEL_TERRA", legacy: "CORTARDO_MODEL_TERRA" },
-  codegen: { primary: "CORTADO_MODEL_CODEGEN", legacy: "CORTARDO_MODEL_CODEGEN" },
-  astra: { primary: "CORTADO_MODEL_ASTRA", legacy: "CORTARDO_MODEL_ASTRA" },
+export const MODEL_ENV_KEYS: Record<ModelRole, { primary: string; legacy: string[] }> = {
+  investigator: { primary: "CORTADO_MODEL_INVESTIGATOR", legacy: ["CORTADO_MODEL_LUNA", "CORTARDO_MODEL_LUNA"] },
+  engineer: { primary: "CORTADO_MODEL_ENGINEER", legacy: ["CORTADO_MODEL_CODEGEN", "CORTARDO_MODEL_CODEGEN"] },
+  reviewer: { primary: "CORTADO_MODEL_REVIEWER", legacy: ["CORTADO_MODEL_ASTRA", "CORTARDO_MODEL_ASTRA"] },
 };
 
-export const REASONING_ENV_KEYS: Record<ModelRole, string> = {
-  luna: "CORTADO_REASONING_LUNA",
-  terra: "CORTADO_REASONING_TERRA",
-  codegen: "CORTADO_REASONING_CODEGEN",
-  astra: "CORTADO_REASONING_ASTRA",
+export const REASONING_ENV_KEYS: Record<ModelRole, { primary: string; legacy: string[] }> = {
+  investigator: { primary: "CORTADO_REASONING_INVESTIGATOR", legacy: ["CORTADO_REASONING_LUNA"] },
+  engineer: { primary: "CORTADO_REASONING_ENGINEER", legacy: ["CORTADO_REASONING_CODEGEN"] },
+  reviewer: { primary: "CORTADO_REASONING_REVIEWER", legacy: ["CORTADO_REASONING_ASTRA"] },
 };
 
 export function modelsForRole(role: ModelRole): ModelCatalogEntry[] {
@@ -150,10 +131,9 @@ export function parseReasoningEffort(value: string | undefined | null): Reasonin
 }
 
 export interface ResolvedModels {
-  luna: string;
-  terra: string;
-  codegen: string;
-  astra: string;
+  investigator: string;
+  engineer: string;
+  reviewer: string;
 }
 
 export interface ResolveModelsInput {
@@ -161,34 +141,39 @@ export interface ResolveModelsInput {
   env?: Record<string, string | undefined>;
 }
 
+function pickEnv(env: Record<string, string | undefined>, keys: { primary: string; legacy: string[] }): string | undefined {
+  const primary = env[keys.primary]?.trim();
+  if (primary) return primary;
+  for (const legacy of keys.legacy) {
+    const value = env[legacy]?.trim();
+    if (value) return value;
+  }
+  return undefined;
+}
+
 /**
  * Resolve the models a run will use. Precedence:
- * explicit override > CORTADO_MODEL_* > legacy CORTARDO_MODEL_* > GPT default.
+ * explicit override > CORTADO_MODEL_* > legacy names > role default.
  */
 export function resolveModelIds(input: ResolveModelsInput = {}): ResolvedModels {
   const env = input.env ?? process.env;
-  const pick = (role: ModelRole): string => {
-    const override = input.overrides?.[role];
-    if (override) return override;
-    const keys = MODEL_ENV_KEYS[role];
-    return env[keys.primary]?.trim() || env[keys.legacy]?.trim() || DEFAULT_MODELS[role];
-  };
-  return { luna: pick("luna"), terra: pick("terra"), codegen: pick("codegen"), astra: pick("astra") };
+  const pick = (role: ModelRole): string => input.overrides?.[role] || pickEnv(env, MODEL_ENV_KEYS[role]) || DEFAULT_MODELS[role];
+  return { investigator: pick("investigator"), engineer: pick("engineer"), reviewer: pick("reviewer") };
 }
 
 export function resolveReasoning(input: ResolveModelsInput = {}): Record<ModelRole, ReasoningEffort> {
   const env = input.env ?? process.env;
   const pick = (role: ModelRole): ReasoningEffort => {
-    return parseReasoningEffort(env[REASONING_ENV_KEYS[role]]) ?? DEFAULT_REASONING[role];
+    const legacy = REASONING_ENV_KEYS[role].legacy.map((key) => env[key]).find((value) => value !== undefined);
+    return parseReasoningEffort(env[REASONING_ENV_KEYS[role].primary]) ?? parseReasoningEffort(legacy) ?? DEFAULT_REASONING[role];
   };
-  return { luna: pick("luna"), terra: pick("terra"), codegen: pick("codegen"), astra: pick("astra") };
+  return { investigator: pick("investigator"), engineer: pick("engineer"), reviewer: pick("reviewer") };
 }
 
 export interface ModelSelection {
-  luna: string;
-  terra: string;
-  codegen: string;
-  astra: string;
+  investigator: string;
+  engineer: string;
+  reviewer: string;
   reasoning: Record<ModelRole, ReasoningEffort>;
 }
 
