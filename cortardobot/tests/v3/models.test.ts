@@ -9,14 +9,28 @@ function task(overrides: Partial<ModelTask> = {}): ModelTask {
   return { role: "terra", kind: "repair_agent", system: "s", user: "u", expectJson: true, label: "test", ...overrides };
 }
 
-test("3.1 defaults to the selected GPT models", () => {
+test("3.3 defaults to the selected GPT models", () => {
   const previous = { ...process.env };
-  for (const key of ["CORTADO_MODEL_LUNA", "CORTADO_MODEL_TERRA", "CORTADO_MODEL_ASTRA", "CORTARDO_MODEL_LUNA"]) delete process.env[key];
+  for (const key of ["CORTADO_MODEL_LUNA", "CORTADO_MODEL_TERRA", "CORTADO_MODEL_CODEGEN", "CORTADO_MODEL_ASTRA", "CORTARDO_MODEL_LUNA"]) delete process.env[key];
   const config = resolveV3Config();
   assert.equal(config.models.luna, DEFAULT_MODELS.luna);
   assert.equal(config.models.terra, DEFAULT_MODELS.terra);
+  assert.equal(config.models.codegen, DEFAULT_MODELS.codegen);
   assert.equal(config.models.astra, DEFAULT_MODELS.astra);
+  assert.equal(config.models.codegen, "openai/gpt-6-astra");
+  assert.equal(config.models.astra, "openai/gpt-5.6-sol");
   assert.equal(config.models.reasoning.terra, "high");
+  assert.equal(config.models.reasoning.codegen, "high");
+  process.env = previous;
+});
+
+test("codegen model env override wins and is independent from the reviewer", () => {
+  const previous = { ...process.env };
+  process.env.CORTADO_MODEL_CODEGEN = "openai/gpt-5.6-terra";
+  process.env.CORTARDO_MODEL_CODEGEN = "openai/gpt-5.6-luna";
+  const config = resolveV3Config();
+  assert.equal(config.models.codegen, "openai/gpt-5.6-terra");
+  assert.equal(config.models.astra, DEFAULT_MODELS.astra);
   process.env = previous;
 });
 
@@ -52,7 +66,7 @@ test("preflight fails when a configured model is not served", async () => {
 
 test("preflight accepts vendor-prefixed ids when the gateway lists the bare model", async () => {
   const fetchImpl = (async () =>
-    new Response(JSON.stringify({ data: [{ id: "gpt-5.6-luna" }, { id: "gpt-5.6-terra" }, { id: "gpt-6-astra" }] }), { status: 200 })) as unknown as typeof fetch;
+    new Response(JSON.stringify({ data: [{ id: "gpt-5.6-luna" }, { id: "gpt-5.6-terra" }, { id: "gpt-6-astra" }, { id: "gpt-5.6-sol" }] }), { status: 200 })) as unknown as typeof fetch;
   const config = resolveV3Config();
   const result = await preflightModels(config.models, fetchImpl);
   assert.equal(result.checked, true);
@@ -174,4 +188,26 @@ test("ModelRouter records ids and enforces the call budget", async () => {
   assert.equal(router.idFor("terra"), "failing");
   await assert.rejects(() => router.complete(task({ role: "terra" })), /nope/);
   await assert.rejects(() => router.complete(task({ role: "terra" })), /budget exhausted/);
+});
+
+test("HttpModelClient stops doubling at the token ceiling instead of recursing forever", async () => {
+  let calls = 0;
+  const fetchImpl = (async () => {
+    calls += 1;
+    return new Response(JSON.stringify({ choices: [{ message: { content: "" }, finish_reason: "length" }], usage: { prompt_tokens: 1, completion_tokens: 1 } }), { status: 200 });
+  }) as unknown as typeof fetch;
+  const config = resolveV3Config();
+  const client = new HttpModelClient({ role: "codegen", model: config.models.codegen, config: config.models, fetchImpl });
+  await assert.rejects(() => client.complete(task({ role: "codegen", retries: 0 })), /truncated at the token ceiling/);
+  assert.ok(calls <= 4, `expected a bounded number of requests, got ${calls}`);
+});
+
+test("HttpModelClient honours a caller abort signal", async () => {
+  const controller = new AbortController();
+  controller.abort();
+  const config = resolveV3Config();
+  const client = new HttpModelClient({ role: "codegen", model: config.models.codegen, config: config.models, fetchImpl: (() => {
+    throw new Error("must not be called");
+  }) as unknown as typeof fetch });
+  await assert.rejects(() => client.complete(task({ role: "codegen", signal: controller.signal })), /aborted/);
 });

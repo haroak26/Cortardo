@@ -99,6 +99,27 @@
       "when": 1789300000000,
       "tag": "0018_review_cache_and_leases",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1789500000000,
+      "tag": "0019_review_run_fencing_and_publish_state",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1789600000000,
+      "tag": "0020_scrub_run_stats_secrets",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1789700000000,
+      "tag": "0021_bot_memory_exclusions",
+      "breakpoints": true
     }
   ]
 }

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { AppLayout } from "@/components/AppLayout";
-import { useUser, useLogout, usePlan, useCredits, useCreditPacks } from "@/hooks/use-user";
+import { useUser, useLogout, usePlan } from "@/hooks/use-user";
 import { wipeAppCache } from "@/lib/queryClient";
 import { useTheme } from "@/hooks/use-theme";
 import { useQueryClient, useMutation, useQuery } from "@tanstack/react-query";
@@ -9,8 +9,8 @@ import { useLocation } from "wouter";
 import { useWorkspace } from "@/contexts/workspace-context";
 import {
   Check, Clock, Download, Lock, ChevronRight, ChevronDown, ArrowLeft,
-  User, CreditCard, Globe, Hash, Coins,
-  Zap, Trash2, Smartphone, Key, Github,
+  User, CreditCard, Globe, Hash,
+  Zap, Trash2, Smartphone, Key, Unplug,
   Plus, Loader, AlertCircle, X, Menu,
   Users,
 } from "lucide-react";
@@ -31,7 +31,7 @@ import {
 } from "@/components/settings-ui";
 
 import TeamPageView from "@/pages/TeamPage";
-import { GithubIntegrationsPage } from "@/components/account/GithubIntegrationSection";
+import { GithubIntegrationsPage, GithubIntegrationDetailsPage } from "@/components/account/GithubIntegrationSection";
 import { PLAN_LIMITS, type PlanTier, type BillingPeriod } from "@shared/schema";
 import { CURRENCIES, CURRENCY_CODES, type CurrencyCode } from "@/lib/billing";
 import { CanvasDropdown } from "@/components/CanvasDropdown";
@@ -458,16 +458,9 @@ const ACCOUNT_NAV: AccountNavGroup[] = [
     ],
   },
   {
-    label: "Integrations",
-    items: [
-      { label: "GitHub", href: "/account/integrations", hint: "Repositories, pull requests & issues", icon: Github },
-    ],
-  },
-  {
     label: "Billing",
     items: [
       { label: "Billing", href: "/account/billing", hint: "Plans & payment", icon: CreditCard },
-      { label: "Credits", href: "/account/credits", hint: "AI credits & packs", icon: Coins },
       { label: "Usage", href: "/account/usage", hint: "Emails, inboxes & domains", icon: Hash },
     ],
   },
@@ -476,6 +469,7 @@ const ACCOUNT_NAV: AccountNavGroup[] = [
     items: [
       { label: "Security", href: "/account/security", hint: "Password & sign out", icon: Lock },
       { label: "Authentication", href: "/account/authentication", hint: "Two-factor authentication", icon: Key },
+      { label: "Integrations", href: "/account/integrations", hint: "GitHub & connected apps", icon: Unplug },
     ],
   },
   {
@@ -559,6 +553,7 @@ function TwoFactorSection() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [enabled, setEnabled] = useState(false);
+  const [emailTwoFactor, setEmailTwoFactor] = useState(true);
   const { data: user } = useUser();
 
   useEffect(() => {
@@ -614,21 +609,33 @@ function TwoFactorSection() {
   return (
     <SettingsSection title="Two-factor authentication">
       {view === 'idle' && (
-        <SettingsRow
-          label="Authenticator App"
-          description="Use an authenticator app as a second sign-in factor."
-        >
-          {enabled ? (
-            <div className="flex items-center gap-2">
-              <span className="text-[12px] font-medium text-emerald-600 flex items-center gap-1"><Check size={12} /> Enabled</span>
-              <Button design="ghost" size="xs" onClick={() => setView('setup')}>Reconfigure</Button>
-            </div>
-          ) : (
-            <Button design="ghost" size="xs" onClick={handleSetup} isLoading={saving}>
-              <Smartphone size={12} /> Set up
-            </Button>
-          )}
-        </SettingsRow>
+        <>
+          <SettingsRow
+            label="Authenticator App"
+            description="Use an authenticator app as a second sign-in factor."
+          >
+            {enabled ? (
+              <div className="flex items-center gap-2">
+                <span className="text-[12px] font-medium text-emerald-600 flex items-center gap-1"><Check size={12} /> Enabled</span>
+                <Button design="ghost" size="xs" onClick={() => setView('setup')}>Reconfigure</Button>
+              </div>
+            ) : (
+              <Button design="ghost" size="xs" onClick={handleSetup} isLoading={saving}>
+                <Smartphone size={12} /> Set up
+              </Button>
+            )}
+          </SettingsRow>
+          <SettingsRow
+            label="2FA"
+            description="Send a one-time code to your email when you sign in."
+          >
+            <TinyToggle
+              checked={emailTwoFactor}
+              onCheckedChange={setEmailTwoFactor}
+              aria-label="Toggle email two-factor authentication"
+            />
+          </SettingsRow>
+        </>
       )}
 
       {view === 'setup' && (
@@ -1076,11 +1083,11 @@ function ActionsPage({ username }: { username: string }) {
   );
 }
 
-function UsageBar({ current, limit, label, unit = "", decimals = 0 }: { current: number; limit: number | "unlimited"; label: string; unit?: string; decimals?: number }) {
+function UsageBar({ current, limit, label, description, unit = "", decimals = 0 }: { current: number; limit: number | "unlimited"; label: string; description?: string; unit?: string; decimals?: number }) {
   const fmt = (n: number) => decimals > 0 ? `${unit}${n.toFixed(decimals)}` : `${unit}${n.toLocaleString()}`;
   if (limit === "unlimited") {
     return (
-      <SettingsRow label={label}>
+      <SettingsRow label={label} description={description}>
         <span className="text-[13.5px] font-medium text-fg-strong">
           {fmt(current)}
           <span className="text-fg-warm"> / Unlimited</span>
@@ -1091,7 +1098,7 @@ function UsageBar({ current, limit, label, unit = "", decimals = 0 }: { current:
   const pct = Math.min(Math.round((current / limit) * 100), 100);
   const color = pct >= 80 ? "bg-red-500" : pct >= 60 ? "bg-yellow-500" : "bg-brand";
   return (
-    <SettingsRow label={label}>
+    <SettingsRow label={label} description={description}>
       <div className="flex items-center gap-3 w-full sm:w-64">
         <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
           <div className={`h-full rounded-full transition-all ${color}`} style={{ width: `${pct}%` }} />
@@ -1142,9 +1149,18 @@ function UsagePage({ planInfo }: any) {
       </SettingsSection>
 
       <SettingsSection title="Detailed Usage">
-        <UsageBar label="Repositories" current={usage.projectsCount ?? 0} limit={limits.projects} />
-        <UsageBar label="Review files" current={usage.designFilesCount ?? 0} limit={limits.designFiles} />
-        <UsageBar label="Storage" current={usage.storageUsed ?? 0} limit={limits.storage} unit="MB" />
+        <UsageBar
+          label="Repositories"
+          description="Repositories connected to this workspace."
+          current={usage.projectsCount ?? 0}
+          limit={limits.projects}
+        />
+        <UsageBar
+          label="Review files"
+          description="Files reviewed by the bot this billing period."
+          current={usage.designFilesCount ?? 0}
+          limit={limits.designFiles}
+        />
       </SettingsSection>
     </div>
   );
@@ -1164,102 +1180,6 @@ function AgentPage() {
   );
 }
 
-function CreditsPage({ planInfo }: any) {
-  const plan = (planInfo?.plan ?? "free") as PlanTier;
-  const limits = PLAN_LIMITS[plan] ?? PLAN_LIMITS.free;
-  const { data: credits, isLoading } = useCredits();
-  const { data: packs } = useCreditPacks();
-  const [buying, setBuying] = useState<string | null>(null);
-
-  const balance = credits?.balance ?? 0;
-  const monthlyUsed = credits?.monthlyUsed ?? 0;
-  const monthlyAllowance = credits?.monthlyAllowance ?? limits.aiCredits.monthly;
-  const dailyUsed = credits?.dailyUsed ?? 0;
-  const dailyAllowance = credits?.dailyAllowance ?? limits.aiCredits.daily;
-  const monthlyUnlimited = monthlyAllowance === "unlimited";
-  const dailyUnlimited = dailyAllowance === "unlimited";
-  const maxTotal = monthlyUnlimited ? Math.max(balance, 100) : Math.max(monthlyAllowance, balance, 100);
-
-  const buyMutation = useMutation({
-    mutationFn: async (packId: string) => {
-      const res = await fetch("/api/credits/buy", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ packId }),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ message: "Purchase failed" }));
-        throw new Error(err.message);
-      }
-      return res.json();
-    },
-    onSuccess: (data) => {
-      if (data.url) window.location.href = data.url;
-    },
-  });
-
-  return (
-    <div className="py-4 space-y-6">
-      <SettingsSection title="Credit Balance">
-        <div className="pt-2 pb-4">
-          {isLoading ? (
-            <div className="h-10 w-32 bg-muted rounded animate-pulse" />
-          ) : (
-            <>
-              <div className="flex items-baseline gap-2 mb-1">
-                <span className="text-[32px] font-semibold text-foreground tracking-[-0.02em] tabular-nums">{balance}</span>
-                <span className="text-[13px] font-[450] text-fg-warm">credits remaining</span>
-              </div>
-              <div className="h-2 bg-muted rounded-full overflow-hidden max-w-xs mt-3">
-                <div
-                  className="h-full rounded-full bg-brand transition-all"
-                  style={{ width: `${Math.min((balance / maxTotal) * 100, 100)}%` }}
-                />
-              </div>
-              <div className="flex items-center gap-4 mt-2">
-                <span className="text-[12px] font-[450] text-fg-warm">
-                  <span className="text-foreground font-medium tabular-nums">{monthlyUsed}</span> / {monthlyUnlimited ? "Unlimited" : monthlyAllowance} used this month
-                </span>
-                <span className="text-[12px] font-[450] text-fg-warm">
-                  <span className="text-foreground font-medium tabular-nums">{dailyUsed}</span> / {dailyUnlimited ? "No daily cap" : dailyAllowance} used today
-                </span>
-              </div>
-            </>
-          )}
-        </div>
-      </SettingsSection>
-
-      {packs && packs.length > 0 && (
-        <SettingsSection title="Buy Credits">
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2">
-            {packs.map((pack) => (
-              <button
-                key={pack.id}
-                onClick={() => {
-                  setBuying(pack.id);
-                  buyMutation.mutate(pack.id);
-                }}
-                disabled={buyMutation.isPending && buying === pack.id}
-                className="flex flex-col items-center gap-1 p-4 rounded-xl border border-border/50 bg-surface/50 hover:bg-surface transition-colors disabled:opacity-50"
-              >
-                <span className="text-[15px] font-semibold text-foreground">{pack.credits}</span>
-                <span className="text-[11px] text-fg-warm">credits</span>
-                <span className="text-[13px] font-medium text-brand mt-1">${(pack.usd / 100).toFixed(0)}</span>
-              </button>
-            ))}
-          </div>
-        </SettingsSection>
-      )}
-
-      <SettingsSection title="Usage Breakdown">
-        <UsageBar label="Monthly AI credits" current={monthlyUsed} limit={monthlyAllowance} />
-        <UsageBar label="Daily AI credits" current={dailyUsed} limit={dailyAllowance} />
-      </SettingsSection>
-    </div>
-  );
-}
-
 // ─── Root export ───────────────────────────────────────────────────────────
 
 const SECTION_TITLES: Record<string, string> = {
@@ -1271,8 +1191,9 @@ const SECTION_TITLES: Record<string, string> = {
   "authentication": "Authentication",
   "sessions": "Sessions",
   "billing": "Billing",
-  "credits": "Credits",
   "usage": "Usage",
+  "integrations": "Integrations",
+  "integrations/github": "GitHub",
   "team": "Team",
   "actions": "Danger Zone",
 };
@@ -1427,9 +1348,9 @@ const contentBySection: Record<string, React.ReactNode> = {
   "authentication": <AuthenticationPage />,
   "sessions": <SessionsPage />,
   "billing": <BillingPage planInfo={planInfo} checkoutMutation={checkoutMutation} cancelMutation={cancelMutation} portalMutation={portalMutation} />,
-  "credits": <CreditsPage planInfo={planInfo} />,
   "usage": <UsagePage planInfo={planInfo} />,
   "integrations": <GithubIntegrationsPage />,
+  "integrations/github": <GithubIntegrationDetailsPage />,
   "team": <TeamPageView />,
 
   "actions": <ActionsPage username={user.username} />,
@@ -1437,7 +1358,7 @@ const contentBySection: Record<string, React.ReactNode> = {
 
   return (
     <div className="flex flex-1 min-h-0">
-      <div className="flex-1 min-w-0 bg-background border-b border-[hsl(var(--surface-hover))] overflow-hidden">
+      <div className="flex-1 min-w-0 bg-background border-b border-[hsl(var(--surface-hover))] overflow-y-auto">
         <div className="mx-auto w-full max-w-[720px] px-4 py-5 sm:px-6 sm:py-6 md:px-8 md:py-8">
           {contentBySection[section] ?? contentBySection["profile"]}
         </div>

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Finding, ReviewResult } from "../../cortardobot/src/v3/types.ts";
-import { buildInlineComments, buildReviewBody, decideCheckConclusion, decideReviewEvent, shouldDismissBotReview } from "../lib/review/publisher";
+import { buildCheckRunText, buildInlineComments, buildReviewBody, decideCheckConclusion, decideReviewEvent, selectSupersededBotReviews, shouldDismissBotReview } from "../lib/review/publisher";
 import { ENGINE_VERSION } from "../../cortardobot/src/v3/version";
 
 const CONTENT = ["const a = 1;", "const x = undefined;", "export default a;"].join("\n");
@@ -86,7 +86,13 @@ function finding(overrides: Partial<Finding> = {}): Finding {
 }
 
 function result(findings: Finding[], overrides: Partial<ReviewResult> = {}): ReviewResult {
-  const models = { luna: "openai/gpt-5.6-luna", terra: "openai/gpt-5.6-terra", astra: "openai/gpt-6-astra", reasoning: { luna: "medium", terra: "high", astra: "high" } } as ReviewResult["models"];
+  const models = {
+    luna: "openai/gpt-5.6-luna",
+    terra: "openai/gpt-5.6-terra",
+    codegen: "openai/gpt-6-astra",
+    astra: "openai/gpt-5.6-sol",
+    reasoning: { luna: "medium", terra: "high", codegen: "high", astra: "high" },
+  } as ReviewResult["models"];
   return {
     runId: "run_1",
     status: "completed",
@@ -186,6 +192,67 @@ test("review footer reports the engine version and swarm telemetry", () => {
   assert.match(body, /Swarm: agentic, 1 agent\(s\), 1 hypothesis\(es\), 1 candidate\(s\)/);
 });
 
+function report(overrides: Partial<NonNullable<ReviewResult["reviewReport"]>> = {}): NonNullable<ReviewResult["reviewReport"]> {
+  return {
+    verdict: { decision: "approve_with_comments", confidence: 0.82, rationale: "All confirmed defects are fixed and verified, but the pricing copy deserves a second look." },
+    summary: "Three runtime defects were reproduced in a browser and fixed; the diff is otherwise low risk.",
+    walkthrough: [{ file: "src/a.ts", intent: "remove the undefined dereference", changeSummary: "guard the value", risk: "low" }],
+    risks: [{ area: "pricing copy", severity: "low", rationale: "the copy changed", mitigation: "review the wording" }],
+    testCoverage: { assessed: true, signals: ["browser check for /docs"], gaps: ["no unit test for the pricing filter"] },
+    observations: [{ kind: "refactor", detail: "the tiers map is now keyed by id" }],
+    limitations: ["the sandbox covered Chrome only"],
+    findingsSummary: { confirmed: 1, verified: 1, unresolved: 0, staticOnly: 0, discarded: 0 },
+    source: "model",
+    ...overrides,
+  };
+}
+
+test("the full PR report renders verdict, walkthrough, risks, coverage and limitations", () => {
+  const value = result([finding()], { reviewReport: report() });
+  const body = buildReviewBody(value);
+  assert.match(body, /Final verdict: \*\*APPROVE WITH COMMENTS\*\* · confidence 82%/);
+  assert.match(body, /### Walkthrough/);
+  assert.match(body, /### Risks/);
+  assert.match(body, /### Test coverage/);
+  assert.match(body, /### Limitations/);
+  assert.match(body, /openai\/gpt-5\.6-sol/);
+  const text = buildCheckRunText(value);
+  assert.ok(text);
+  assert.match(text!, /Verdict: approve with comments/);
+  assert.match(text!, /pricing copy/);
+});
+
+test("a fallback report is labelled and can never approve", () => {
+  const value = result([], {
+    reviewReport: report({ verdict: { decision: "approve", confidence: 0.5, rationale: "fallback" }, source: "fallback", walkthrough: [] }),
+  });
+  assert.equal(decideReviewEvent(value), "COMMENT");
+  assert.match(buildReviewBody(value), /deterministic fallback/);
+});
+
+test("the reviewer verdict drives the event and check behind guardrails", () => {
+  const clean = result([], { reviewReport: report({ verdict: { decision: "approve", confidence: 0.95, rationale: "clean" } }) });
+  assert.equal(decideReviewEvent(clean), "APPROVE");
+  assert.equal(decideCheckConclusion(clean), "success");
+
+  const changes = result([], { reviewReport: report({ verdict: { decision: "request_changes", confidence: 0.9, rationale: "risky" } }) });
+  assert.equal(decideReviewEvent(changes), "REQUEST_CHANGES");
+  assert.equal(decideCheckConclusion(changes), "neutral");
+
+  const verifiedButConcerned = result([finding()], { reviewReport: report({ verdict: { decision: "request_changes", confidence: 0.7, rationale: "concern" } }) });
+  assert.equal(decideReviewEvent(verifiedButConcerned), "REQUEST_CHANGES");
+  assert.equal(decideCheckConclusion(verifiedButConcerned), "neutral");
+});
+
+test("an oversized review body is truncated with an explicit notice", () => {
+  const huge = result([finding()], {
+    reviewReport: report({ summary: "x".repeat(70_000) }),
+  });
+  const body = buildReviewBody(huge);
+  assert.ok(body.length <= 60_000);
+  assert.match(body, /Review truncated at/);
+});
+
 test("only dismissable bot review states are selected for dismissal", () => {
   const base = { commitId: "sha", body: "## Cortado Review\n…", userType: "Bot", userLogin: "cortado[bot]" };
   assert.equal(shouldDismissBotReview({ ...base, state: "COMMENTED" }, "sha"), false);
@@ -194,4 +261,69 @@ test("only dismissable bot review states are selected for dismissal", () => {
   assert.equal(shouldDismissBotReview({ ...base, state: "CHANGES_REQUESTED" }, "sha"), true);
   assert.equal(shouldDismissBotReview({ ...base, state: "APPROVED", commitId: "other" }, "sha"), false);
   assert.equal(shouldDismissBotReview({ ...base, state: "APPROVED", userType: "User", userLogin: "human" }, "sha"), false);
+});
+
+test("a freshly created review is never selected for dismissal", () => {
+  const base = { state: "CHANGES_REQUESTED", commitId: "sha", body: "## Cortado Review\n…", userType: "Bot", userLogin: "cortardobot[bot]" };
+  const previous = { ...base, id: 1 };
+  const fresh = { ...base, id: 2 };
+  assert.deepEqual(
+    selectSupersededBotReviews([previous, fresh], "sha", 2).map((review) => review.id),
+    [1],
+    "the new review must survive its own publish",
+  );
+  assert.deepEqual(selectSupersededBotReviews([previous, fresh], "sha").map((review) => review.id), [1, 2]);
+  assert.deepEqual(selectSupersededBotReviews([fresh], "sha", 2), []);
+  assert.deepEqual(selectSupersededBotReviews([{ ...previous, state: "COMMENTED" }], "sha", 2), []);
+});
+
+test("static-only high findings publish labelled non-blocking comments", () => {
+  const staticCandidate = {
+    ...finding().candidate,
+    id: "c_static",
+    source: "luna" as const,
+    suggestedProof: "none" as const,
+    check: undefined,
+    suggestedExperiment: "assert the 7d period requests 7 days",
+  };
+  const value = result([], {
+    candidates: [staticCandidate],
+    decisions: [{ candidateId: staticCandidate.id, verdict: "STATIC_ONLY", reason: "the prover could not reproduce it", priority: 90 }],
+  });
+  const comments = buildInlineComments(value);
+  assert.equal(comments.length, 1);
+  const body = (comments[0] as { body: string }).body;
+  assert.match(body, /static finding \(unproven\)/);
+  assert.match(body, /neither confirmed nor fixed/);
+  assert.match(body, /assert the 7d period/);
+  // Static findings never block on their own.
+  assert.equal(decideReviewEvent(value), "COMMENT");
+  assert.equal(decideCheckConclusion(value), "neutral");
+});
+
+test("proof coverage is rendered in the review body and check text", () => {
+  const unproven = { ...finding().candidate, id: "c_unproven", source: "luna" as const, suggestedProof: "none" as const, check: undefined };
+  const value = result([], {
+    candidates: [unproven],
+    decisions: [{ candidateId: unproven.id, verdict: "PROVE", reason: "material", priority: 1 }],
+    loop: {
+      judgeProve: 1,
+      proven: 0,
+      proofUnavailable: 1,
+      proofErrors: 0,
+      candidates: [{ candidateId: unproven.id, severity: "high", proofState: "UNPROVABLE", reason: "no executable reproduction was produced" }],
+    },
+    degraded: true,
+    degradedReason: "judge approved 1 candidate(s); 0 proven, 1 unprovable",
+    reviewReport: report(),
+  });
+  const body = buildReviewBody(value);
+  assert.match(body, /### Proof coverage/);
+  assert.match(body, /Judge approved 1 candidate\(s\)/);
+  assert.match(body, /unprovable: no executable reproduction/);
+  const text = buildCheckRunText(value);
+  assert.ok(text);
+  assert.match(text!, /Proof coverage/);
+  assert.match(text!, /Judge approved 1 candidate/);
+  assert.equal(decideCheckConclusion(value), "neutral");
 });

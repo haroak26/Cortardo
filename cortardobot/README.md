@@ -1,10 +1,15 @@
 # Cortado 2.0 — Fast Autonomous Code Review Engine
 
-> **CortardoBot 3.2 lives in `src/v3/` and is the production path.** It adds an agentic
-> read-only swarm, GPT-class model defaults, a tool-using repair agent, self-authored probes,
-> strict fix-verification invariants, a multi-layer cache and a crash-safe run queue. See
-> [`docs/cortardo-3.2.md`](../docs/cortardo-3.2.md) and
-> [`docs/cortardo-3.1.md`](../docs/cortardo-3.1.md). The sections below describe the
+> **CortardoBot 3.4 lives in `src/v3/` and is the production path.** It adds an agentic
+> read-only swarm, GPT-class model defaults, an **autonomous prover** that authors a
+> reproduction for every judge-approved finding (Luna first, codegen escalation), a
+> tool-using repair agent on `openai/gpt-6-astra`, an independent full PR-level final review
+> on `openai/gpt-5.6-sol`, strict fix-verification invariants, honest degradation (an
+> unprovable judge-approved candidate degrades the run and never produces a green check), a
+> multi-layer cache and a fenced crash-safe run queue. See
+> [`docs/cortardo-3.4.md`](../docs/cortardo-3.4.md),
+> [`docs/cortardo-3.3.md`](../docs/cortardo-3.3.md) and
+> [`docs/cortardo-3.2.md`](../docs/cortardo-3.2.md). The sections below describe the
 > legacy 2.0 engine and its 1,048-case dry matrix.
 
 Cortado is an agentic code review engine that does not just review code. It **investigates → proves → fixes → fails → understands why → fixes again → verifies**.
@@ -120,7 +125,8 @@ CORTADO_AI_API_KEY=sk-...
 CORTADO_AI_BASE_URL=https://api.openai.com/v1
 CORTADO_MODEL_LUNA=gpt-5.6-luna
 CORTADO_MODEL_TERRA=gpt-5.6-terra
-CORTADO_MODEL_ASTRA=gpt-6-astra
+CORTADO_MODEL_CODEGEN=gpt-6-astra
+CORTADO_MODEL_ASTRA=gpt-5.6-sol
 ```
 
 Any OpenAI-compatible endpoint works. Without a key, the engine throws instead of silently making calls, and dry mode is used by default.

@@ -30,7 +30,7 @@ function router(terraClient: ReturnType<typeof scriptedClient>) {
   const config = resolveV3Config().models;
   const idle = scriptedClient("luna", () => "{}");
   const astra = scriptedClient("astra", () => JSON.stringify({ reviews: [] }));
-  return new ModelRouter({ clients: { luna: idle, terra: terraClient, astra }, config, maxCalls: 60 });
+  return new ModelRouter({ clients: { luna: idle, terra: terraClient, codegen: terraClient, astra }, config, maxCalls: 60 });
 }
 
 async function runRepair(options: {
@@ -40,6 +40,7 @@ async function runRepair(options: {
   cache?: MemoryCacheStore;
   cachePack?: (candidateId: string) => ContextPack;
   execHandler?: (command: string) => { exitCode: number; stdout?: string };
+  defect?: (content: string) => boolean;
 }) {
   const files = options.files ?? { "src/a.ts": ORIGINAL };
   const sandbox = new MemorySandbox({
@@ -60,7 +61,7 @@ async function runRepair(options: {
     maxRepairs: 3,
     maxTurns: 3,
     maxToolsPerTurn: 4,
-    proveCandidate: contentProof(sandbox, "src/a.ts", (content) => content.includes("undefined")),
+    proveCandidate: contentProof(sandbox, "src/a.ts", options.defect ?? ((content) => content.includes("undefined"))),
     contextPackFor: async (cand) => options.cachePack?.(cand.id) ?? packFor(cand, [{ path: "src/a.ts", content: ORIGINAL }]),
     cache: options.cache,
     cacheTtlMs: 60_000,
@@ -129,6 +130,20 @@ test("a verified fix is cached and re-verified on the next run without model cal
   assert.equal(second.terraClient.calls.length, 0);
   assert.ok(callsAfterFirst > 0);
   assert.ok(cache.stats().creditsSavedUsd > 0);
+});
+
+test("a cached fix whose re-check fails is restored before the fallback agent runs", async () => {
+  const cache = new MemoryCacheStore();
+  const first = await runRepair({ script: [editResponse("const x = undefined", "const x = 1")], cache });
+  assert.equal(first.repair.exit, "VERIFIED");
+
+  const second = await runRepair({
+    script: [FINISH_RESPONSE],
+    cache,
+    defect: (content) => content.includes("const x = 1"),
+  });
+  assert.equal(second.repair.exit, "UNRESOLVED");
+  assert.equal(await second.sandbox.read("src/a.ts"), ORIGINAL, "the failed cached edit must not leak into the fallback agent");
 });
 
 test("an aborted agent restores the file and does not leak probes", async () => {
@@ -233,7 +248,7 @@ test("a diagnosis from one finding becomes a lesson for the next finding in the 
   });
   const idle = scriptedClient("luna", () => "{}");
   const astra = scriptedClient("astra", () => JSON.stringify({ reviews: [] }));
-  const router = new ModelRouter({ clients: { luna: idle, terra: terraClient, astra }, config: resolveV3Config().models, maxCalls: 60 });
+  const router = new ModelRouter({ clients: { luna: idle, terra: terraClient, codegen: terraClient, astra }, config: resolveV3Config().models, maxCalls: 60 });
   let cost = 0;
   const context = contextWith([
     { path: "src/a.ts", content: ORIGINAL },
@@ -279,4 +294,42 @@ test("failure classification is deterministic when no diagnosis call is warrante
     testPassed: false,
   });
   assert.equal(noEdit.category, "no_edit");
+});
+
+test("an inconclusive reproduction never verifies a repair", async () => {
+  const files = { "src/a.ts": ORIGINAL };
+  const sandbox = new MemorySandbox({
+    files,
+    profile: { typecheckCommand: "true" },
+    execHandler: () => ({ exitCode: 0, stdout: "" }),
+  });
+  const candidateValue = candidate({ file: "src/a.ts" });
+  const context = contextWith([{ path: "src/a.ts", content: ORIGINAL }]);
+  const terraClient = terra([editResponse("const x = undefined", "const x = 1"), FINISH_RESPONSE]);
+  let cost = 0;
+  const repairs = await repairFindings([proof(candidateValue)], [candidateValue], context, {
+    sandbox,
+    models: router(terraClient),
+    profile: { packageManager: "npm", installCommand: "npm ci", hasNodeModules: true, hasTests: false, typecheckCommand: "true", scripts: {} },
+    logger: silentLogger,
+    maxAttempts: 2,
+    maxRepairs: 3,
+    maxTurns: 2,
+    maxToolsPerTurn: 4,
+    // The harness could not run: 3.3 treated this as "the defect did not
+    // reproduce" and marked the repair VERIFIED. It must not (3.4).
+    proveCandidate: async () => ({
+      candidateId: candidateValue.id,
+      status: "error" as const,
+      strategy: "none" as const,
+      attempts: [],
+      reproduction: "harness failed",
+      explanation: "the browser harness could not run",
+      durationMs: 1,
+    }),
+    contextPackFor: async (cand) => packFor(cand, [{ path: "src/a.ts", content: ORIGINAL }]),
+    costNow: () => (cost += 0.01),
+  });
+  assert.notEqual(repairs[0]!.exit, "VERIFIED");
+  assert.equal(await sandbox.read("src/a.ts"), ORIGINAL, "the failed edit is restored");
 });

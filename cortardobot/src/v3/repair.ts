@@ -29,6 +29,12 @@ export interface RepairDeps {
   instructions?: string;
   costNow?: () => number;
   now?: () => number;
+  /** Settings fingerprint (instructions/learnings) baked into cache keys (3.3). */
+  settingsFingerprint?: string;
+  /** Reasoning effort for the codegen role, baked into cache keys (3.3). */
+  reasoning?: string;
+  /** Cancellation signal from the owning stage (3.3). */
+  signal?: AbortSignal;
 }
 
 function repairCacheParts(deps: RepairDeps, candidate: Candidate, originalContent: string, packHash: string) {
@@ -43,6 +49,8 @@ function repairCacheParts(deps: RepairDeps, candidate: Candidate, originalConten
       evidence: candidate.evidence,
       check: candidate.check ?? null,
       packHash,
+      settings: deps.settingsFingerprint ?? "",
+      reasoning: deps.reasoning ?? "",
     },
   };
 }
@@ -109,7 +117,15 @@ export async function repairFindings(
 
     if (deps.cache) {
       const hit = await deps.cache.get<RepairCachePayload>(key);
-      if (hit && hit.value.exit === "VERIFIED" && hit.value.finalEdits.length > 0) {
+      if (hit && Array.isArray(hit.value.finalEdits) && hit.value.exit === "VERIFIED" && hit.value.finalEdits.length > 0) {
+        // The cached edits must not leak into the fallback agent when the
+        // re-check fails; snapshot and restore on every non-verified path.
+        const cachedSnapshot = new Map<string, string>();
+        for (const edit of hit.value.finalEdits) {
+          if (cachedSnapshot.has(edit.path)) continue;
+          const prior = await deps.sandbox.read(edit.path).catch(() => undefined);
+          if (prior !== undefined) cachedSnapshot.set(edit.path, prior);
+        }
         const apply = await deps.sandbox.applyEdits(hit.value.finalEdits);
         if (apply.ok) {
           const recheck = await deps.proveCandidate(candidate);
@@ -145,6 +161,8 @@ export async function repairFindings(
             }
           }
         }
+        for (const [path, content] of cachedSnapshot) await deps.sandbox.write(path, content).catch(() => undefined);
+        if (!cachedSnapshot.has(candidate.file)) await deps.sandbox.write(candidate.file, originalContent).catch(() => undefined);
         await deps.cache.delete(key);
       } else {
         deps.cache.recordMiss("repair");
@@ -169,6 +187,7 @@ export async function repairFindings(
         proveCandidate: () => deps.proveCandidate(candidate),
         memory: runMemory,
         now: deps.now,
+        signal: deps.signal,
       });
     } catch (error) {
       await deps.sandbox.write(candidate.file, originalContent).catch(() => undefined);

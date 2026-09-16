@@ -13,6 +13,7 @@ import { generateTotpSecret, verifyTotp, buildOtpauthUrl } from "./totp";
 import { registerAuthRoutes } from "./routes/auth";
 import { registerRemainingRoutes } from "./routes/remaining";
 import { registerGithubRoutes } from "./routes/github";
+import { registerBotRoutes } from "./routes/bot";
 import { buildOnboardingSession } from "./onboarding-session";
 import { createHash, randomBytes, randomInt, timingSafeEqual } from "crypto";
 import {
@@ -306,6 +307,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   registerAuthRoutes(app);
   registerRemainingRoutes(app);
   registerGithubRoutes(app);
+  registerBotRoutes(app);
   // ── Projects ──────────────────────────────────────────────────────────
   const PROJECT_NAME_ADJECTIVES = [
     "Healthy", "Brave", "Calm", "Clever", "Cosmic", "Crimson", "Curious", "Daring",

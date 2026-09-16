@@ -1,32 +1,18 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  BOT_SETTINGS_DEFAULTS,
+  COMMIT_REVIEW_DEFAULTS,
+  PULL_REQUEST_REVIEW_DEFAULTS,
+  type BotSettingsPayload,
+  type BotWorkspaceConfig,
+  type CommitReviewSettings,
+  type PullRequestReviewSettings,
+} from "@shared/bot";
 
-export interface CommitReviewSettings {
-  enabled: boolean;
-  reviewDirect: boolean;
-  scanDiffs: boolean;
-  checkMessages: boolean;
-  suggestFixes: boolean;
-  autoApplySafeFixes: boolean;
-  ignoreMergeCommits: boolean;
-  ignoreReleaseCommits: boolean;
-  maxCommitsPerRun: number;
-}
+export { BOT_SETTINGS_DEFAULTS, COMMIT_REVIEW_DEFAULTS, PULL_REQUEST_REVIEW_DEFAULTS };
+export type { BotSettingsPayload, BotWorkspaceConfig, CommitReviewSettings, PullRequestReviewSettings };
 
-export const COMMIT_REVIEW_DEFAULTS: CommitReviewSettings = {
-  enabled: false,
-  reviewDirect: false,
-  scanDiffs: false,
-  checkMessages: false,
-  suggestFixes: false,
-  autoApplySafeFixes: false,
-  ignoreMergeCommits: false,
-  ignoreReleaseCommits: false,
-  maxCommitsPerRun: 50,
-};
-
-export interface ApiBotSettings {
-  commitReviews: CommitReviewSettings;
-}
+export interface ApiBotSettings extends BotSettingsPayload {}
 
 export interface ApiRule {
   id: string;
@@ -52,6 +38,18 @@ export interface ApiLearning {
   findingKey: string | null;
   path: string | null;
   active: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ApiExclusion {
+  id: string;
+  workspaceId: string;
+  repositoryId: string | null;
+  scope: string;
+  pattern: string;
+  note: string | null;
+  enabled: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -118,12 +116,12 @@ export function useBotRules(workspaceId: string | null, repositoryId?: string | 
 export function useCreateRule(workspaceId: string | null) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (input: { instruction: string; glob?: string | null; scope?: string }) =>
+    mutationFn: (input: { instruction: string; glob?: string | null; repositoryId?: string | null }) =>
       sendJson<ApiRule>("POST", "/api/bot/rules", {
         workspaceId,
         instruction: input.instruction,
         glob: input.glob ?? null,
-        scope: input.scope,
+        repositoryId: input.repositoryId ?? null,
       }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/bot/rules"] }),
   });
@@ -132,8 +130,16 @@ export function useCreateRule(workspaceId: string | null) {
 export function useUpdateRule() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, ...patch }: { id: string; instruction?: string; glob?: string | null; enabled?: boolean }) =>
-      sendJson<ApiRule>("PATCH", `/api/bot/rules/${id}`, patch),
+    mutationFn: ({
+      id,
+      ...patch
+    }: {
+      id: string;
+      instruction?: string;
+      glob?: string | null;
+      repositoryId?: string | null;
+      enabled?: boolean;
+    }) => sendJson<ApiRule>("PATCH", `/api/bot/rules/${id}`, patch),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/bot/rules"] }),
   });
 }
@@ -157,12 +163,12 @@ export function useBotLearnings(workspaceId: string | null, repositoryId?: strin
 export function useCreateLearning(workspaceId: string | null) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (input: { text: string; scope?: string }) =>
+    mutationFn: (input: { text: string; repositoryId?: string | null; source?: "feedback" | "rule" | "manual" }) =>
       sendJson<ApiLearning>("POST", "/api/bot/learnings", {
         workspaceId,
         text: input.text,
-        scope: input.scope,
-        source: "manual",
+        repositoryId: input.repositoryId ?? null,
+        source: input.source ?? "manual",
       }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/bot/learnings"] }),
   });
@@ -171,7 +177,7 @@ export function useCreateLearning(workspaceId: string | null) {
 export function useUpdateLearning() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, ...patch }: { id: string; text?: string; active?: boolean }) =>
+    mutationFn: ({ id, ...patch }: { id: string; text?: string; active?: boolean; repositoryId?: string | null }) =>
       sendJson<ApiLearning>("PATCH", `/api/bot/learnings/${id}`, patch),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/bot/learnings"] }),
   });
@@ -182,6 +188,53 @@ export function useDeleteLearning() {
   return useMutation({
     mutationFn: (id: string) => sendJson<{ ok: boolean }>("DELETE", `/api/bot/learnings/${id}`),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/bot/learnings"] }),
+  });
+}
+
+export function useBotExclusions(workspaceId: string | null) {
+  return useQuery<ApiExclusion[]>({
+    queryKey: ["/api/bot/exclusions", workspaceId ?? ""],
+    queryFn: () => getJson(`/api/bot/exclusions${scopedQuery(workspaceId)}`),
+    enabled: !!workspaceId,
+  });
+}
+
+export function useCreateExclusion(workspaceId: string | null) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { pattern: string; note?: string | null; repositoryId?: string | null }) =>
+      sendJson<ApiExclusion>("POST", "/api/bot/exclusions", {
+        workspaceId,
+        pattern: input.pattern,
+        note: input.note ?? null,
+        repositoryId: input.repositoryId ?? null,
+      }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/bot/exclusions"] }),
+  });
+}
+
+export function useUpdateExclusion() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      id,
+      ...patch
+    }: {
+      id: string;
+      pattern?: string;
+      note?: string | null;
+      repositoryId?: string | null;
+      enabled?: boolean;
+    }) => sendJson<ApiExclusion>("PATCH", `/api/bot/exclusions/${id}`, patch),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/bot/exclusions"] }),
+  });
+}
+
+export function useDeleteExclusion() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => sendJson<{ ok: boolean }>("DELETE", `/api/bot/exclusions/${id}`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/bot/exclusions"] }),
   });
 }
 
@@ -223,18 +276,33 @@ export function useBotSettings(workspaceId: string | null) {
   });
 }
 
+export interface BotSettingsPatch {
+  commitReviews?: Partial<CommitReviewSettings>;
+  settings?: {
+    instructions?: string;
+    pullRequests?: Partial<PullRequestReviewSettings>;
+  };
+}
+
 export function useUpdateBotSettings(workspaceId: string | null) {
   const queryClient = useQueryClient();
   const queryKey = ["/api/bot/settings", workspaceId ?? ""];
   return useMutation({
-    mutationFn: (commitReviews: Partial<CommitReviewSettings>) =>
-      sendJson<ApiBotSettings>("PATCH", "/api/bot/settings", { workspaceId, commitReviews }),
+    mutationFn: (patch: BotSettingsPatch) =>
+      sendJson<ApiBotSettings>("PATCH", "/api/bot/settings", { workspaceId, ...patch }),
     onMutate: async (patch) => {
       await queryClient.cancelQueries({ queryKey });
       const previous = queryClient.getQueryData<ApiBotSettings>(queryKey);
       if (previous) {
         queryClient.setQueryData<ApiBotSettings>(queryKey, {
-          commitReviews: { ...previous.commitReviews, ...patch },
+          commitReviews: { ...previous.commitReviews, ...(patch.commitReviews ?? {}) },
+          settings: {
+            instructions: patch.settings?.instructions ?? previous.settings.instructions,
+            pullRequests: {
+              ...previous.settings.pullRequests,
+              ...(patch.settings?.pullRequests ?? {}),
+            },
+          },
         });
       }
       return { previous };

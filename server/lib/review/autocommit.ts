@@ -21,8 +21,27 @@ const PROTECTED_PATHS: ProtectedPathRule[] = [
   { label: "test", test: /_test\.(go|py|rb|exs)$/i },
   { label: "workflow", test: /^\.github\//i },
   { label: "environment", test: /(^|\/)\.env(\.|$)/i },
+  { label: "environment", test: /(^|\/)\.(envrc|npmrc)$/i },
+  { label: "secret", test: /(^|\/)(secrets?|credentials?)(\.[^/]+)?$/i },
+  { label: "secret", test: /(^|\/)(id_rsa|id_ed25519|id_ecdsa)/i },
+  { label: "secret", test: /\.(pem|key|p12|pfx|keystore|jks)$/i },
   { label: "vendored", test: /(^|\/)(node_modules|vendor|third_party)\//i },
 ];
+
+/** Literal-looking secrets that must never reach a commit, even in a fix. */
+const SECRET_PATTERNS: RegExp[] = [
+  /gh[pousr]_[A-Za-z0-9]{20,}/,
+  /github_pat_[A-Za-z0-9_]{20,}/,
+  /AKIA[0-9A-Z]{16}/,
+  /-----BEGIN [A-Z ]*PRIVATE KEY-----/,
+  /sk-[A-Za-z0-9]{20,}/,
+  /xox[baprs]-[A-Za-z0-9-]{10,}/,
+  /(api[_-]?key|secret|token|password)\s*[:=]\s*["'][^"']{8,}["']/i,
+];
+
+export function looksLikeSecret(text: string): boolean {
+  return SECRET_PATTERNS.some((pattern) => pattern.test(text));
+}
 
 export function protectedPathReason(path: string): string | undefined {
   return PROTECTED_PATHS.find((rule) => rule.test.test(path))?.label;
@@ -132,6 +151,11 @@ export async function autoCommitVerifiedFixes(
     const repair = finding.repair;
     if (!isVerifiedFix(finding) || !repair?.finalEdits?.length || !patchHasHunks(repair.finalPatch)) continue;
     const paths = [...new Set(repair.finalEdits.map((edit) => edit.path))];
+    const secretEdit = repair.finalEdits.find((edit) => looksLikeSecret(edit.replace));
+    if (secretEdit) {
+      skipped.push({ findingId: finding.candidate.id, paths, reason: `the fix introduces what looks like a secret in ${secretEdit.path}` });
+      continue;
+    }
     const blocked = paths.find((path) => protectedPathReason(path));
     if (blocked) {
       skipped.push({ findingId: finding.candidate.id, paths, reason: `${protectedPathReason(blocked)} paths cannot be auto-committed (${blocked})` });

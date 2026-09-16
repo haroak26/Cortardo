@@ -61,7 +61,11 @@ test("judge and astra prompts include repository learnings", async () => {
   });
   const astraRouter = new ModelRouter({ clients: { astra }, config: resolveV3Config().models, maxCalls: 5 });
   const c = candidate();
-  await finalReview([{ candidate: c, proof: proof(c) }], astraRouter, silentLogger, ["no new runtime dependencies"]);
+  await finalReview(
+    { items: [{ candidate: c, proof: proof(c) }], context: contextWith([], { learnings: ["no new runtime dependencies"] }), learnings: ["no new runtime dependencies"] },
+    astraRouter,
+    silentLogger,
+  );
   assert.match(astra.calls[0].user, /no new runtime dependencies/);
 });
 
@@ -87,7 +91,7 @@ test("learnings reach the swarm prompt and invalidate cached swarm context", asy
   const run = (learnings: string[]) =>
     new CortadoV3Engine({
       config: { mode: "live" },
-      models: { luna: model, terra: model, astra: model },
+      models: { luna: model, terra: model, codegen: model, astra: model },
       sandboxFactory: async () => new MemorySandbox({ files }),
       cache,
       logger: silentLogger,

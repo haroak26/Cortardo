@@ -218,45 +218,47 @@ const STAT_TONES: Record<BadgeTone, string> = {
 
 const STAT_DELTA = /^([+-]\d+)\s+(.+)$/;
 
-/** Framed stat block: label, tone icon, large value, and optional delta hint. */
+/** Framed stat block: large value on top, tone icon, quiet label + subtext below. */
 export function StatCard({ label, value, hint, icon: Icon, tone = "brand", className }: StatCardProps) {
   const delta = typeof hint === "string" ? STAT_DELTA.exec(hint) : null;
   const positive = delta?.[1].startsWith("+") ?? true;
   return (
     <FramedCard className={cn("flex h-full flex-col p-4", className)}>
-      <div className="flex items-center justify-between gap-3">
-        <span className="truncate text-[12.5px] font-medium text-fg-muted">{label}</span>
+      <div className="flex items-start justify-between gap-3">
+        <p className="text-[36px] font-semibold leading-none tracking-[-0.02em] tabular-nums text-foreground">
+          {value}
+        </p>
         {Icon && (
-          <Icon size={15} strokeWidth={2} className={cn("shrink-0 opacity-80", STAT_TONES[tone])} />
+          <Icon size={15} strokeWidth={2} className={cn("mt-1 shrink-0 opacity-80", STAT_TONES[tone])} />
         )}
       </div>
-      <p className="mt-3 text-[32px] font-semibold leading-none tracking-[-0.02em] tabular-nums text-foreground">
-        {value}
-      </p>
-      {hint && (
-        <div className="mt-auto flex min-w-0 items-center gap-1.5 pt-3 text-[12px] text-fg-subtle">
-          {delta ? (
-            <>
-              <span
-                className={cn(
-                  "inline-flex shrink-0 items-center gap-0.5 font-semibold tabular-nums",
-                  positive ? "text-success" : "text-danger",
-                )}
-              >
-                {positive ? (
-                  <ArrowUpRight size={13} strokeWidth={2.5} />
-                ) : (
-                  <ArrowDownRight size={13} strokeWidth={2.5} />
-                )}
-                {delta[1].replace(/^[+-]/, "")}
-              </span>
-              <span className="truncate">{delta[2]}</span>
-            </>
-          ) : (
-            <span className="truncate">{hint}</span>
-          )}
-        </div>
-      )}
+      <div className="mt-auto min-w-0 pt-3">
+        <p className="truncate text-[13.5px] font-medium leading-snug text-fg-muted">{label}</p>
+        {hint && (
+          <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[12px] font-[450] leading-snug text-fg-warm/80">
+            {delta ? (
+              <>
+                <span
+                  className={cn(
+                    "inline-flex shrink-0 items-center gap-0.5 font-semibold tabular-nums",
+                    positive ? "text-success" : "text-danger",
+                  )}
+                >
+                  {positive ? (
+                    <ArrowUpRight size={13} strokeWidth={2.5} />
+                  ) : (
+                    <ArrowDownRight size={13} strokeWidth={2.5} />
+                  )}
+                  {delta[1].replace(/^[+-]/, "")}
+                </span>
+                <span className="truncate">{delta[2]}</span>
+              </>
+            ) : (
+              <span className="truncate">{hint}</span>
+            )}
+          </div>
+        )}
+      </div>
     </FramedCard>
   );
 }

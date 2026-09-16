@@ -26,7 +26,7 @@ function depsFor(status: ProofStatus, opts: { testExit?: number; typecheckExit?:
       sandbox,
       profile: { packageManager: "npm" as const, installCommand: "npm ci", hasNodeModules: true, hasTests: true, testCommand: "npm test", testSingle: (file: string) => `npx vitest run ${file}`, typecheckCommand: "npx tsc --noEmit", scripts: {} },
       proveOne: async () => ({ ...proof(c, status), explanation: `proof status ${status}` }),
-      baselineTypecheckPassed: true,
+      baselineTypecheck: "green" as const,
       logger: silentLogger,
     },
   };
@@ -135,7 +135,7 @@ test("a flaky targeted test is re-run once and a stable pass verifies the fix", 
     sandbox,
     profile: { packageManager: "npm", installCommand: "npm ci", hasNodeModules: true, hasTests: true, testCommand: "npm test", testSingle: (file: string) => `npx vitest run ${file}`, typecheckCommand: "npx tsc --noEmit", scripts: {} },
     proveOne: async () => ({ ...proof(c, "disproven"), explanation: "proof disproven" }),
-    baselineTypecheckPassed: true,
+    baselineTypecheck: "green" as const,
     logger: silentLogger,
   });
   assert.equal(testRuns, 2, "the failed test command runs exactly twice");
@@ -174,7 +174,7 @@ test("batch proof and typecheck run once and are shared across repairs", async (
       batchCalls.push(list.map((entry) => entry.id));
       return list.map((entry) => proof(entry, "disproven"));
     },
-    baselineTypecheckPassed: true,
+    baselineTypecheck: "green" as const,
     logger: silentLogger,
   });
   assert.deepEqual(batchCalls, [["c_batch1", "c_batch2"]]);
@@ -185,7 +185,7 @@ test("batch proof and typecheck run once and are shared across repairs", async (
   assert.equal(reports.c_batch2.steps.filter((step) => step.kind === "typecheck").length, 1);
 });
 
-function affectedDeps(opts: { affectedExit: number; baseline?: { passed: boolean; output: string }; testExit?: number }) {
+function affectedDeps(opts: { affectedExit: number; baseline?: { status: "green" | "red" | "unavailable" | "timeout"; output: string }; testExit?: number }) {
   const c = candidate();
   const context = contextWith([{ path: "src/a.ts", content: "const x = undefined" }], { tests: ["src/a.test.ts"] });
   const sandbox = new MemorySandbox({
@@ -202,7 +202,7 @@ function affectedDeps(opts: { affectedExit: number; baseline?: { passed: boolean
       sandbox,
       profile: { packageManager: "npm" as const, installCommand: "npm ci", hasNodeModules: true, hasTests: true, testCommand: "npm test", testSingle: (file: string) => `npx vitest run ${file}`, typecheckCommand: "npx tsc --noEmit", scripts: {} },
       proveOne: async () => ({ ...proof(c, "disproven" as const), explanation: "proof disproven" }),
-      baselineTypecheckPassed: true,
+      baselineTypecheck: "green" as const,
       baselineTests: opts.baseline,
       logger: silentLogger,
     },
@@ -210,7 +210,7 @@ function affectedDeps(opts: { affectedExit: number; baseline?: { passed: boolean
 }
 
 test("affected tests fail verification when the full suite regresses", async () => {
-  const { context, deps } = affectedDeps({ affectedExit: 1, baseline: { passed: true, output: "green" } });
+  const { context, deps } = affectedDeps({ affectedExit: 1, baseline: { status: "green" as const, output: "green" } });
   const reports = await verifyRepairs([repairFor()], [candidate()], context, deps);
   assert.equal(reports.c_test01.passed, false);
   const step = reports.c_test01.steps.find((entry) => entry.kind === "affected_tests");
@@ -219,12 +219,21 @@ test("affected tests fail verification when the full suite regresses", async () 
 });
 
 test("a pre-existing failing baseline cannot block verification", async () => {
-  const { context, deps } = affectedDeps({ affectedExit: 1, baseline: { passed: false, output: "already failing" } });
+  const { context, deps } = affectedDeps({ affectedExit: 1, baseline: { status: "red" as const, output: "already failing" } });
   const reports = await verifyRepairs([repairFor()], [candidate()], context, deps);
   assert.equal(reports.c_test01.passed, true);
   const step = reports.c_test01.steps.find((entry) => entry.kind === "affected_tests");
   assert.equal(step?.skipped, true);
   assert.match(step?.reason ?? "", /baseline test suite already failing/);
+});
+
+test("an unknown baseline still runs the affected tests", async () => {
+  const { context, deps } = affectedDeps({ affectedExit: 0, baseline: { status: "timeout" as const, output: "" } });
+  const reports = await verifyRepairs([repairFor()], [candidate()], context, deps);
+  assert.equal(reports.c_test01.passed, true);
+  const step = reports.c_test01.steps.find((entry) => entry.kind === "affected_tests");
+  assert.equal(step?.skipped, false);
+  assert.match(step?.reason ?? "", /baseline timeout/);
 });
 
 test("without a baseline run the affected-tests step is skipped honestly", async () => {

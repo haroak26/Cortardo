@@ -98,10 +98,20 @@ export function formatMarkdown(result: Omit<ReviewResult, "markdown">): string {
   lines.push("");
   lines.push(
     `Classification: ${result.pr.classification.join(" / ")} · Size: ${result.pr.size} · ` +
-      `Models: luna=${result.models.luna} terra=${result.models.terra} astra=${result.models.astra} · ` +
+      `Models: luna=${result.models.luna} terra=${result.models.terra} codegen=${result.models.codegen} astra=${result.models.astra} · ` +
       `Model calls: ${summary.modelCalls} · Cost: $${summary.costUsd.toFixed(4)} · ` +
       `Cache: ${summary.cacheHits} hit / ${summary.cacheMisses} miss (saved $${summary.creditsSavedUsd.toFixed(4)})`,
   );
+  const loop = result.loop;
+  if (loop && loop.judgeProve > 0) {
+    lines.push("");
+    lines.push(
+      `Loop coverage: judge approved ${loop.judgeProve} · proven ${loop.proven} · unprovable ${loop.proofUnavailable} · errored ${loop.proofErrors}`,
+    );
+    for (const entry of loop.candidates.filter((candidate) => candidate.proofState !== "PROVEN").slice(0, 8)) {
+      lines.push(`- ${entry.candidateId} (${entry.severity}) — ${entry.proofState}: ${entry.reason.slice(0, 200)}`);
+    }
+  }
   if (result.degraded) {
     lines.push("");
     lines.push(`> Degraded run: ${result.degradedReason ?? "one or more stages hit their budget"}`);
@@ -173,7 +183,10 @@ export function summaryFrom(
   return {
     issuesFound: candidates.length,
     issuesConfirmed: proofs.filter((proof) => proof.status === "confirmed").length,
-    issuesFixed: repairs.filter((repair) => repair.exit === "VERIFIED").length,
+    // "Fixed" means the same thing as "verified": a VERIFIED repair plus a
+    // passed verification report. A repair exit of VERIFIED alone is not a fix
+    // (3.4); this keeps issuesFixed === issuesVerified by construction.
+    issuesFixed: findings.filter((finding) => isVerifiedFix(finding)).length,
     issuesVerified: findings.filter((finding) => isVerifiedFix(finding)).length,
     staticOnly: decisions.filter((decision) => decision.verdict === "STATIC_ONLY").length,
     discarded: decisions.filter((decision) => decision.verdict === "DISCARD").length,

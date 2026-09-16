@@ -91,6 +91,8 @@ export interface SwarmOptions {
   maxToolsPerTurn?: number;
   /** "single-shot" forces the 3.1 diff-only path; "agentic" requires a pack. */
   mode?: SwarmMode;
+  /** Cancellation signal from the owning stage (3.3). */
+  signal?: AbortSignal;
 }
 
 export interface SwarmOutcome {
@@ -170,6 +172,7 @@ export async function runSwarm(
         deadline,
         maxTurns: Math.max(1, options.maxTurns ?? 3),
         maxToolsPerTurn: Math.max(1, options.maxToolsPerTurn ?? 3),
+        signal: options.signal,
       }).catch((error) => {
         const message = error instanceof Error ? error.message : String(error);
         logger.warn(`swarm agent crashed: ${agent.id}`, { error: message.slice(0, 200) });
@@ -221,6 +224,7 @@ export async function runSwarm(
         expectJson: true,
         timeoutMs: Math.max(8_000, Math.min(remaining - 2_000, 40_000)),
         retries: 0,
+        signal: options.signal,
         label: agent.id,
       });
       const parsed = hypothesisListSchema.safeParse(extractJson(response.text));

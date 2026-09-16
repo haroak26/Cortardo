@@ -3,15 +3,28 @@ import { stableId } from "./util";
 
 const SEVERITY_WEIGHT: Record<Severity, number> = { critical: 5, high: 4, medium: 3, low: 2, info: 1 };
 
+function claimTokens(claim: string): Set<string> {
+  return new Set(
+    claim
+      .toLowerCase()
+      .replace(/[^a-z0-9 ]/g, " ")
+      .split(/\s+/)
+      .filter((word) => word.length > 3),
+  );
+}
+
 function normalizedClaim(claim: string): string {
-  return claim
-    .toLowerCase()
-    .replace(/[^a-z0-9 ]/g, " ")
-    .split(/\s+/)
-    .filter((word) => word.length > 3)
-    .sort()
-    .slice(0, 12)
-    .join(" ");
+  return [...claimTokens(claim)].sort().slice(0, 12).join(" ");
+}
+
+/** Token overlap between two claims, used to merge near-duplicate findings (3.4). */
+function claimOverlap(a: Candidate, b: Candidate): number {
+  const left = claimTokens(a.claim);
+  const right = claimTokens(b.claim);
+  if (left.size === 0 || right.size === 0) return 0;
+  let shared = 0;
+  for (const token of left) if (right.has(token)) shared += 1;
+  return shared / Math.min(left.size, right.size);
 }
 
 export function mergeCandidates(detectors: Candidate[], luna: Candidate[], maxCandidates: number): Candidate[] {
@@ -24,6 +37,10 @@ export function mergeCandidates(detectors: Candidate[], luna: Candidate[], maxCa
     }
     const aTags = new Set(a.tags);
     const bTags = new Set(b.tags);
+    // Near-duplicate claims in the same file (e.g. two investigators describing
+    // the same defect with different wording) must merge, or the loop pays to
+    // prove and repair the same bug twice (3.4).
+    if (a.file && b.file && a.file === b.file && claimOverlap(a, b) >= 0.65) return true;
     return normalizedClaim(a.claim) === normalizedClaim(b.claim) && [...aTags].some((tag) => bTags.has(tag));
   };
 
@@ -32,7 +49,8 @@ export function mergeCandidates(detectors: Candidate[], luna: Candidate[], maxCa
     const key = stableId("k", candidate.file ?? "", String(candidate.line ?? ""), normalizedClaim(candidate.claim));
     if (seen.has(key)) continue;
     seen.add(key);
-    kept.push(candidate);
+    // Copy so scoring never mutates caller-owned (possibly cached) candidates.
+    kept.push({ ...candidate });
   }
 
   for (const candidate of kept) {

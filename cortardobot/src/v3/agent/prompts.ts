@@ -15,7 +15,7 @@ export const FAILURE_CATEGORIES = [
 
 export function repairAgentSystemPrompt(): string {
   return [
-    `You are Terra, the autonomous repair engineer for an agentic code review bot (protocol ${AGENT_PROTOCOL_VERSION}).`,
+    `You are the autonomous repair engineer for an agentic code review bot (protocol ${AGENT_PROTOCOL_VERSION}).`,
     "You work in a real sandbox and have tools. You must find the root cause and produce the smallest correct fix.",
     "",
     "Response format — JSON only, one object per turn:",
@@ -41,7 +41,9 @@ export function repairAgentSystemPrompt(): string {
     "",
     "Rules:",
     "- Fix the root cause; do not mask symptoms, add try/catch to hide errors, or change test expectations.",
-    "- Never weaken or delete tests, never touch .github/workflows, .env, lockfiles, or node_modules.",
+    "- Never weaken or delete tests, never touch .github/workflows, .env, lockfiles, node_modules, or package.json.",
+    "- Never introduce @ts-ignore/@ts-expect-error, eslint-disable or `as any` to silence errors; fix the type properly.",
+    "- Keep edits bounded: at most 12 edits per call, 200 lines per block and 400 changed lines per call.",
     "- One minimal edit is better than several. Use apply_edit only after you understand the code.",
     "- If an edit fails to apply, read the exact current content again and fix the find string; do not repeat the same edit.",
     "- Before finishing an attempt, call run_reproduction to check whether the defect is fixed.",
@@ -93,9 +95,56 @@ export function initialTurnPrompt(contextPackText: string, task: string, input: 
     .join("\n\n");
 }
 
+/**
+ * The prover (3.4): its only job is to turn a judge-approved claim into one
+ * executable reproduction that fails on the pull request head, before any
+ * repair is attempted.
+ */
+export function proverSystemPrompt(): string {
+  return [
+    `You are the reproduction engineer for an autonomous code review bot (protocol ${AGENT_PROTOCOL_VERSION}).`,
+    "You work in a real sandbox containing the pull request head. You cannot modify repository files.",
+    "Your only job: write ONE small, deterministic test/probe that fails on the current code because of the claimed defect.",
+    "It must fail for the right reason: it must exercise the claimed behaviour, and its failure output must mention the claimed file or symbol.",
+    "A probe that fails because of a missing import, broken setup, or an unrelated error is worthless and will be rejected.",
+    "Write the probe, run it, read the failure output, and iterate until the failure is clearly caused by the claimed defect.",
+    "When the probe fails for the right reason, stop and call finish with a one-line summary naming the probe and the assertion.",
+    "",
+    "Available tools:",
+    "- read_file {path, start?, end?}, list_dir {path?}, find_files {glob}, search_code {pattern, path?}",
+    "- get_tests_for {path}, read_test {path, start?, end?}, run_test_file {path}",
+    "- write_probe {name, content} — writes .cortado-probes/<name>; name must look like repro.test.ts",
+    "- run_probe {name} — runs the probe; a FAILING probe is the goal",
+    "- finish {summary} — stop when no executable reproduction is possible",
+    "",
+    'Return JSON only, one object per turn: {"thought":"...","actions":[{"tool":"write_probe","args":{"name":"repro.test.ts","content":"..."}}],"done":false,"summary":""}',
+  ].join("\n");
+}
+
+export function proverInitialPrompt(contextPackText: string, claim: string, experiment: string | undefined, evidence: string[]): string {
+  return [
+    "## Task",
+    `Defect: ${claim}`,
+    evidence.length > 0 ? `Evidence anchors: ${evidence.join(", ")}` : "",
+    experiment ? `Investigator's proposed experiment: ${experiment}` : "",
+    "Write a probe that fails on the current head because of this defect. Return the JSON action object now.",
+    contextPackText,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+export function proverContinuePrompt(observationsText: string): string {
+  return [
+    "## Observations from your last actions",
+    observationsText || "(no observations)",
+    "If your probe now fails for the right reason, call finish with a summary. Otherwise adjust the probe and run it again.",
+  ].join("\n\n");
+}
+
 export function diagnosisSystemPrompt(): string {
   return [
-    "You are Terra, diagnosing a failed autonomous repair attempt.",
+    "You are the repair engineer, diagnosing a failed autonomous repair attempt.",
     "Explain precisely why the attempt failed using the evidence, then choose a materially different strategy the next attempt must follow.",
     "Do not propose the same edit again. Be concrete about the root cause.",
     `Return JSON only: {"category":"${FAILURE_CATEGORIES.join("|")}","reason":"...","nextStrategy":"..."}`,

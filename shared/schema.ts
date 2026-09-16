@@ -16,6 +16,12 @@ import { createInsertSchema } from "drizzle-zod";
 import { sql } from "drizzle-orm";
 import { z } from "zod";
 import type { CodeGraphConnection, CodeGraphFile, CodeGraphSymbol, CodeGraphSymbolEdge } from "./codegraph";
+import {
+  BOT_WORKSPACE_DEFAULTS,
+  COMMIT_REVIEW_DEFAULTS,
+  type BotWorkspaceConfig,
+  type CommitReviewSettings,
+} from "./bot";
 
 // ── Users ──────────────────────────────────────────────────────────────────
 
@@ -1021,10 +1027,18 @@ export const reviewRuns = pgTable("review_runs", {
   /** Reviewed commit; enables idempotency + cache keys. */
   headSha: text("head_sha"),
   engineVersion: text("engine_version"),
+  pullRequestNumber: integer("pull_request_number"),
   /** In-memory queue lease (recovered on restart when expired). */
   leaseOwner: text("lease_owner"),
   leaseExpiresAt: timestamp("lease_expires_at"),
   heartbeatAt: timestamp("heartbeat_at"),
+  /** Fencing generation; every claim increments it (3.3). */
+  leaseGeneration: integer("lease_generation").notNull().default(0),
+  /** pending | published | failed — set by the publisher (3.3). */
+  publishState: text("publish_state").notNull().default("pending"),
+  publishAttempts: integer("publish_attempts").notNull().default(0),
+  publishError: text("publish_error"),
+  publishedReviewId: text("published_review_id"),
   plan: jsonb("plan").$type<Record<string, unknown>>().default({}).notNull(),
   summary: text("summary"),
   stats: jsonb("stats").$type<Record<string, unknown>>().default({}).notNull(),
@@ -1071,6 +1085,7 @@ export const reviewFindings = pgTable("review_findings", {
 }, (t) => [
   index("review_findings_run_idx").on(t.runId),
   index("review_findings_repository_idx").on(t.repositoryId),
+  uniqueIndex("review_findings_run_key_idx").on(t.runId, t.findingKey),
 ]);
 
 export type ReviewFinding = typeof reviewFindings.$inferSelect;
@@ -1121,6 +1136,167 @@ export const webhookDeliveries = pgTable("webhook_deliveries", {
 ]);
 
 export type WebhookDelivery = typeof webhookDeliveries.$inferSelect;
+
+// ── Cortardo Bot memory ──────────────────────────────────────────────────────
+// Workspace-scoped review rules, learnings from feedback, path exclusions and
+// the workspace configuration consumed by the review runner.
+
+export const repositoryRules = pgTable("repository_rules", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  repositoryId: uuid("repository_id").references(() => repositories.id, { onDelete: "cascade" }),
+  glob: text("glob"),
+  instruction: text("instruction").notNull(),
+  scope: text("scope").notNull().default("All repositories"),
+  enabled: boolean("enabled").notNull().default(true),
+  createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (t) => [
+  index("repository_rules_workspace_idx").on(t.workspaceId),
+  index("repository_rules_repository_idx").on(t.repositoryId),
+]);
+
+export type RepositoryRule = typeof repositoryRules.$inferSelect;
+export type NewRepositoryRule = typeof repositoryRules.$inferInsert;
+
+export const repositoryLearnings = pgTable("repository_learnings", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  repositoryId: uuid("repository_id").references(() => repositories.id, { onDelete: "cascade" }),
+  text: text("text").notNull(),
+  scope: text("scope").notNull().default("All repositories"),
+  source: text("source").notNull().default("manual"),
+  accepted: integer("accepted").notNull().default(0),
+  rejected: integer("rejected").notNull().default(0),
+  findingKey: text("finding_key"),
+  path: text("path"),
+  active: boolean("active").notNull().default(true),
+  createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (t) => [
+  index("repository_learnings_workspace_idx").on(t.workspaceId),
+  index("repository_learnings_repository_idx").on(t.repositoryId),
+]);
+
+export type RepositoryLearning = typeof repositoryLearnings.$inferSelect;
+export type NewRepositoryLearning = typeof repositoryLearnings.$inferInsert;
+
+export const botSettings = pgTable("bot_settings", {
+  workspaceId: uuid("workspace_id").primaryKey().references(() => workspaces.id, { onDelete: "cascade" }),
+  commitReviews: jsonb("commit_reviews").$type<CommitReviewSettings>().default(COMMIT_REVIEW_DEFAULTS).notNull(),
+  settings: jsonb("settings").$type<BotWorkspaceConfig>().default(BOT_WORKSPACE_DEFAULTS).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export type BotSettings = typeof botSettings.$inferSelect;
+export type NewBotSettings = typeof botSettings.$inferInsert;
+
+export const botExclusions = pgTable("bot_exclusions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  repositoryId: uuid("repository_id").references(() => repositories.id, { onDelete: "cascade" }),
+  pattern: text("pattern").notNull(),
+  note: text("note"),
+  enabled: boolean("enabled").notNull().default(true),
+  createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (t) => [
+  index("bot_exclusions_workspace_idx").on(t.workspaceId),
+  index("bot_exclusions_repository_idx").on(t.repositoryId),
+]);
+
+export type BotExclusion = typeof botExclusions.$inferSelect;
+export type NewBotExclusion = typeof botExclusions.$inferInsert;
+
+export const createBotRuleSchema = z.object({
+  workspaceId: z.string().uuid().optional(),
+  repositoryId: z.string().uuid().nullish(),
+  instruction: z.string().trim().min(3, "Rule must be at least 3 characters").max(2000),
+  glob: z.string().trim().max(500).nullish(),
+  enabled: z.boolean().optional(),
+});
+
+export const updateBotRuleSchema = z.object({
+  instruction: z.string().trim().min(3).max(2000).optional(),
+  glob: z.string().trim().max(500).nullish(),
+  repositoryId: z.string().uuid().nullish(),
+  enabled: z.boolean().optional(),
+});
+
+export const BOT_LEARNING_SOURCES = ["feedback", "rule", "manual"] as const;
+
+export const createBotLearningSchema = z.object({
+  workspaceId: z.string().uuid().optional(),
+  repositoryId: z.string().uuid().nullish(),
+  text: z.string().trim().min(3, "Learning must be at least 3 characters").max(2000),
+  source: z.enum(BOT_LEARNING_SOURCES).optional(),
+  active: z.boolean().optional(),
+});
+
+export const updateBotLearningSchema = z.object({
+  text: z.string().trim().min(3).max(2000).optional(),
+  repositoryId: z.string().uuid().nullish(),
+  active: z.boolean().optional(),
+});
+
+export const createBotExclusionSchema = z.object({
+  workspaceId: z.string().uuid().optional(),
+  repositoryId: z.string().uuid().nullish(),
+  pattern: z.string().trim().min(1, "Pattern is required").max(500),
+  note: z.string().trim().max(500).nullish(),
+  enabled: z.boolean().optional(),
+});
+
+export const updateBotExclusionSchema = z.object({
+  pattern: z.string().trim().min(1).max(500).optional(),
+  note: z.string().trim().max(500).nullish(),
+  repositoryId: z.string().uuid().nullish(),
+  enabled: z.boolean().optional(),
+});
+
+const commitReviewPatchSchema = z
+  .object({
+    enabled: z.boolean(),
+    reviewDirect: z.boolean(),
+    scanDiffs: z.boolean(),
+    checkMessages: z.boolean(),
+    suggestFixes: z.boolean(),
+    autoApplySafeFixes: z.boolean(),
+    ignoreMergeCommits: z.boolean(),
+    ignoreReleaseCommits: z.boolean(),
+    maxCommitsPerRun: z.number().int().min(1).max(500),
+  })
+  .partial();
+
+const pullRequestReviewPatchSchema = z
+  .object({
+    autoReview: z.boolean(),
+    reviewDrafts: z.boolean(),
+    reReviewOnPush: z.boolean(),
+    inlineComments: z.boolean(),
+    summaryComment: z.boolean(),
+    requestChangesOnCritical: z.boolean(),
+    ignoreGenerated: z.boolean(),
+    skipBotsAndForks: z.boolean(),
+    commentLimit: z.number().int().min(1).max(200),
+  })
+  .partial();
+
+export const updateBotSettingsSchema = z.object({
+  workspaceId: z.string().uuid().optional(),
+  commitReviews: commitReviewPatchSchema.optional(),
+  settings: z
+    .object({
+      instructions: z.string().max(4000),
+      pullRequests: pullRequestReviewPatchSchema,
+    })
+    .partial()
+    .optional(),
+});
 
 export const updateRepositorySchema = z.object({
   reviewEnabled: z.boolean().optional(),

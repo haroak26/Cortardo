@@ -11,7 +11,8 @@ import {
 import { storage } from "../storage";
 import { db } from "../db";
 import { desc, eq } from "drizzle-orm";
-import { reviewFindings, reviewRuns } from "@shared/schema";
+import { botSettings, reviewFindings, reviewRuns } from "@shared/schema";
+import { normalizeBotSettings } from "@shared/bot";
 import { DEFAULT_MODELS, DEFAULT_REASONING, MODEL_CATALOG, type ModelRole, type ReasoningEffort } from "@shared/models";
 import { enqueueReview, listReviewRuns } from "../lib/review/runner";
 import { apiRateLimiter, audit, requireAuth } from "./helpers";
@@ -730,13 +731,13 @@ export function registerGithubRoutes(app: Express): void {
     }
   });
 
-  /** Model catalog for the review UI (GPT defaults for 3.1). */
+  /** Model catalog for the review UI (GPT defaults for 3.3). */
   app.get("/api/models", requireAuth, (_req: Request, res: Response) => {
     return res.json({
       defaults: DEFAULT_MODELS,
       reasoning: DEFAULT_REASONING,
       models: MODEL_CATALOG,
-      roles: ["luna", "terra", "astra"] satisfies ModelRole[],
+      roles: ["luna", "terra", "codegen", "astra"] satisfies ModelRole[],
     });
   });
 
@@ -750,13 +751,13 @@ export function registerGithubRoutes(app: Express): void {
       }
       const models =
         req.body?.models && typeof req.body.models === "object"
-          ? (req.body.models as Partial<Record<"luna" | "terra" | "astra", string>>)
+          ? (req.body.models as Partial<Record<ModelRole, string>>)
           : undefined;
       const reasoning =
         req.body?.reasoning && typeof req.body.reasoning === "object"
-          ? (req.body.reasoning as Partial<Record<"luna" | "terra" | "astra", ReasoningEffort>>)
+          ? (req.body.reasoning as Partial<Record<ModelRole, ReasoningEffort>>)
           : undefined;
-      const runId = await enqueueReview({
+      const enqueued = await enqueueReview({
         repositoryId: repository.id,
         pullRequestNumber: number,
         trigger: "manual",
@@ -766,8 +767,11 @@ export function registerGithubRoutes(app: Express): void {
         workspaceId: repository.workspaceId,
         userId: currentUser(req).id,
       });
-      if (!runId) return res.status(409).json({ message: "A review for this revision is already queued or running" });
-      const [run] = await db.select().from(reviewRuns).where(eq(reviewRuns.id, runId)).limit(1);
+      if (!enqueued.runId) {
+        if (enqueued.error) return res.status(500).json({ message: "Failed to start review" });
+        return res.status(409).json({ message: "A review for this revision is already queued or running" });
+      }
+      const [run] = await db.select().from(reviewRuns).where(eq(reviewRuns.id, enqueued.runId)).limit(1);
       await audit(req, "cortado.review.enqueue", `repository=${repository.fullName} pr=${number}`);
       return res.status(202).json(run);
     } catch (error: any) {
@@ -901,8 +905,21 @@ export function registerGithubRoutes(app: Express): void {
             storage,
             syncInstallationRepositories,
             triggerReview: (payload) => enqueueReview(payload),
+            canReview: async (gate) => {
+              const [row] = await db
+                .select()
+                .from(botSettings)
+                .where(eq(botSettings.workspaceId, gate.workspaceId))
+                .limit(1);
+              const config = normalizeBotSettings(row).settings.pullRequests;
+              if (!config.autoReview) return false;
+              if (gate.action === "synchronize" && !config.reReviewOnPush) return false;
+              if (gate.draft && !config.reviewDrafts) return false;
+              if (config.skipBotsAndForks && (gate.authorIsBot || gate.isFork)) return false;
+              return true;
+            },
           });
-          await storage.markWebhookDelivery(delivery.id, "processed", result.reason ?? null);
+          await storage.markWebhookDelivery(delivery.id, result.enqueueFailed ? "error" : "processed", result.reason ?? null);
         } catch (error: any) {
           console.error("[github] webhook handler error:", error?.message || error);
           await storage.markWebhookDelivery(

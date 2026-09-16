@@ -44,7 +44,7 @@ const mainDesign: Record<ButtonDesign, string> = {
   secondary:
     "bg-surface-hover text-foreground hover:bg-surface-hover/80 active:bg-surface-active/80",
   outline:
-    "bg-transparent border border-border text-foreground hover:bg-surface-active active:bg-surface-active/80",
+    "bg-transparent border border-border text-foreground hover:bg-surface-hover active:bg-surface-hover/80",
   ghost:
     "bg-transparent text-foreground hover:bg-surface-active active:bg-surface-active/80",
   destructive:

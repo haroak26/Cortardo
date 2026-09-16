@@ -3,12 +3,12 @@ import { createPortal } from 'react-dom';
 import { Link, useLocation } from 'wouter';
 import { cn } from '@/lib/utils';
 import {
-  Home09Icon, Analytics01Icon, AiContentGenerator01Icon, MessageMultiple01Icon, Shield01Icon, SecurityCheckIcon,
+  Home09Icon, Analytics01Icon, AiContentGenerator01Icon, Shield01Icon,
   SourceCodeIcon, Activity01Icon, Book02Icon, GraduationCapIcon,
-  GitPullRequestIcon, GitCommitIcon,
+  Settings02Icon, EyeOffIcon,
   UserGroupIcon, UserAdd01Icon, UserIcon, SmartPhone01Icon,
-  CreditCardIcon, Coins01Icon, Chart01Icon, Key01Icon, GithubIcon,
-  Alert01Icon,
+  CreditCardIcon, Chart01Icon, Key01Icon, UnplugIcon,
+  Alert02Icon,
 } from '@hugeicons/core-free-icons';
 import { HugeiconsIcon } from "@hugeicons/react";
 import { ChevronLeft, ChevronRight } from 'lucide-react';
@@ -49,17 +49,10 @@ const BOT_NAV: { label: string; tabs: Tab[] }[] = [
     ],
   },
   {
-    label: 'Reviews',
+    label: 'Configuration',
     tabs: [
-      { id: 'bot-pull-requests',  label: 'Pull Requests',  icon: GitPullRequestIcon,  href: '/bot/pull-requests' },
-      { id: 'bot-commits',        label: 'Commits',        icon: GitCommitIcon,       href: '/bot/commits' },
-    ],
-  },
-  {
-    label: 'Results',
-    tabs: [
-      { id: 'bot-reviews',   label: 'Reviews',   icon: MessageMultiple01Icon, href: '/review/reviews' },
-      { id: 'bot-security',  label: 'Security',  icon: SecurityCheckIcon,     href: '/review/security' },
+      { id: 'bot-configuration', label: 'Configuration', icon: Settings02Icon, href: '/bot/configuration' },
+      { id: 'bot-exclusions',    label: 'Exclusions',    icon: EyeOffIcon,     href: '/bot/exclusions' },
     ],
   },
 ];
@@ -78,16 +71,9 @@ const ACCOUNT_NAV: { label: string; tabs: Tab[] }[] = [
     ],
   },
   {
-    label: 'Integrations',
-    tabs: [
-      { id: 'account-integrations', label: 'GitHub', href: '/account/integrations', icon: GithubIcon },
-    ],
-  },
-  {
     label: 'Billing',
     tabs: [
       { id: 'account-billing', label: 'Billing', href: '/account/billing', icon: CreditCardIcon },
-      { id: 'account-credits', label: 'Credits', href: '/account/credits', icon: Coins01Icon },
       { id: 'account-usage', label: 'Usage', href: '/account/usage', icon: Chart01Icon },
     ],
   },
@@ -96,12 +82,13 @@ const ACCOUNT_NAV: { label: string; tabs: Tab[] }[] = [
     tabs: [
       { id: 'account-security', label: 'Security', href: '/account/security', icon: Shield01Icon },
       { id: 'account-auth', label: 'Authentication', href: '/account/authentication', icon: Key01Icon },
+      { id: 'account-integrations', label: 'Integrations', href: '/account/integrations', icon: UnplugIcon },
     ],
   },
   {
     label: 'Danger Zone',
     tabs: [
-      { id: 'account-actions', label: 'Danger Zone', href: '/account/actions', icon: Alert01Icon },
+      { id: 'account-actions', label: 'Danger Zone', href: '/account/actions', icon: Alert02Icon },
     ],
   },
 ];
@@ -110,14 +97,12 @@ function useActiveTab(): string {
   const [location] = useLocation();
   if (location === '/workspace/home') return 'home';
   if (location.startsWith('/workspace/analytics')) return 'analytics';
-  if (location.startsWith('/review/reviews')) return 'bot-reviews';
-  if (location.startsWith('/review/security')) return 'bot-security';
   if (location.startsWith('/review/repositories')) return 'repositories';
   if (location.startsWith('/review/activity')) return 'activity';
   if (location.startsWith('/bot/rules')) return 'bot-rules';
   if (location.startsWith('/bot/learnings')) return 'bot-learnings';
-  if (location.startsWith('/bot/pull-requests')) return 'bot-pull-requests';
-  if (location.startsWith('/bot/commits')) return 'bot-commits';
+  if (location.startsWith('/bot/configuration')) return 'bot-configuration';
+  if (location.startsWith('/bot/exclusions')) return 'bot-exclusions';
   if (location.startsWith('/bot')) return 'bot-rules';
   if (location.startsWith('/team')) return 'manage';
   if (location.startsWith('/workspace')) return 'home';
@@ -128,7 +113,6 @@ function useActiveTab(): string {
   if (location.startsWith('/account/authentication')) return 'account-auth';
   if (location.startsWith('/account/sessions')) return 'account-sessions';
   if (location.startsWith('/account/billing')) return 'account-billing';
-  if (location.startsWith('/account/credits')) return 'account-credits';
   if (location.startsWith('/account/usage')) return 'account-usage';
   if (location.startsWith('/account/actions')) return 'account-actions';
   if (location.startsWith('/account')) return 'account-profile';

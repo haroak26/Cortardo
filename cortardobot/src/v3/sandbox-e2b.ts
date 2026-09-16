@@ -1,6 +1,7 @@
 import { Sandbox as E2BSandbox } from "e2b";
 import type { ApplyResult, BrowserCheck, BrowserCheckResult, ExecResult, RepairEdit } from "./types";
 import { buildBrowserScript, type RepoProfile, type Sandbox } from "./sandbox";
+import { isTestPath } from "./patch";
 
 export interface E2BSandboxOptions {
   template: string;
@@ -9,10 +10,16 @@ export interface E2BSandboxOptions {
   repoDir: string;
 }
 
+/** POSIX single-quote escaping for every dynamic shell token. */
+function sh(value: string): string {
+  return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
 interface ExecOptions {
   cwd?: string;
   timeoutMs?: number;
   allowFailure?: boolean;
+  signal?: AbortSignal;
 }
 
 export class E2BSandboxInstance implements Sandbox {
@@ -40,6 +47,7 @@ export class E2BSandboxInstance implements Sandbox {
       const result = await this.box.commands.run(command, {
         cwd: options.cwd ?? this.root,
         timeoutMs: options.timeoutMs ?? 120_000,
+        signal: options.signal,
       });
       return {
         command,
@@ -50,8 +58,9 @@ export class E2BSandboxInstance implements Sandbox {
         timedOut: false,
       };
     } catch (error) {
-      const candidate = error as { exitCode?: number; stdout?: string; stderr?: string; message?: string };
-      const timedOut = /timeout|timed out/i.test(candidate.message ?? "");
+      const candidate = error as { exitCode?: number; stdout?: string; stderr?: string; message?: string; name?: string };
+      const aborted = options.signal?.aborted === true || candidate.name === "AbortError";
+      const timedOut = aborted || /timeout|timed out/i.test(candidate.message ?? "");
       return {
         command,
         exitCode: typeof candidate.exitCode === "number" ? candidate.exitCode : timedOut ? 124 : 1,
@@ -66,10 +75,10 @@ export class E2BSandboxInstance implements Sandbox {
   async prepare(options: { cloneUrl: string; token: string; ref: string; headBranch?: string }): Promise<void> {
     const tokenized = options.cloneUrl.replace(/^https:\/\//, `https://x-access-token:${options.token}@`);
     const parent = this.root.split("/").slice(0, -1).join("/") || "/home/user";
-    await this.exec(`rm -rf ${this.root} && mkdir -p ${this.root}`, { cwd: parent, timeoutMs: 30_000 });
-    const clone = await this.exec(`git clone --quiet --depth 50 ${tokenized} ${this.root}`, { cwd: parent, timeoutMs: 180_000 });
+    await this.exec(`rm -rf ${sh(this.root)} && mkdir -p ${sh(this.root)}`, { cwd: parent, timeoutMs: 30_000 });
+    const clone = await this.exec(`git clone --quiet --depth 50 ${sh(tokenized)} ${sh(this.root)}`, { cwd: parent, timeoutMs: 180_000 });
     if (clone.exitCode !== 0) {
-      const retry = await this.exec(`git init -q ${this.root} && git -C ${this.root} remote add origin ${tokenized}`, { cwd: parent, timeoutMs: 60_000 });
+      const retry = await this.exec(`git init -q ${sh(this.root)} && git -C ${sh(this.root)} remote add origin ${sh(tokenized)}`, { cwd: parent, timeoutMs: 60_000 });
       if (retry.exitCode !== 0) throw new Error(`git init failed: ${retry.stderr.slice(0, 300)}`);
     }
     const refs = [options.ref, options.headBranch ? `refs/heads/${options.headBranch}` : undefined].filter(
@@ -77,9 +86,9 @@ export class E2BSandboxInstance implements Sandbox {
     );
     let checkedOut = false;
     for (const ref of refs) {
-      const fetch = await this.exec(`git -C ${this.root} fetch --quiet --depth 50 origin ${ref}`, { timeoutMs: 180_000 });
+      const fetch = await this.exec(`git -C ${sh(this.root)} fetch --quiet --depth 50 origin ${sh(ref)}`, { timeoutMs: 180_000 });
       if (fetch.exitCode !== 0) continue;
-      const checkout = await this.exec(`git -C ${this.root} checkout --quiet --force FETCH_HEAD`, { timeoutMs: 60_000 });
+      const checkout = await this.exec(`git -C ${sh(this.root)} checkout --quiet --force FETCH_HEAD`, { timeoutMs: 60_000 });
       if (checkout.exitCode === 0) {
         checkedOut = true;
         break;
@@ -88,19 +97,28 @@ export class E2BSandboxInstance implements Sandbox {
     if (!checkedOut) {
       throw new Error(`could not check out ${options.ref}: ${refs.join(", ")}`);
     }
-    await this.exec(`git -C ${this.root} config user.email "bot@cortado.dev" && git -C ${this.root} config user.name "Cortado Bot"`, { timeoutMs: 30_000 });
+    // The installation token must not stay in the remote configuration.
+    await this.exec(`git -C ${sh(this.root)} remote set-url origin ${sh(options.cloneUrl)}`, { timeoutMs: 30_000, allowFailure: true });
+    await this.exec(`git -C ${sh(this.root)} config user.email "bot@cortado.dev" && git -C ${sh(this.root)} config user.name "Cortado Bot"`, { timeoutMs: 30_000 });
   }
 
   async install(): Promise<void> {
     const hasModules = await this.exists(`${this.root}/node_modules`);
     if (hasModules) return;
+    const hasPnpm = await this.exists(`${this.root}/pnpm-lock.yaml`);
+    const hasYarn = await this.exists(`${this.root}/yarn.lock`);
     const hasLock = (await this.exists(`${this.root}/package-lock.json`)) || (await this.exists(`${this.root}/npm-shrinkwrap.json`));
-    const command = hasLock
-      ? "npm ci --no-audit --no-fund --prefer-offline --loglevel=error"
-      : "npm install --no-audit --no-fund --loglevel=error";
-    const result = await this.exec(command, { cwd: this.root, timeoutMs: 600_000 });
+    const primary = hasPnpm
+      ? "pnpm install --prefer-offline --loglevel=error"
+      : hasYarn
+        ? "yarn install --prefer-offline --loglevel=error"
+        : hasLock
+          ? "npm ci --no-audit --no-fund --prefer-offline --loglevel=error"
+          : "npm install --no-audit --no-fund --loglevel=error";
+    const fallback = hasPnpm ? "pnpm install --prefer-offline" : hasYarn ? "yarn install --prefer-offline" : "npm install --no-audit --no-fund --loglevel=error";
+    const result = await this.exec(primary, { cwd: this.root, timeoutMs: 600_000 });
     if (result.exitCode !== 0) {
-      const retry = await this.exec("npm install --no-audit --no-fund --loglevel=error", { cwd: this.root, timeoutMs: 600_000 });
+      const retry = await this.exec(fallback, { cwd: this.root, timeoutMs: 600_000 });
       if (retry.exitCode !== 0) {
         throw new Error(`dependency install failed: ${retry.stderr.slice(-600)}`);
       }
@@ -147,6 +165,12 @@ export class E2BSandboxInstance implements Sandbox {
     const buildCommand = scripts.build ? "npm run build --silent" : undefined;
     const hasVite = (await this.exists(`${this.root}/vite.config.ts`)) || (await this.exists(`${this.root}/vite.config.js`));
     const devCommand = hasVite ? "npx vite" : scripts.dev ? "npm run dev" : undefined;
+    let testFiles: string[] = [];
+    try {
+      testFiles = (await this.list(this.root)).filter((file) => isTestPath(file)).slice(0, 300);
+    } catch {
+      testFiles = [];
+    }
     return {
       packageManager,
       installCommand,
@@ -158,6 +182,7 @@ export class E2BSandboxInstance implements Sandbox {
       buildCommand,
       devCommand,
       scripts,
+      testFiles,
     };
   }
 
@@ -174,12 +199,12 @@ export class E2BSandboxInstance implements Sandbox {
   }
 
   async exists(path: string): Promise<boolean> {
-    const result = await this.exec(`test -e ${JSON.stringify(this.resolvePath(path))} && echo yes || echo no`, { timeoutMs: 30_000 });
-    return result.stdout.includes("yes");
+    const result = await this.exec(`test -e ${sh(this.resolvePath(path))} && echo yes || echo no`, { timeoutMs: 30_000 });
+    return result.stdout.trim() === "yes";
   }
 
   async list(dir = this.root): Promise<string[]> {
-    const result = await this.exec(`cd ${JSON.stringify(dir)} && find . -type f -not -path "./node_modules/*" -not -path "./.git/*" | sed 's|^\\./||' | head -400`, { timeoutMs: 60_000 });
+    const result = await this.exec(`cd ${sh(dir)} && find . -type f -not -path "./node_modules/*" -not -path "./.git/*" | sed 's|^\\./||' | head -400`, { timeoutMs: 60_000 });
     return result.stdout.split("\n").map((line) => line.trim()).filter(Boolean);
   }
 
@@ -234,7 +259,8 @@ export class E2BSandboxInstance implements Sandbox {
     const command = options.command ?? (await this.resolveDevCommand(port));
     await this.exec("pkill -f 'vite' || true", { timeoutMs: 15_000, allowFailure: true }).catch(() => undefined);
     await new Promise((resolve) => setTimeout(resolve, 800));
-    const handle = await this.box.commands.run(command, {
+    await this.exec(`mkdir -p ${sh(this.workDir)}`, { cwd: "/home/user", timeoutMs: 30_000 });
+    const handle = await this.box.commands.run(`(${command}) > ${sh(this.workDir)}/dev.log 2>&1`, {
       cwd: this.root,
       background: true,
       timeoutMs: 300_000,

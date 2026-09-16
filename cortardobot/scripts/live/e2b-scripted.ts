@@ -76,11 +76,11 @@ const request: ReviewRequest = {
   files: input.files.map((file) => ({ path: file.path, status: file.status, patch: file.patch, content: file.content })),
 };
 
-const scripted = (role: "luna" | "terra" | "astra"): ModelClient => ({
+const scripted = (role: "luna" | "terra" | "codegen" | "astra"): ModelClient => ({
   id: `scripted-${role}`,
   async complete(task: ModelTask) {
     const base = { model: `scripted-${role}`, tokensIn: 0, tokensOut: 0, durationMs: 0 };
-    if (role === "terra" && task.kind === "repair_agent") {
+    if ((role === "codegen" || role === "terra") && task.kind === "repair_agent") {
       const user = `${task.user}\n${(task.history ?? []).map((message) => message.content).join("\n")}`;
       const file = /### File ([\w./-]+) \(changed\)/.exec(user)?.[1];
       const candidate = candidates.find((entry) => entry.file === file);
@@ -102,7 +102,37 @@ const scripted = (role: "luna" | "terra" | "astra"): ModelClient => ({
       return {
         ...base,
         text: JSON.stringify({
-          reviews: ids.map((candidateId) => ({ candidateId, validity: "valid", fixCorrectness: "correct", risk: "low", approval: "approve", confidence: 0.9, summary: "scripted review" })),
+          reviews: ids.map((candidateId) => ({
+            candidateId,
+            validity: "valid",
+            fixCorrectness: "correct",
+            risk: "low",
+            approval: "approve",
+            confidence: 0.9,
+            summary: "scripted review",
+            rationale: "the reproduction is disproven after the scripted fix",
+            evidenceRefs: ["browser check"],
+          })),
+        }),
+      };
+    }
+    if (role === "astra" && task.kind === "final_review_report") {
+      const files = [...task.user.matchAll(/^- ([\w./-]+) \(/gm)].map((match) => match[1]);
+      const reviewed = [...task.user.matchAll(/- (c_\w+) \[/g)].length;
+      return {
+        ...base,
+        text: JSON.stringify({
+          verdict: {
+            decision: reviewed > 0 ? "approve" : "approve_with_comments",
+            confidence: 0.9,
+            rationale: "all confirmed defects were reproduced in a real browser and the fixes are verified",
+          },
+          summary: "Scripted PR-level review: confirmed defects reproduced and verified end to end.",
+          walkthrough: files.map((file) => ({ file, intent: "fix the confirmed defect", changeSummary: "root-cause fix", risk: "low" })),
+          risks: [],
+          testCoverage: { assessed: true, signals: ["browser checks", "typecheck"], gaps: [] },
+          observations: [],
+          limitations: [],
         }),
       };
     }
@@ -119,7 +149,7 @@ logger.info(`captured ${candidates.length} provable detector candidate(s) for th
 
 const engine = new CortadoV3Engine({
   config: { mode: "live", cache: { enabled: false } },
-  models: { luna: scripted("luna"), terra: scripted("terra"), astra: scripted("astra") },
+  models: { luna: scripted("luna"), terra: scripted("terra"), codegen: scripted("codegen"), astra: scripted("astra") },
   sandboxFactory: async () =>
     E2BSandboxInstance.create({
       template: config.sandbox.template,
@@ -140,6 +170,13 @@ console.log(`[e2b-scripted] confirmed=${result.summary.issuesConfirmed} fixed=${
 for (const finding of result.findings) {
   console.log(`  - ${finding.candidate.file} proof=${finding.proof.status} repair=${finding.repair?.exit} patchHunks=${Boolean(finding.repair?.finalPatch?.includes("@@"))} verification=${finding.verification?.passed}`);
 }
-const ok = result.summary.issuesVerified === result.summary.issuesConfirmed && result.findings.every((finding) => finding.verification?.passed);
+console.log(
+  `[e2b-scripted] report=${result.reviewReport?.source ?? "none"} verdict=${result.reviewReport?.verdict.decision ?? "n/a"} degraded=${result.degraded ?? false} codegen=${result.models.codegen} reviewer=${result.models.astra}`,
+);
+const ok =
+  result.summary.issuesVerified === result.summary.issuesConfirmed &&
+  result.summary.issuesConfirmed > 0 &&
+  result.findings.every((finding) => finding.verification?.passed) &&
+  result.reviewReport?.source === "model";
 console.log(ok ? "[e2b-scripted] PASS" : "[e2b-scripted] FAIL");
 if (!ok) process.exitCode = 1;

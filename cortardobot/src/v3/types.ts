@@ -1,6 +1,6 @@
-import type { ModelSelection, ReasoningEffort } from "../../../shared/models.ts";
+import type { ModelRole, ModelSelection, ReasoningEffort } from "../../../shared/models.ts";
 
-export type { ModelSelection, ReasoningEffort };
+export type { ModelRole, ModelSelection, ReasoningEffort };
 
 export type Severity = "critical" | "high" | "medium" | "low" | "info";
 
@@ -11,7 +11,48 @@ export type Classification = "AUTH" | "API" | "DATABASE" | "UI" | "PERFORMANCE" 
 
 export type PRSize = "tiny" | "normal" | "complex";
 
-export type ProofKind = "existing_test" | "targeted_test" | "script" | "browser" | "app_boot" | "none";
+export type ProofKind = "existing_test" | "targeted_test" | "script" | "probe" | "browser" | "app_boot" | "none";
+
+/**
+ * Terminal state of a judge-approved candidate's proof attempt (3.4). Every
+ * PROVE decision must end in exactly one of these; none may be dropped.
+ */
+export type ProofState = "PROVEN" | "UNPROVABLE" | "BUDGET" | "ERROR";
+
+/**
+ * The executable reproduction the prover produced. Repair and verification
+ * replay this artifact; it is the contract between all three stages (3.4).
+ */
+export interface ProofArtifact {
+  kind: "browser_check" | "existing_test" | "targeted_test" | "probe";
+  check?: BrowserCheck;
+  /** Repo-relative test path, or the probe file name for authored probes. */
+  path?: string;
+  /** Authored probe content (probe kind only). */
+  content?: string;
+  /** Exact command that fails on the defect and passes after the fix. */
+  command?: string;
+  /** How many times the artifact failed on the pristine head (2 for probes). */
+  preFixFailures: number;
+  artifactHash: string;
+  reason?: string;
+}
+
+/** Proof states for every judge-approved candidate in a run (3.4). */
+export interface LoopCandidateCoverage {
+  candidateId: string;
+  severity: Severity;
+  proofState: ProofState;
+  reason: string;
+}
+
+export interface LoopCoverage {
+  judgeProve: number;
+  proven: number;
+  proofUnavailable: number;
+  proofErrors: number;
+  candidates: LoopCandidateCoverage[];
+}
 
 /** Swarm investigation mode override (`CORTADO_SWARM_MODE`). */
 export type SwarmMode = "auto" | "agentic" | "single-shot";
@@ -58,8 +99,8 @@ export interface ReviewRequest {
   settings?: {
     autoCommitFixes?: boolean;
     /** Per-run model selection (usually taken from repository settings). */
-    models?: Partial<Record<"luna" | "terra" | "astra", string>>;
-    reasoning?: Partial<Record<"luna" | "terra" | "astra", ReasoningEffort>>;
+    models?: Partial<Record<ModelRole, string>>;
+    reasoning?: Partial<Record<ModelRole, ReasoningEffort>>;
     /** Reviewer instructions supplied by a human or the app. */
     instructions?: string;
   };
@@ -72,6 +113,8 @@ export interface BudgetConfig {
   swarmMs: number;
   judgeMs: number;
   proofMs: number;
+  /** Budget for the prover stage (authored reproductions), 3.4. */
+  proverMs: number;
   repairMs: number;
   verifyMs: number;
   astraMs: number;
@@ -93,6 +136,16 @@ export interface BudgetConfig {
   maxSwarmTurns: number;
   /** Tool calls allowed per swarm investigator turn (default 3). */
   maxSwarmToolsPerTurn: number;
+  /** Judge-approved candidates the prover may author a reproduction for (3.4). */
+  maxProverCandidates: number;
+  /** Luna attempts per candidate before recording UNPROVABLE or escalating (3.4). */
+  maxProverAttempts: number;
+  /** Turns allowed per prover attempt (3.4). */
+  maxProverTurns: number;
+  /** Tool calls allowed per prover turn (3.4). */
+  maxProverToolsPerTurn: number;
+  /** Codegen escalations allowed per run for high/critical near-misses (3.4). */
+  maxProverEscalations: number;
   /** Hard ceiling on provider spend for one run in USD; 0 disables the check. */
   maxCostUsd: number;
 }
@@ -138,7 +191,10 @@ export interface PRContext {
   size: PRSize;
   symbols: Array<{ name: string; kind: string; file: string; line: number; change: "added" | "removed" | "modified" }>;
   routes: string[];
+  /** Tests changed by the PR (diff-scoped). */
   tests: string[];
+  /** Repo-wide test index captured from the sandbox profile (3.4). */
+  repoTests?: string[];
   riskSignals: string[];
   pages: Array<{ file: string; route: string }>;
   packageManager: "npm" | "pnpm" | "yarn";
@@ -162,6 +218,12 @@ export interface Candidate {
   agentKind: AgentKind;
   suggestedProof: ProofKind;
   check?: BrowserCheck;
+  /** Luna's proposed experiment, carried through judging and proving (3.4). */
+  suggestedExperiment?: string;
+  /** How the prover plans to reproduce this candidate (3.4). */
+  proofPlan?: string;
+  /** The executable reproduction produced by the prover (3.4). */
+  artifact?: ProofArtifact;
   autoFix?: Array<{ path: string; find: string; replace: string }>;
   tags: string[];
   occurrences: number;
@@ -209,6 +271,8 @@ export interface BrowserCheckResult {
   consoleErrors: string[];
   detail: string;
   durationMs: number;
+  /** Final URL pathname after navigation; a mismatch with `path` means a redirect. */
+  landedPath?: string;
   /** True when the harness itself failed (navigation, click, timeout) — never a defect signal. */
   harnessError?: boolean;
 }
@@ -222,6 +286,10 @@ export interface ProofResult {
   explanation: string;
   durationMs: number;
   servedFromCache?: boolean;
+  /** The replayable reproduction artifact, when the prover produced one (3.4). */
+  artifact?: ProofArtifact;
+  /** Terminal coverage state for this candidate (3.4). */
+  proofState?: ProofState;
 }
 
 export interface RepairEdit {
@@ -327,6 +395,68 @@ export interface AstraReview {
   approval: "approve" | "approve_with_comments" | "request_changes";
   confidence: number;
   summary: string;
+  /** Why the reviewer reached this conclusion (3.3). */
+  rationale?: string;
+  /** Evidence anchors the conclusion cites (3.3). */
+  evidenceRefs?: string[];
+}
+
+export type ReviewRiskLevel = "critical" | "high" | "medium" | "low";
+
+export interface ReviewWalkthroughEntry {
+  file: string;
+  /** What the author appears to be trying to do in this file. */
+  intent: string;
+  /** What actually changed, grounded in the diff. */
+  changeSummary: string;
+  risk: "high" | "medium" | "low";
+  notes?: string;
+}
+
+export interface ReviewRisk {
+  area: string;
+  severity: ReviewRiskLevel;
+  rationale: string;
+  mitigation?: string;
+}
+
+export interface ReviewTestCoverage {
+  assessed: boolean;
+  signals: string[];
+  gaps: string[];
+}
+
+export interface ReviewObservation {
+  kind: string;
+  detail: string;
+}
+
+export interface FinalReviewVerdict {
+  decision: "approve" | "approve_with_comments" | "request_changes";
+  confidence: number;
+  rationale: string;
+}
+
+/** 3.3 — the full PR-level report produced by the independent final reviewer. */
+export interface FinalReviewReport {
+  verdict: FinalReviewVerdict;
+  summary: string;
+  walkthrough: ReviewWalkthroughEntry[];
+  risks: ReviewRisk[];
+  testCoverage: ReviewTestCoverage;
+  observations: ReviewObservation[];
+  limitations: string[];
+  findingsSummary: {
+    confirmed: number;
+    verified: number;
+    unresolved: number;
+    staticOnly: number;
+    discarded: number;
+    /** Judge-approved candidates the prover could not reproduce (3.4). */
+    proofUnavailable?: number;
+  };
+  /** "model" when the reviewer authored it, "fallback" for the deterministic report. */
+  source: "model" | "fallback";
 }
 
 export interface Finding {
@@ -439,6 +569,8 @@ export interface ContextPack {
   reproduction: string;
   check?: BrowserCheck;
   detectorEvidence: string[];
+  /** Changed files that could not be read into the pack (3.3). */
+  missingFiles?: string[];
   instructions?: string;
   /** Repository learnings injected into this pack (3.2). */
   learnings?: string[];
@@ -484,7 +616,7 @@ export interface RepairCachePayload {
 
 export interface StageEvent {
   stage: string;
-  status: "started" | "completed" | "failed" | "skipped";
+  status: "started" | "completed" | "failed" | "skipped" | "timed_out";
   at: number;
   durationMs?: number;
   detail?: string;
@@ -514,6 +646,10 @@ export interface ReviewResult {
   verifications: Record<string, VerificationReport>;
   findings: Finding[];
   reviews: AstraReview[];
+  /** Proof coverage for every judge-approved candidate (3.4). */
+  loop?: LoopCoverage;
+  /** Full PR-level report from the independent final reviewer (3.3). */
+  reviewReport?: FinalReviewReport | null;
   swarm?: SwarmReport;
   events: StageEvent[];
   timings: Record<string, number>;
@@ -546,7 +682,7 @@ export interface ModelMessage {
 }
 
 export interface ModelTask {
-  role: "luna" | "terra" | "astra";
+  role: ModelRole;
   kind: string;
   system: string;
   user: string;
@@ -556,6 +692,8 @@ export interface ModelTask {
   timeoutMs?: number;
   maxTokens?: number;
   retries?: number;
+  /** Cancellation signal from the owning stage; aborts in-flight HTTP calls. */
+  signal?: AbortSignal;
   label: string;
 }
 

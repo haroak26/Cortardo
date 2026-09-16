@@ -1,10 +1,10 @@
 /**
- * CortardoBot 3.2 verification gate.
+ * CortardoBot 3.4 verification gate.
  *
- * Runs the deterministic 3.2 checks that must pass before any deploy or live
- * E2E: strict typecheck + the v3 test suites (agentic swarm, agent loop,
- * diagnosis, proof, batched verification, cache, publisher goldens, PR6
- * replay). Makes no network calls and never touches E2B or the gateway.
+ * Runs the deterministic 3.4 checks that must pass before any deploy or live
+ * E2E: strict typecheck + the v3 test suites (agentic swarm, prover, agent loop,
+ * diagnosis, proof artifacts, batched verification, cache, publisher goldens,
+ * PR6 replay). Makes no network calls and never touches E2B or the gateway.
  *
  *   npm run verify:v3
  */
@@ -18,7 +18,7 @@ interface Step {
 
 const steps: Step[] = [
   { name: "typecheck (cortardobot)", command: "npx", args: ["tsc", "--noEmit"] },
-  { name: "3.2 test suites", command: "node", args: ["--import", "tsx", "--test", "tests/v3/*.test.ts"] },
+  { name: "3.4 test suites", command: "node", args: ["--import", "tsx", "--test", "tests/v3/*.test.ts"] },
 ];
 
 let failed = false;
@@ -33,4 +33,4 @@ for (const step of steps) {
 }
 
 if (failed) process.exit(1);
-console.log("\n[verify:v3] all 3.2 deterministic checks passed");
+console.log("\n[verify:v3] all 3.4 deterministic checks passed");

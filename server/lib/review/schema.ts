@@ -15,9 +15,24 @@ export function ensureReviewSchema(): Promise<void> {
     await db.execute(sql`ALTER TABLE "review_runs" ADD COLUMN IF NOT EXISTS "lease_owner" text`);
     await db.execute(sql`ALTER TABLE "review_runs" ADD COLUMN IF NOT EXISTS "lease_expires_at" timestamp`);
     await db.execute(sql`ALTER TABLE "review_runs" ADD COLUMN IF NOT EXISTS "heartbeat_at" timestamp`);
+    await db.execute(sql`ALTER TABLE "review_runs" ADD COLUMN IF NOT EXISTS "pull_request_number" integer`);
+    await db.execute(sql`ALTER TABLE "review_runs" ADD COLUMN IF NOT EXISTS "lease_generation" integer DEFAULT 0 NOT NULL`);
+    await db.execute(sql`ALTER TABLE "review_runs" ADD COLUMN IF NOT EXISTS "publish_state" text DEFAULT 'pending' NOT NULL`);
+    await db.execute(sql`ALTER TABLE "review_runs" ADD COLUMN IF NOT EXISTS "publish_attempts" integer DEFAULT 0 NOT NULL`);
+    await db.execute(sql`ALTER TABLE "review_runs" ADD COLUMN IF NOT EXISTS "publish_error" text`);
+    await db.execute(sql`ALTER TABLE "review_runs" ADD COLUMN IF NOT EXISTS "published_review_id" text`);
     await db.execute(
       sql`CREATE UNIQUE INDEX IF NOT EXISTS "review_runs_active_head_idx" ON "review_runs" ("repository_id", "head_sha", "engine_version") WHERE "status" in ('queued','running')`,
     );
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS "review_runs_publish_state_idx" ON "review_runs" ("publish_state")`);
+    // The unique index enforces finding idempotency; if drifted duplicates exist
+    // the CREATE fails, so dedupe first (same statement as migration 0019).
+    await db.execute(sql`
+      DELETE FROM "review_findings" a
+        USING "review_findings" b
+        WHERE a.ctid < b.ctid AND a."run_id" = b."run_id" AND a."finding_key" = b."finding_key"
+    `);
+    await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS "review_findings_run_key_idx" ON "review_findings" ("run_id", "finding_key")`);
     await db.execute(sql`
       CREATE TABLE IF NOT EXISTS "review_cache_entries" (
         "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,

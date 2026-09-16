@@ -11,7 +11,7 @@ export interface MemorySandboxOptions {
 export class MemorySandbox implements Sandbox {
   readonly id = "memory-sandbox";
   readonly root = "/repo";
-  private readonly files: Map<string, string>;
+  private files: Map<string, string>;
   private readonly execHandler?: MemorySandboxOptions["execHandler"];
   private readonly browserHandler?: MemorySandboxOptions["browserHandler"];
   private readonly profileOverride?: Partial<RepoProfile>;
@@ -37,7 +37,13 @@ export class MemorySandbox implements Sandbox {
     };
   }
 
-  async exec(command: string): Promise<ExecResult> {
+  async exec(
+    command: string,
+    options: { cwd?: string; timeoutMs?: number; allowFailure?: boolean; signal?: AbortSignal } = {},
+  ): Promise<ExecResult> {
+    if (options.signal?.aborted) {
+      return { command, exitCode: 1, stdout: "", stderr: "aborted", durationMs: 0, timedOut: true };
+    }
     const handled = this.execHandler?.(command);
     return {
       command,
@@ -68,7 +74,9 @@ export class MemorySandbox implements Sandbox {
     return [...this.files.keys()];
   }
 
+  /** Transactional: any failed edit rolls the whole set back. */
   async applyEdits(edits: RepairEdit[]): Promise<ApplyResult> {
+    const snapshot = new Map(this.files);
     const applied: RepairEdit[] = [];
     const failed: ApplyResult["failed"] = [];
     for (const edit of edits) {
@@ -85,7 +93,11 @@ export class MemorySandbox implements Sandbox {
       this.files.set(edit.path, content.replace(edit.find, edit.replace));
       applied.push(edit);
     }
-    return { ok: failed.length === 0 && applied.length > 0, applied, failed };
+    if (failed.length > 0 || applied.length === 0) {
+      this.files = snapshot;
+      return { ok: false, applied: [], failed };
+    }
+    return { ok: true, applied, failed: [] };
   }
 
   async gitDiff(): Promise<string> {

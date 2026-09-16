@@ -1,4 +1,4 @@
-import type { Finding, ReviewResult } from "../../../cortardobot/src/v3/types.ts";
+import type { Candidate, Finding, ReviewResult } from "../../../cortardobot/src/v3/types.ts";
 import { locateEdit } from "../../../cortardobot/src/v3/patch.ts";
 import { findingState, isVerifiedFix, patchHasHunks } from "../../../cortardobot/src/v3/result.ts";
 import { ENGINE_VERSION } from "../../../cortardobot/src/v3/version.ts";
@@ -94,6 +94,112 @@ function findingStatus(finding: Finding): string {
   return "reproduced";
 }
 
+const MAX_REVIEW_BODY_CHARS = 60_000;
+
+function verdictLabel(decision: "approve" | "approve_with_comments" | "request_changes"): string {
+  if (decision === "approve") return "**APPROVE**";
+  if (decision === "approve_with_comments") return "**APPROVE WITH COMMENTS**";
+  return "**REQUEST CHANGES**";
+}
+
+/** PR-level report sections rendered at the top of the review body (3.3). */
+function reportLines(result: ReviewResult): string[] {
+  const report = result.reviewReport;
+  if (!report) return [];
+  const lines: string[] = [];
+  lines.push(`## Final verdict: ${verdictLabel(report.verdict.decision)} · confidence ${(report.verdict.confidence * 100).toFixed(0)}%`);
+  lines.push("");
+  if (report.verdict.rationale) {
+    for (const paragraph of report.verdict.rationale.split(/\n{2,}/).slice(0, 4)) lines.push(`> ${paragraph.trim()}`);
+    lines.push("");
+  }
+  if (report.summary) {
+    lines.push(report.summary);
+    lines.push("");
+  }
+  if (report.walkthrough.length > 0) {
+    lines.push("### Walkthrough");
+    lines.push("| File | Intent | Change | Risk |");
+    lines.push("| --- | --- | --- | --- |");
+    for (const entry of report.walkthrough.slice(0, 20)) {
+      lines.push(`| \`${entry.file}\` | ${shortClaim(entry.intent, 120)} | ${shortClaim(entry.changeSummary, 200)} | ${entry.risk.toUpperCase()} |`);
+    }
+    lines.push("");
+  }
+  if (report.risks.length > 0) {
+    lines.push("### Risks");
+    lines.push("| Area | Severity | Rationale | Mitigation |");
+    lines.push("| --- | --- | --- | --- |");
+    for (const risk of report.risks.slice(0, 15)) {
+      lines.push(`| ${shortClaim(risk.area, 100)} | ${risk.severity.toUpperCase()} | ${shortClaim(risk.rationale, 240)} | ${shortClaim(risk.mitigation ?? "—", 160)} |`);
+    }
+    lines.push("");
+  }
+  if (report.testCoverage.assessed || report.testCoverage.signals.length > 0 || report.testCoverage.gaps.length > 0) {
+    lines.push("### Test coverage");
+    for (const signal of report.testCoverage.signals.slice(0, 10)) lines.push(`- Covered: ${shortClaim(signal, 200)}`);
+    for (const gap of report.testCoverage.gaps.slice(0, 10)) lines.push(`- Gap: ${shortClaim(gap, 200)}`);
+    if (report.testCoverage.signals.length === 0 && report.testCoverage.gaps.length === 0) lines.push("- No coverage signals were provided.");
+    lines.push("");
+  }
+  if (report.observations.length > 0) {
+    lines.push("### Observations");
+    for (const observation of report.observations.slice(0, 10)) lines.push(`- **${shortClaim(observation.kind, 80)}** — ${shortClaim(observation.detail, 300)}`);
+    lines.push("");
+  }
+  if (report.limitations.length > 0) {
+    lines.push("### Limitations");
+    for (const limitation of report.limitations.slice(0, 10)) lines.push(`- ${shortClaim(limitation, 300)}`);
+    lines.push("");
+  }
+  if (report.source === "fallback") lines.push("> ⚠️ The PR report is the deterministic fallback; the reviewer model did not complete.");
+  lines.push("");
+  return lines;
+}
+
+/** Static-only candidates (judge STATIC_ONLY, never confirmed by execution). */
+function staticOnlyCandidates(result: ReviewResult): Candidate[] {
+  const byId = new Map(result.candidates.map((candidate) => [candidate.id, candidate]));
+  return result.decisions
+    .filter((decision) => decision.verdict === "STATIC_ONLY")
+    .map((decision) => byId.get(decision.candidateId))
+    .filter((candidate): candidate is Candidate => Boolean(candidate));
+}
+
+function isPublishableStatic(candidate: Candidate): boolean {
+  return candidate.severity === "critical" || candidate.severity === "high" || candidate.severity === "medium";
+}
+
+/**
+ * Proof coverage for the PR body: what the loop was asked to prove and what it
+ * managed to reproduce. A run where nothing could be proven must say so here
+ * (3.4) instead of reading like a clean review.
+ */
+function loopLines(result: ReviewResult): string[] {
+  const loop = result.loop;
+  if (!loop || loop.judgeProve === 0) return [];
+  const lines: string[] = [];
+  lines.push("### Proof coverage");
+  lines.push("");
+  lines.push(
+    `Judge approved ${loop.judgeProve} candidate(s) · **${loop.proven} proven by execution** · ${loop.proofUnavailable} unprovable · ${loop.proofErrors} errored`,
+  );
+  for (const entry of loop.candidates.filter((item) => item.proofState !== "PROVEN").slice(0, 10)) {
+    const candidate = result.candidates.find((item) => item.id === entry.candidateId);
+    lines.push(
+      `- [${entry.severity}] ${shortClaim(candidate?.claim ?? entry.candidateId, 200)} (\`${candidate?.file ?? "n/a"}:${candidate?.line ?? "?"}\`) — ${entry.proofState.toLowerCase()}: ${shortClaim(entry.reason, 200)}`,
+    );
+  }
+  lines.push("");
+  return lines;
+}
+
+function clampReviewBody(body: string): string {
+  if (body.length <= MAX_REVIEW_BODY_CHARS) return body;
+  const note = `\n\n> ⚠️ Review truncated at ${MAX_REVIEW_BODY_CHARS.toLocaleString()} characters; see the run details for the full report.`;
+  return `${body.slice(0, MAX_REVIEW_BODY_CHARS - note.length)}${note}`;
+}
+
 function verificationLines(finding: Finding): string[] {
   if (!finding.verification) return [];
   const lines = [`**Fix verification:** ${finding.verification.passed ? "passed" : "failed"}`];
@@ -116,12 +222,15 @@ export function buildReviewBody(result: ReviewResult): string {
   lines.push("");
   lines.push(
     `_${result.pr.classification.join(" / ")} · ${result.pr.size} change · ${(summary.durationMs / 1000).toFixed(1)}s · ` +
-      `models: \`${result.models.luna}\`, \`${result.models.terra}\`, \`${result.models.astra}\` · ` +
+      `models: \`${result.models.luna}\`, \`${result.models.terra}\`, \`${result.models.codegen}\`, \`${result.models.astra}\` · ` +
       `${summary.modelCalls} model calls · $${summary.costUsd.toFixed(4)}_`,
   );
   if (summary.maxAttempts > 0) lines.push(`_Repair attempts: max ${summary.maxAttempts} per finding._`);
   if (result.degraded) lines.push(`> ⚠️ Degraded run: ${result.degradedReason ?? "a stage hit its budget"}`);
   lines.push("");
+
+  lines.push(...reportLines(result));
+  lines.push(...loopLines(result));
 
   if (result.findings.length > 0) {
     lines.push("| Severity | Finding | Location | Status |");
@@ -158,8 +267,12 @@ export function buildReviewBody(result: ReviewResult): string {
     }
     for (const line of verificationLines(finding)) lines.push(line);
     if (finding.review) {
-      lines.push(`**Astra:** ${finding.review.validity} / fix ${finding.review.fixCorrectness} / risk ${finding.review.risk} / ${finding.review.approval}`);
+      lines.push(`**Reviewer:** ${finding.review.validity} / fix ${finding.review.fixCorrectness} / risk ${finding.review.risk} / ${finding.review.approval} (confidence ${(finding.review.confidence * 100).toFixed(0)}%)`);
       lines.push(`> ${finding.review.summary}`);
+      if (finding.review.rationale) lines.push(`> ${finding.review.rationale.replace(/\n/g, " ")}`);
+      if (finding.review.evidenceRefs && finding.review.evidenceRefs.length > 0) {
+        lines.push(`> Evidence: ${finding.review.evidenceRefs.slice(0, 6).map((ref) => `\`${ref}\``).join(", ")}`);
+      }
     }
     lines.push("");
     lines.push("</details>");
@@ -188,7 +301,7 @@ export function buildReviewBody(result: ReviewResult): string {
   lines.push(
     `_Cortado investigated ${result.candidates.length} candidate(s), proved ${result.proofs.filter((proof) => proof.status === "confirmed").length} by execution and verified ${summary.issuesVerified} fix(es). Run \`${result.runId}\` (engine ${ENGINE_VERSION}).${swarmNote} Cache: ${summary.cacheHits} hit / ${summary.cacheMisses} miss._`,
   );
-  return lines.join("\n");
+  return clampReviewBody(lines.join("\n"));
 }
 
 export function buildInlineComments(result: ReviewResult): NonNullable<PullRequestReviewInput["comments"]> {
@@ -241,32 +354,69 @@ export function buildInlineComments(result: ReviewResult): NonNullable<PullReque
       comments.push({ path: file, line, side: "RIGHT", body: parts.join("\n") });
     }
   }
+  // Static-only findings must still be visible on the PR; they are published
+  // as clearly-labelled, non-blocking comments (3.4). They never drive
+  // REQUEST_CHANGES on their own — the verdict handles that.
+  for (const candidate of staticOnlyCandidates(result)) {
+    if (!isPublishableStatic(candidate)) continue;
+    const file = candidate.file;
+    const line = candidate.line;
+    if (!file || line === undefined || !lineInDiff(result, file, line)) continue;
+    const parts: string[] = [];
+    parts.push(`**Cortado static finding (unproven)** — ${shortClaim(candidate.claim, 220)}`);
+    parts.push("");
+    parts.push(
+      "This candidate was reported from static analysis. The autonomous loop could not produce an executable reproduction for it, so it is neither confirmed nor fixed.",
+    );
+    if (candidate.evidence.length > 0) parts.push(`Evidence: ${candidate.evidence.join(", ")}`);
+    if (candidate.suggestedExperiment) parts.push(`Suggested experiment: ${shortClaim(candidate.suggestedExperiment, 300)}`);
+    comments.push({ path: file, line, side: "RIGHT", body: parts.join("\n") });
+  }
   return comments.slice(0, 30);
+}
+
+/** Static-only decisions recorded on the run, independent of the summary. */
+function staticOnlyCount(result: ReviewResult): number {
+  const fromDecisions = result.decisions.filter((decision) => decision.verdict === "STATIC_ONLY").length;
+  return Math.max(fromDecisions, result.summary.staticOnly);
 }
 
 export function decideReviewEvent(result: ReviewResult): "APPROVE" | "COMMENT" | "REQUEST_CHANGES" {
   const confirmed = result.findings;
-  if (confirmed.length === 0) {
-    return result.summary.staticOnly > 0 ? "COMMENT" : "APPROVE";
-  }
+  const report = result.reviewReport;
   const unlifted = confirmed.some((finding) => {
     const verified = isVerifiedFix(finding);
     return !verified && SEVERITY_ORDER[finding.candidate.severity] >= SEVERITY_ORDER.medium;
   });
-  return unlifted ? "REQUEST_CHANGES" : "COMMENT";
+  if (unlifted) return "REQUEST_CHANGES";
+  if (result.status === "failed") return "COMMENT";
+  if (report?.verdict.decision === "request_changes") return "REQUEST_CHANGES";
+  // A degraded run never approves, even when the deterministic output is empty.
+  if (result.degraded || report?.source === "fallback") return "COMMENT";
+  if (confirmed.length === 0) {
+    if (staticOnlyCount(result) > 0) return "COMMENT";
+    return report?.verdict.decision === "approve_with_comments" ? "COMMENT" : "APPROVE";
+  }
+  return "COMMENT";
 }
 
 export function decideCheckConclusion(result: ReviewResult): CreateCheckRunInput["conclusion"] {
   const confirmed = result.findings;
   if (result.status === "failed" || result.degraded) return "neutral";
-  if (confirmed.length === 0) return result.summary.staticOnly > 0 ? "neutral" : "success";
+  const report = result.reviewReport;
+  const reportRequestsChanges = report?.verdict.decision === "request_changes";
+  if (confirmed.length === 0) {
+    if (staticOnlyCount(result) > 0) return "neutral";
+    return reportRequestsChanges ? "neutral" : "success";
+  }
   const blocking = confirmed.some((finding) => {
     const verified = isVerifiedFix(finding);
     return !verified && SEVERITY_ORDER[finding.candidate.severity] >= SEVERITY_ORDER.high;
   });
   if (blocking) return "failure";
   const allVerified = confirmed.every((finding) => isVerifiedFix(finding));
-  return allVerified ? "success" : "neutral";
+  if (allVerified) return reportRequestsChanges ? "neutral" : "success";
+  return "neutral";
 }
 
 export async function startReviewCheckRun(input: {
@@ -290,18 +440,67 @@ export async function startReviewCheckRun(input: {
   }
 }
 
+export function buildCheckRunText(result: ReviewResult): string | undefined {
+  const report = result.reviewReport;
+  if (!report) return undefined;
+  const lines: string[] = [];
+  lines.push(`## Verdict: ${report.verdict.decision.replace(/_/g, " ")} (confidence ${(report.verdict.confidence * 100).toFixed(0)}%)`);
+  if (report.verdict.rationale) lines.push("", report.verdict.rationale);
+  if (report.summary) lines.push("", report.summary);
+  if (report.risks.length > 0) {
+    lines.push("", "### Risks");
+    for (const risk of report.risks.slice(0, 10)) lines.push(`- **${risk.severity.toUpperCase()}** ${risk.area}: ${risk.rationale}${risk.mitigation ? ` (mitigation: ${risk.mitigation})` : ""}`);
+  }
+  if (report.limitations.length > 0) {
+    lines.push("", "### Limitations");
+    for (const limitation of report.limitations.slice(0, 10)) lines.push(`- ${limitation}`);
+  }
+  lines.push(...loopLines(result));
+  return lines.join("\n").slice(0, 65_000);
+}
+
+/** Terminates a check run that will never complete (engine crash, lost lease). */
+export async function failCheckRun(input: {
+  installationId: string | number;
+  fullName: string;
+  checkRunId: number;
+  reason: string;
+}): Promise<void> {
+  try {
+    await updateCheckRun(input.installationId, input.fullName, input.checkRunId, {
+      status: "completed",
+      conclusion: "neutral",
+      title: "Cortado: run failed",
+      summary: `The review run did not complete: ${input.reason}`.slice(0, 900),
+    });
+  } catch {
+    // check runs are best-effort
+  }
+}
+
 export async function finishCheckRun(input: PublishInput): Promise<void> {
   if (!input.checkRunId) return;
   const verified = input.result.summary.issuesVerified;
   const confirmed = input.result.summary.issuesConfirmed;
+  const requestsChanges = input.result.reviewReport?.verdict.decision === "request_changes";
+  const loop = input.result.loop;
+  const unprovenNote = loop && loop.judgeProve > 0 && loop.proven < loop.judgeProve ? ` · ${loop.judgeProve - loop.proven} unproven` : "";
   try {
     await updateCheckRun(input.installationId, input.fullName, input.checkRunId, {
       status: "completed",
       conclusion: decideCheckConclusion(input.result) as any,
-      title: verified > 0 ? `Cortado: ${verified} issue(s) fixed and verified` : confirmed > 0 ? `Cortado: ${confirmed} issue(s) confirmed` : "Cortado: no confirmed issues",
+      title:
+        verified > 0
+          ? `Cortado: ${verified} issue(s) fixed and verified`
+          : confirmed > 0
+            ? `Cortado: ${confirmed} issue(s) confirmed`
+            : requestsChanges
+              ? "Cortado: changes requested — no verified fixes"
+              : `Cortado: no confirmed issues${unprovenNote}`,
       summary:
         `${input.result.summary.issuesFound} candidate(s) · ${confirmed} confirmed · ${verified} verified${input.result.degraded ? " · degraded run" : ""}` +
         (input.autoCommitNote ? `\n\n${input.autoCommitNote.slice(0, 900)}` : ""),
+      text: buildCheckRunText(input.result),
     });
   } catch {
     // check runs are best-effort
@@ -326,6 +525,19 @@ export function shouldDismissBotReview(
 }
 
 /**
+ * Superseded reviews for a commit. `excludeReviewId` must always be the review
+ * that was just created: after create-then-dismiss the fresh review is itself
+ * dismissable, and dismissing it would erase the verdict we just published.
+ */
+export function selectSupersededBotReviews(
+  reviews: Array<{ id: number; state?: string | null; commitId?: string | null; body?: string | null; userType?: string | null; userLogin?: string | null }>,
+  headSha: string,
+  excludeReviewId?: number,
+): typeof reviews {
+  return reviews.filter((review) => review.id !== excludeReviewId && shouldDismissBotReview(review, headSha));
+}
+
+/**
  * Idempotent publishing: dismiss the bot's previous review for the same head
  * SHA so a re-run replaces the old verdict instead of stacking new reviews.
  */
@@ -334,11 +546,13 @@ export async function dismissPreviousBotReviews(input: {
   fullName: string;
   prNumber: number;
   headSha: string;
+  /** Never dismiss the review that was just created (3.3). */
+  excludeReviewId?: number;
   logger?: { info: (message: string) => void; warn: (message: string) => void };
 }): Promise<void> {
   try {
     const reviews = await listPullRequestReviews(input.installationId, input.fullName, input.prNumber);
-    const stale = reviews.filter((review) => shouldDismissBotReview(review, input.headSha));
+    const stale = selectSupersededBotReviews(reviews, input.headSha, input.excludeReviewId);
     for (const review of stale) {
       try {
         await dismissPullRequestReview(
@@ -362,27 +576,40 @@ export async function publishReview(
   input: PublishInput,
   logger?: { info: (message: string) => void; warn: (message: string) => void },
 ): Promise<{ id: number; url: string | null } | undefined> {
+  const event = decideReviewEvent(input.result);
+  const body = buildReviewBody(input.result);
+  const comments = buildInlineComments(input.result);
+  const pinned = { commitId: input.headSha };
   try {
-    await dismissPreviousBotReviews({ ...input, logger });
-    const event = decideReviewEvent(input.result);
-    return await createPullRequestReview(input.installationId, input.fullName, input.prNumber, {
+    // Create first, then dismiss the superseded review: a failed create must
+    // never leave the PR without its previous verdict.
+    const created = await createPullRequestReview(input.installationId, input.fullName, input.prNumber, {
       event,
-      body: buildReviewBody(input.result),
-      comments: buildInlineComments(input.result),
+      body,
+      comments,
+      ...pinned,
     });
+    await dismissPreviousBotReviews({ ...input, logger, excludeReviewId: created.id });
+    return created;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     if (/suggestion|line|position|422/i.test(message)) {
+      logger?.warn(`inline comments were rejected (${message.slice(0, 160)}); retrying body-only`);
       try {
-        return await createPullRequestReview(input.installationId, input.fullName, input.prNumber, {
-          event: decideReviewEvent(input.result),
-          body: buildReviewBody(input.result),
+        const created = await createPullRequestReview(input.installationId, input.fullName, input.prNumber, {
+          event,
+          body,
           comments: [],
+          ...pinned,
         });
-      } catch {
+        await dismissPreviousBotReviews({ ...input, logger, excludeReviewId: created.id });
+        return created;
+      } catch (retryError) {
+        logger?.warn(`body-only review publish also failed: ${retryError instanceof Error ? retryError.message : String(retryError)}`);
         return undefined;
       }
     }
+    logger?.warn(`review publish failed: ${message.slice(0, 200)}`);
     return undefined;
   }
 }

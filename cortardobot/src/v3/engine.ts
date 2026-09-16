@@ -1,23 +1,37 @@
-import { mergeModelSettings, resolveV3Config, type ModelsConfig, type V3Config } from "./config";
+import { clampBudgets, mergeModelSettings, publicModelSelection, resolveV3Config, type ModelsConfig, type V3Config } from "./config";
 import { analyzeChanges } from "./intelligence";
 import { runDetectors } from "./detectors";
 import { runSwarm } from "./swarm";
 import { mergeCandidates } from "./merge";
 import { judgeCandidates } from "./judge";
 import { proveCandidates, proveOne, type ProofDeps } from "./proof";
+import { buildLoopCoverage, proveCandidatesWithProver } from "./prover";
 import { repairFindings } from "./repair";
-import { verifyRepairs } from "./verify";
-import { finalReview } from "./astra";
+import { verifyRepairs, type BaselineStatus, type BaselineTestResult } from "./verify";
+import { fallbackReport, fallbackReviews, finalReview } from "./astra";
 import { buildFindings, formatMarkdown, summaryFrom } from "./result";
 import { ModelRouter, preflightModels } from "./models";
 import { MemorySandbox } from "./sandbox-memory";
 import type { RepoProfile, Sandbox } from "./sandbox";
-import type { CacheStatsSnapshot, Candidate, ContextPack, ModelClient, ReviewRequest, ReviewResult, StageEvent, SwarmReport } from "./types";
+import type {
+  CacheStatsSnapshot,
+  Candidate,
+  ContextPack,
+  LoopCandidateCoverage,
+  ModelClient,
+  ModelRole,
+  ReviewRequest,
+  ReviewResult,
+  StageEvent,
+  SwarmReport,
+} from "./types";
 import { createLogger, hashContent, normalizeLearnings, stableStringify, withTimeout, type Logger } from "./util";
 import { cacheKey } from "./cache/keys";
 import { emptyCacheStats, type CacheStore } from "./cache/store";
 import { buildContextPack, buildSwarmContext } from "./agent/context-pack";
 import { ENGINE_VERSION } from "./version";
+import { validateReviewRequest } from "./validate";
+import { DEFAULT_MODELS, DEFAULT_REASONING } from "../../../shared/models.ts";
 
 export interface EngineOptions {
   config?: Partial<{
@@ -27,7 +41,7 @@ export interface EngineOptions {
     sandbox: Partial<V3Config["sandbox"]>;
     cache: Partial<V3Config["cache"]>;
   }>;
-  models?: Partial<Record<"luna" | "terra" | "astra", ModelClient>>;
+  models?: Partial<Record<ModelRole, ModelClient>>;
   sandboxFactory?: (request: ReviewRequest) => Promise<Sandbox>;
   cache?: CacheStore;
   logger?: Logger;
@@ -52,6 +66,10 @@ export class CortadoV3Engine {
   }
 
   async run(request: ReviewRequest): Promise<ReviewResult> {
+    const validation = validateReviewRequest(request);
+    if (!validation.ok) return invalidRequestResult(request, validation.error);
+    request = validation.value;
+
     const now = this.options.now ?? (() => Date.now());
     const startedAt = now();
     const logger = this.options.logger ?? createLogger(process.env.CORTADO_LOG_LEVEL === "debug" ? "debug" : "info", "v3");
@@ -69,7 +87,7 @@ export class CortadoV3Engine {
     const config: V3Config = {
       ...baseConfig,
       models,
-      budgets: { ...baseConfig.budgets, ...(request.budgets ?? {}) },
+      budgets: clampBudgets({ ...baseConfig.budgets, ...(request.budgets ?? {}) }),
     };
     const cache = config.cache.enabled ? this.options.cache : undefined;
     let degradedReason: string | undefined;
@@ -79,12 +97,12 @@ export class CortadoV3Engine {
     };
     const cacheStats = (): CacheStatsSnapshot => cache?.stats() ?? emptyCacheStats();
 
-    const hasAllScriptedClients = (["luna", "terra", "astra"] as const).every((role) => Boolean(this.options.models?.[role]));
+    const hasAllScriptedClients = (["luna", "terra", "codegen", "astra"] as const).every((role) => Boolean(this.options.models?.[role]));
     if (config.mode === "live" && !hasAllScriptedClients && !this.options.skipModelPreflight) {
       emit("model_preflight", "started");
       const preflightStarted = now();
       try {
-        const preflight = await withTimeout(
+        const { value: preflight } = await withTimeout(
           preflightModels(config.models),
           15_000,
           { checked: false, available: [], missing: [], warning: "model preflight timed out" },
@@ -102,8 +120,8 @@ export class CortadoV3Engine {
         throw error;
       }
     }
-    logger.info(`models: luna=${models.luna} terra=${models.terra} astra=${models.astra} (reasoning ${models.reasoning.luna}/${models.reasoning.terra}/${models.reasoning.astra})`);
-    emit("models", "completed", `luna=${models.luna} terra=${models.terra} astra=${models.astra}`);
+    logger.info(`models: luna=${models.luna} terra=${models.terra} codegen=${models.codegen} astra=${models.astra} (reasoning ${models.reasoning.luna}/${models.reasoning.terra}/${models.reasoning.codegen}/${models.reasoning.astra})`);
+    emit("models", "completed", `luna=${models.luna} terra=${models.terra} codegen=${models.codegen} astra=${models.astra}`);
 
     const modelRouter = new ModelRouter({
       clients: this.options.models ?? {},
@@ -115,7 +133,7 @@ export class CortadoV3Engine {
 
     const deadline = startedAt + config.budgets.globalMs;
     const remaining = () => Math.max(0, deadline - now());
-    const stage = async <T>(name: string, fn: () => Promise<T>, timeoutMs: number, fallback: T): Promise<T> => {
+    const stage = async <T>(name: string, fn: (signal: AbortSignal) => Promise<T>, timeoutMs: number, fallback: T): Promise<T> => {
       const timeLeft = remaining();
       if (timeLeft <= 1_000) {
         markDegraded(`${name} skipped: global budget exhausted`);
@@ -124,13 +142,29 @@ export class CortadoV3Engine {
       }
       emit(name, "started");
       const started = now();
+      const controller = new AbortController();
+      const budgetMs = Math.min(timeoutMs, timeLeft);
       try {
-        const result = await withTimeout(fn(), Math.min(timeoutMs, timeLeft), fallback);
+        const { value, timedOut } = await withTimeout(
+          fn(controller.signal),
+          budgetMs,
+          fallback,
+          (error) => logger.warn(`${name} rejected after its budget was exhausted`, { error: error instanceof Error ? error.message : String(error) }),
+        );
         const duration = now() - started;
         timings[name] = duration;
+        if (timedOut) {
+          controller.abort();
+          const message = `${name} exceeded its ${Math.round(budgetMs / 1000)}s budget`;
+          emit(name, "timed_out", message, duration);
+          logger.warn(message);
+          markDegraded(message);
+          return value;
+        }
         emit(name, "completed", undefined, duration);
-        return result;
+        return value;
       } catch (error) {
+        controller.abort();
         const duration = now() - started;
         timings[name] = duration;
         emit(name, "failed", error instanceof Error ? error.message : String(error), duration);
@@ -140,11 +174,37 @@ export class CortadoV3Engine {
       }
     };
 
+    const cacheValidators: Record<string, (value: unknown) => boolean> = {
+      context_pack: (value) => Boolean(value && typeof value === "object" && Array.isArray((value as ContextPack).files) && typeof (value as ContextPack).hash === "string"),
+      swarm_context: (value) => Boolean(value && typeof value === "object" && Array.isArray((value as ContextPack).files) && typeof (value as ContextPack).hash === "string"),
+      swarm: (value) =>
+        Array.isArray(value) ||
+        Boolean(value && typeof value === "object" && Array.isArray((value as { candidates?: unknown }).candidates)),
+      judge: (value) => Boolean(value && typeof value === "object" && Array.isArray((value as { decisions?: unknown }).decisions)),
+      proof: (value) =>
+        Boolean(value && typeof value === "object" && typeof (value as { status?: unknown }).status === "string" && typeof (value as { candidateId?: unknown }).candidateId === "string"),
+      final_review: (value) =>
+        Boolean(
+          value &&
+            typeof value === "object" &&
+            Array.isArray((value as { reviews?: unknown }).reviews) &&
+            (value as { report?: { walkthrough?: unknown } }).report &&
+            Array.isArray((value as { report: { walkthrough?: unknown } }).report.walkthrough),
+        ),
+      repair: (value) =>
+        Boolean(value && typeof value === "object" && typeof (value as { exit?: unknown }).exit === "string" && Array.isArray((value as { finalEdits?: unknown }).finalEdits)),
+    };
     const readCache = async <T>(kind: string, key: string): Promise<T | undefined> => {
       if (!cache) return undefined;
       try {
         const hit = await cache.get<T>(key);
         if (!hit) {
+          cache.recordMiss(kind);
+          return undefined;
+        }
+        const valid = cacheValidators[kind];
+        if (valid && !valid(hit.value)) {
+          logger.warn(`cache payload for ${kind} failed validation; treating as a miss`);
           cache.recordMiss(kind);
           return undefined;
         }
@@ -188,13 +248,14 @@ export class CortadoV3Engine {
 
       let sandboxSetup: Promise<void> | undefined;
       let profile: RepoProfile = EMPTY_PROFILE;
-      let baselineTypecheck: Promise<boolean | undefined> | undefined;
-      let baselineTests: Promise<{ passed: boolean; timedOut: boolean; output: string } | undefined> | undefined;
+      let baselineTypecheck: Promise<BaselineStatus> | undefined;
+      let baselineTests: Promise<BaselineTestResult> | undefined;
       let sandboxError: string | undefined;
+      let sandboxCreatedAt = 0;
 
       if (this.options.sandboxFactory) {
         emit("sandbox_setup", "started");
-        const setupStarted = now();
+        sandboxCreatedAt = now();
         try {
           sandbox = await this.options.sandboxFactory(request);
           sandboxSetup = (async () => {
@@ -204,18 +265,17 @@ export class CortadoV3Engine {
             if (profile.typecheckCommand) {
               baselineTypecheck = sandbox!
                 .exec(profile.typecheckCommand, { cwd: sandbox!.root, timeoutMs: 180_000, allowFailure: true })
-                .then((result) => result.exitCode === 0 && !result.timedOut)
-                .catch(() => undefined);
+                .then((result): BaselineStatus => (result.timedOut ? "timeout" : result.exitCode === 0 ? "green" : "red"))
+                .catch(() => "unavailable" as const);
             }
             if (profile.testCommand && config.budgets.baselineMs > 0 && context.size !== "tiny") {
               baselineTests = sandbox!
                 .exec(profile.testCommand, { cwd: sandbox!.root, timeoutMs: config.budgets.baselineMs, allowFailure: true })
-                .then((result) => ({
-                  passed: result.exitCode === 0 && !result.timedOut,
-                  timedOut: result.timedOut,
+                .then((result): BaselineTestResult => ({
+                  status: result.timedOut ? "timeout" : result.exitCode === 0 ? "green" : "red",
                   output: `${result.stdout}\n${result.stderr}`.trim().slice(0, 4_000),
                 }))
-                .catch(() => undefined);
+                .catch(() => "unavailable" as const) as unknown as Promise<BaselineTestResult>;
             }
           })();
           sandboxSetup.catch((error) => {
@@ -228,18 +288,35 @@ export class CortadoV3Engine {
         }
       }
 
+      if (sandboxError && !sandboxSetup) {
+        timings.sandbox_setup = now() - sandboxCreatedAt;
+        markDegraded(`sandbox unavailable: ${sandboxError}`);
+        emit("sandbox_setup", "failed", sandboxError, timings.sandbox_setup);
+      }
       if (sandboxSetup) {
         const setupStarted = now();
-        await withTimeout(sandboxSetup.catch(() => undefined), Math.min(config.budgets.sandboxSetupMs, remaining()), undefined);
+        const setup = await withTimeout(
+          sandboxSetup.catch(() => undefined),
+          Math.min(config.budgets.sandboxSetupMs, remaining()),
+          undefined,
+        );
         const duration = now() - setupStarted;
         timings.sandbox_setup = duration;
-        emit("sandbox_setup", sandboxError ? "failed" : "completed", sandboxError, duration);
+        if (setup.timedOut && !sandboxError) {
+          sandboxError = `sandbox setup exceeded its ${Math.round(config.budgets.sandboxSetupMs / 1000)}s budget`;
+          markDegraded(sandboxError);
+          emit("sandbox_setup", "timed_out", sandboxError, duration);
+        } else {
+          emit("sandbox_setup", sandboxError ? "failed" : "completed", sandboxError, duration);
+          if (sandboxError) markDegraded(`sandbox unavailable: ${sandboxError}`);
+        }
       }
 
       context.hasTests = Boolean(profile.testCommand);
       context.hasTypecheck = Boolean(profile.typecheckCommand);
       context.hasBuild = Boolean(profile.buildCommand);
       context.packageManager = profile.packageManager;
+      context.repoTests = profile.testFiles ?? [];
 
       let swarmPack: ContextPack | undefined;
       if (sandbox && !sandboxError) {
@@ -260,9 +337,11 @@ export class CortadoV3Engine {
             return undefined;
           });
           timings.swarm_context = now() - packStarted;
-          if (swarmPack) {
+          if (swarmPack && (swarmPack.missingFiles ?? []).length === 0) {
             await writeCache("swarm_context", swarmContextKey, swarmPack);
             emit("swarm_context", "completed", `${swarmPack.files.length} file(s)`, timings.swarm_context);
+          } else if (swarmPack) {
+            emit("swarm_context", "completed", `${swarmPack.files.length} file(s); ${swarmPack.missingFiles!.length} unreadable, not cached`, timings.swarm_context);
           } else {
             emit("swarm_context", "failed", "context pack unavailable; swarm falls back to single-shot");
           }
@@ -274,7 +353,15 @@ export class CortadoV3Engine {
         headSha,
         fileHashes,
         model: models.luna,
-        payload: { detectors: detectors.map((candidate) => candidate.id), title: request.pr.title, turns: config.budgets.maxSwarmTurns, settings: settingsFingerprint },
+        payload: {
+          detectors: detectors.map((candidate) => candidate.id),
+          title: request.pr.title,
+          turns: config.budgets.maxSwarmTurns,
+          toolsPerTurn: config.budgets.maxSwarmToolsPerTurn,
+          mode: config.swarmMode,
+          reasoning: models.reasoning.luna,
+          settings: settingsFingerprint,
+        },
       });
       const cachedSwarm = await readCache<Candidate[] | { candidates: Candidate[]; report?: SwarmReport }>("swarm", swarmKey);
       let lunaCandidates: Candidate[];
@@ -291,7 +378,7 @@ export class CortadoV3Engine {
         const swarmUsageBefore = modelRouter.usage.costUsd;
         const swarmOutcome = await stage(
           "swarm",
-          () =>
+          (signal) =>
             runSwarm(context, request, detectors, modelRouter, logger, config.budgets.swarmMs, {
               sandbox: sandbox && !sandboxError ? sandbox : undefined,
               profile,
@@ -299,6 +386,7 @@ export class CortadoV3Engine {
               maxTurns: config.budgets.maxSwarmTurns,
               maxToolsPerTurn: config.budgets.maxSwarmToolsPerTurn,
               mode: config.swarmMode,
+              signal,
             }),
           config.budgets.swarmMs + 30_000,
           { candidates: [] as Candidate[], report: undefined as SwarmReport | undefined },
@@ -320,6 +408,11 @@ export class CortadoV3Engine {
             `${agent.id}: ${agent.hypotheses} hypothesis(es), ${agent.candidates} candidate(s), ${agent.turns} turn(s), ${agent.toolCalls} tool call(s)`,
             agent.durationMs,
           );
+          // A dead investigator reduces recall; an honest run says so instead
+          // of pretending the diff was fully investigated (3.4).
+          if (agent.status !== "completed") {
+            markDegraded(`swarm agent ${agent.id} ${agent.status}${agent.error ? `: ${agent.error.slice(0, 160)}` : ""}`);
+          }
         }
         emit(
           "swarm_detail",
@@ -337,7 +430,12 @@ export class CortadoV3Engine {
         headSha,
         fileHashes,
         model: models.terra,
-        payload: { candidates: candidates.map((candidate) => [candidate.id, candidate.severity, candidate.evidence]), maxToProve: config.budgets.maxToProve, settings: settingsFingerprint },
+        payload: {
+          candidates: candidates.map((candidate) => [candidate.id, candidate.severity, candidate.evidence]),
+          maxToProve: config.budgets.maxToProve,
+          reasoning: models.reasoning.terra,
+          settings: settingsFingerprint,
+        },
       });
       const cachedJudge = await readCache<{ decisions: ReviewResult["decisions"]; source: string }>("judge", judgeKey);
       let judge;
@@ -361,14 +459,18 @@ export class CortadoV3Engine {
       const toProve = candidates.filter((candidate) => judge.decisions.some((decision) => decision.candidateId === candidate.id && decision.verdict === "PROVE"));
 
       const proofResults: ReviewResult["proofs"] = [];
-      const proofsToRun: typeof toProve = [];
+      let proofsToRun: typeof toProve = [];
       if (!sandboxError && sandbox) {
         for (const candidate of toProve) {
           const key = cacheKey("proof", {
             repo: repoKey,
             headSha,
             fileHashes,
-            payload: { candidate: [candidate.id, candidate.file, candidate.line, candidate.check ?? null, candidate.suggestedProof] },
+            payload: {
+              candidate: [candidate.id, candidate.file, candidate.line, candidate.check ?? null, candidate.suggestedProof],
+              artifact: candidate.artifact?.artifactHash ?? null,
+              runner: [profile.testCommand ?? "", profile.testSingle ? "single" : "none", profile.typecheckCommand ?? "", profile.buildCommand ?? ""],
+            },
           });
           const hit = await readCache<ReviewResult["proofs"][number]>("proof", key);
           if (hit && hit.candidateId === candidate.id && (hit.status === "confirmed" || hit.status === "disproven" || hit.status === "error")) {
@@ -378,6 +480,44 @@ export class CortadoV3Engine {
           }
         }
       }
+
+      // Prover (3.4): author an executable reproduction for every judge-approved
+      // candidate that has no existing browser/test plan. The 3.3 engine used a
+      // boolean gate here and silently downgraded those candidates to static
+      // analysis, which disabled the autonomous loop on every logic bug.
+      let proverCoverage: LoopCandidateCoverage[] = [];
+      let proverProofs: ReviewResult["proofs"] = [];
+      const healthySandbox = sandbox && !sandboxError ? sandbox : undefined;
+      if (healthySandbox && proofsToRun.length > 0) {
+        const proverOutcome = await stage(
+          "prove",
+          (signal) =>
+            proveCandidatesWithProver(proofsToRun, {
+              sandbox: healthySandbox,
+              profile,
+              context,
+              models: modelRouter,
+              logger,
+              instructions: request.settings?.instructions,
+              maxCandidates: config.budgets.maxProverCandidates,
+              attempts: config.budgets.maxProverAttempts,
+              maxTurns: config.budgets.maxProverTurns,
+              maxToolsPerTurn: config.budgets.maxProverToolsPerTurn,
+              escalations: config.budgets.maxProverEscalations,
+              deadline: now() + Math.min(config.budgets.proverMs, remaining()),
+              now,
+              signal,
+            }),
+          config.budgets.proverMs,
+          { proofs: [] as ReviewResult["proofs"], coverage: [] as LoopCandidateCoverage[] },
+        );
+        proverCoverage = proverOutcome.coverage;
+        proverProofs = proverOutcome.proofs;
+        const provedIds = new Set(proverProofs.map((proof) => proof.candidateId));
+        proofsToRun = proofsToRun.filter((candidate) => !provedIds.has(candidate.id));
+        emit("prover_detail", "completed", `${proverProofs.length} reproduction(s) authored, ${proverCoverage.length} unprovable`);
+      }
+
       const proofRun = sandboxError || !sandbox
         ? {
             results: toProve.map((candidate) => ({
@@ -392,19 +532,23 @@ export class CortadoV3Engine {
             appLog: `sandbox unavailable: ${sandboxError ?? "no sandbox configured"}`,
           }
         : proofsToRun.length > 0
-          ? await stage("proof", () => proveCandidates(proofsToRun, context, proofDeps), config.budgets.proofMs, { results: [], appLog: "" })
+          ? await stage("proof", (signal) => proveCandidates(proofsToRun, context, { ...proofDeps, signal }), config.budgets.proofMs, { results: [], appLog: "" })
           : { results: [], appLog: "" };
       if (proofRun.appLog) emit("proof_detail", "completed", proofRun.appLog.slice(0, 400));
-      if (sandbox && !sandboxError) {
-        for (const result of proofRun.results) {
+      {
+        for (const result of [...proverProofs, ...proofRun.results]) {
           proofResults.push(result);
-          if (result.status === "confirmed" || result.status === "disproven") {
+          if (sandbox && !sandboxError && (result.status === "confirmed" || result.status === "disproven")) {
             const candidate = candidates.find((entry) => entry.id === result.candidateId);
             const key = cacheKey("proof", {
               repo: repoKey,
               headSha,
               fileHashes,
-              payload: { candidate: candidate ? [candidate.id, candidate.file, candidate.line, candidate.check ?? null, candidate.suggestedProof] : result.candidateId },
+              payload: {
+                candidate: candidate ? [candidate.id, candidate.file, candidate.line, candidate.check ?? null, candidate.suggestedProof] : result.candidateId,
+                artifact: candidate?.artifact?.artifactHash ?? result.artifact?.artifactHash ?? null,
+                runner: [profile.testCommand ?? "", profile.testSingle ? "single" : "none"],
+              },
             });
             await writeCache("proof", key, result);
           }
@@ -412,6 +556,20 @@ export class CortadoV3Engine {
       }
       const proofs = proofResults;
       if (proofs.some((proof) => proof.servedFromCache)) emit("proof_cache", "completed", `${proofs.filter((proof) => proof.servedFromCache).length} proof(s) from cache`);
+
+      // Loop honesty (3.4): every judge-approved candidate has a terminal state
+      // and an unprovable/errored candidate degrades the run instead of looking
+      // like a clean PR.
+      const loop = buildLoopCoverage(judge.decisions, candidates, proofs, proverCoverage);
+      if (sandbox && !sandboxError && (loop.proofUnavailable > 0 || loop.proofErrors > 0)) {
+        const first = loop.candidates.find((entry) => entry.proofState !== "PROVEN");
+        markDegraded(
+          `judge approved ${loop.judgeProve} candidate(s); ${loop.proven} proven, ` +
+            `${loop.proofUnavailable} unprovable, ${loop.proofErrors} errored` +
+            (first ? ` (${first.candidateId}: ${first.reason.slice(0, 160)})` : ""),
+        );
+      }
+      if (loop.proofErrors > 0) emit("proof_errors", "failed", `${loop.proofErrors} proof attempt(s) errored`);
 
       const confirmed = proofs.filter((proof) => proof.status === "confirmed");
 
@@ -448,10 +606,33 @@ export class CortadoV3Engine {
         return pack;
       };
 
+      // Baselines are captured on the pristine head; they must be awaited
+      // before repair mutates the shared sandbox working tree.
+      const baselineTypecheckOutcome = baselineTypecheck
+        ? await withTimeout<BaselineStatus | undefined>(baselineTypecheck, Math.min(200_000, remaining()), undefined)
+        : undefined;
+      if (baselineTypecheckOutcome?.timedOut) markDegraded("baseline typecheck timed out");
+      const baselineTestOutcome = baselineTests
+        ? await withTimeout<BaselineTestResult | undefined>(baselineTests, Math.min(config.budgets.baselineMs + 30_000, remaining()), undefined)
+        : undefined;
+      if (baselineTestOutcome?.timedOut) markDegraded("baseline test run timed out");
+      const baselineTypecheckStatus: BaselineStatus | undefined = baselineTypecheckOutcome
+        ? baselineTypecheckOutcome.timedOut
+          ? "timeout"
+          : baselineTypecheckOutcome.value
+        : undefined;
+      const baselineTestResult: BaselineTestResult | undefined = baselineTestOutcome
+        ? baselineTestOutcome.timedOut
+          ? { status: "timeout", output: "" }
+          : baselineTestOutcome.value
+        : undefined;
+
       const repairs = await stage(
         "repair",
-        () =>
+        (signal) =>
           repairFindings(confirmed, candidates, context, {
+            ...proofDeps,
+            signal,
             sandbox: proofDeps.sandbox,
             models: modelRouter,
             profile,
@@ -466,8 +647,10 @@ export class CortadoV3Engine {
             cacheTtlMs: config.cache.ttlMs,
             repo: repoKey,
             headSha,
-            modelId: models.terra,
+            modelId: models.codegen,
             instructions: request.settings?.instructions,
+            settingsFingerprint,
+            reasoning: models.reasoning.codegen,
             costNow: () => modelRouter.usage.costUsd,
             now,
           }),
@@ -475,19 +658,16 @@ export class CortadoV3Engine {
         [],
       );
 
-      const baselineTypecheckPassed = baselineTypecheck ? await withTimeout(baselineTypecheck, Math.min(200_000, remaining()), undefined) : undefined;
-      const baselineTestResult = baselineTests
-        ? await withTimeout(baselineTests, Math.min(config.budgets.baselineMs + 30_000, remaining()), undefined)
-        : undefined;
       const verifications = await stage(
         "verify",
-        () =>
+        (signal) =>
           verifyRepairs(repairs, candidates, context, {
+            signal,
             sandbox: proofDeps.sandbox,
             profile,
             proveOne: (candidate) => proveOne(candidate, proofDeps),
             proveMany: async (list) => (await proveCandidates(list, context, proofDeps)).results,
-            baselineTypecheckPassed,
+            baselineTypecheck: baselineTypecheckStatus,
             baselineTests: baselineTestResult,
             logger,
             now,
@@ -509,31 +689,54 @@ export class CortadoV3Engine {
             finding.verification?.passed ?? false,
             finding.repair?.finalPatch ? hashContent(finding.repair.finalPatch) : "",
           ]),
+          reasoning: models.reasoning.astra,
+          reviewReport: true,
           settings: settingsFingerprint,
         },
       });
-      const cachedReviews = await readCache<ReviewResult["reviews"]>("final_review", reviewKey);
+      const astraItems = findings.map((finding) => ({
+        candidate: finding.candidate,
+        proof: finding.proof,
+        repair: finding.repair,
+        verification: finding.verification,
+      }));
+      const cachedReview = await readCache<{ reviews: ReviewResult["reviews"]; report?: ReviewResult["reviewReport"] }>("final_review", reviewKey);
       let reviews: ReviewResult["reviews"];
-      if (Array.isArray(cachedReviews) && cachedReviews.length === findings.length) {
-        reviews = cachedReviews;
+      let reviewReport: ReviewResult["reviewReport"];
+      if (
+        cachedReview &&
+        Array.isArray(cachedReview.reviews) &&
+        cachedReview.reviews.length === findings.length &&
+        cachedReview.report &&
+        Array.isArray(cachedReview.report.walkthrough)
+      ) {
+        reviews = cachedReview.reviews;
+        reviewReport = cachedReview.report;
         emit("final_review_cache", "completed", `cache hit: ${reviews.length} review(s)`);
       } else {
         const astraUsageBefore = modelRouter.usage.costUsd;
-        reviews = await stage(
+        const reviewInput = {
+          items: astraItems,
+          context,
+          instructions: request.settings?.instructions,
+          learnings,
+          candidates,
+          decisions: judge.decisions,
+          loop,
+        };
+        const outcome = await stage(
           "final_review",
-          () =>
-            finalReview(
-              findings.map((finding) => ({ candidate: finding.candidate, proof: finding.proof, repair: finding.repair, verification: finding.verification })),
-              modelRouter,
-              logger,
-              learnings,
-            ),
+          (signal) => finalReview({ ...reviewInput, signal }, modelRouter, logger),
           config.budgets.astraMs,
-          [],
+          {
+            reviews: fallbackReviews(astraItems),
+            report: fallbackReport(reviewInput),
+          },
         );
-        if (reviews.length > 0) {
-          await writeCache("final_review", reviewKey, reviews, { costUsd: Number(Math.max(0, modelRouter.usage.costUsd - astraUsageBefore).toFixed(6)) });
-        }
+        reviews = outcome.reviews;
+        reviewReport = outcome.report;
+        if (reviewReport?.source === "fallback") markDegraded("final review used the deterministic fallback");
+        await writeCache("final_review", reviewKey, { reviews, report: reviewReport }, { costUsd: Number(Math.max(0, modelRouter.usage.costUsd - astraUsageBefore).toFixed(6)) });
       }
       const findingsWithReviews = buildFindings(confirmed, candidates, repairs, verifications, reviews);
 
@@ -552,11 +755,13 @@ export class CortadoV3Engine {
         verifications,
         findings: findingsWithReviews,
         reviews,
+        reviewReport,
+        loop,
         swarm: swarmReport,
         events,
         timings,
         usage: modelRouter.usage,
-        models: { ...models, reasoning: models.reasoning },
+        models: publicModelSelection(models),
         cache: finalCache,
         degraded: Boolean(degradedReason),
         degradedReason,
@@ -580,10 +785,11 @@ export class CortadoV3Engine {
         verifications: {},
         findings: [],
         reviews: [],
+        reviewReport: null,
         events,
         timings,
         usage: modelRouter.usage,
-        models: { ...models, reasoning: models.reasoning },
+        models: publicModelSelection(models),
         cache: finalCache,
         degraded: true,
         degradedReason: message,
@@ -615,6 +821,50 @@ export class CortadoV3Engine {
     const result = partial!;
     return { ...result, markdown: formatMarkdown(result) };
   }
+}
+
+/** A malformed request still returns a well-formed failed ReviewResult. */
+function invalidRequestResult(request: unknown, message: string): ReviewResult {
+  const candidateRunId = (request as { runId?: unknown } | null)?.runId;
+  const runId = typeof candidateRunId === "string" && candidateRunId.length > 0 ? candidateRunId : "invalid-request";
+  const result: Omit<ReviewResult, "markdown"> = {
+    runId,
+    status: "failed",
+    error: `invalid review request: ${message}`,
+    pr: { id: runId, title: "", classification: [], size: "normal" },
+    context: null,
+    candidates: [],
+    decisions: [],
+    proofs: [],
+    repairs: [],
+    verifications: {},
+    findings: [],
+    reviews: [],
+    reviewReport: null,
+    events: [],
+    timings: {},
+    usage: { calls: 0, byRole: {}, tokensIn: 0, tokensOut: 0, cachedTokensIn: 0, costUsd: 0, modelMs: 0 },
+    models: { ...DEFAULT_MODELS, reasoning: DEFAULT_REASONING },
+    cache: { hits: 0, misses: 0, writes: 0, byKind: {}, creditsSavedUsd: 0 },
+    degraded: true,
+    degradedReason: `invalid review request: ${message}`,
+    summary: {
+      issuesFound: 0,
+      issuesConfirmed: 0,
+      issuesFixed: 0,
+      issuesVerified: 0,
+      staticOnly: 0,
+      discarded: 0,
+      durationMs: 0,
+      modelCalls: 0,
+      costUsd: 0,
+      cacheHits: 0,
+      cacheMisses: 0,
+      creditsSavedUsd: 0,
+      maxAttempts: 0,
+    },
+  };
+  return { ...result, markdown: formatMarkdown(result) };
 }
 
 export function createV3Engine(options: EngineOptions = {}): CortadoV3Engine {

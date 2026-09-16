@@ -45,6 +45,8 @@ export interface GithubPullRequestFile {
 export interface PullRequestReviewInput {
   body?: string;
   event: "COMMENT" | "APPROVE" | "REQUEST_CHANGES";
+  /** Pin the review to the reviewed commit so a later push cannot re-target it. */
+  commitId?: string;
   comments?: Array<{
     path: string;
     line: number;
@@ -307,15 +309,21 @@ export interface CreateCheckRunInput {
   conclusion?: CheckConclusion | null;
   title?: string;
   summary?: string;
+  /** Full markdown detail body shown on the check run page (3.3). */
+  text?: string;
   /** Deep link that backs the check run's "Details" button. */
   detailsUrl?: string | null;
   /** Correlates the check run with the review run id. */
   externalId?: string | null;
 }
 
-function checkRunOutput(input: { title?: string; summary?: string }): { title: string; summary: string } | undefined {
-  if (!input.title && !input.summary) return undefined;
-  return { title: input.title ?? "Cortardo", summary: input.summary ?? "" };
+function checkRunOutput(input: { title?: string; summary?: string; text?: string }): { title: string; summary: string; text?: string } | undefined {
+  if (!input.title && !input.summary && !input.text) return undefined;
+  return {
+    title: input.title ?? "Cortardo",
+    summary: (input.summary ?? "").slice(0, 65_000),
+    ...(input.text ? { text: input.text.slice(0, 65_000) } : {}),
+  };
 }
 
 /** Create a check run for a commit (requires `checks: write`). */
@@ -572,6 +580,7 @@ export async function createPullRequestReview(
     pull_number: number,
     body: input.body,
     event: input.event,
+    ...(input.commitId ? { commit_id: input.commitId } : {}),
     comments: input.comments?.map((comment) => {
       const multiLine = comment.start_line !== undefined && comment.start_line !== comment.line;
       return {

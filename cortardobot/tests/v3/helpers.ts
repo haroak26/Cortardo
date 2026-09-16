@@ -5,6 +5,7 @@ import type {
   Candidate,
   ContextPack,
   ModelClient,
+  ModelRole,
   ModelTask,
   PRContext,
   ProofResult,
@@ -22,7 +23,7 @@ export interface ScriptedClient extends ModelClient {
   calls: ModelTask[];
 }
 
-export function scriptedClient(role: "luna" | "terra" | "astra", handler: (task: ModelTask, index: number) => string): ScriptedClient {
+export function scriptedClient(role: ModelRole, handler: (task: ModelTask, index: number) => string): ScriptedClient {
   const calls: ModelTask[] = [];
   return {
     id: `scripted-${role}`,

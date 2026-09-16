@@ -3,6 +3,7 @@ import { test } from "node:test";
 import type { Finding } from "../../cortardobot/src/v3/types.ts";
 import {
   autoCommitVerifiedFixes,
+  looksLikeSecret,
   protectedPathReason,
   type AutoCommitDeps,
 } from "../lib/review/autocommit";
@@ -190,4 +191,18 @@ test("protected path policy covers lockfiles, tests, workflows and env files", (
   assert.equal(protectedPathReason(".github/workflows/release.yml"), "workflow");
   assert.equal(protectedPathReason("client/.env.local"), "environment");
   assert.equal(protectedPathReason("src/app.ts"), undefined);
+});
+
+test("the deny-list covers token-bearing config and key material", () => {
+  for (const path of [".npmrc", "packages/app/.envrc", "certs/server.pem", "keys/deploy.key", "config/secrets.yaml", "credentials.json", "ssh/id_rsa"]) {
+    assert.ok(protectedPathReason(path), `${path} must be protected`);
+  }
+  assert.equal(protectedPathReason("src/index.ts"), undefined);
+});
+
+test("looksLikeSecret flags literal credentials in a fix", () => {
+  assert.equal(looksLikeSecret("const token = 'ghp_abcdefghijklmnopqrstuvwxyz1234';"), true);
+  assert.equal(looksLikeSecret("password: \"hunter2hunter2\""), true);
+  assert.equal(looksLikeSecret("const token = process.env.GITHUB_TOKEN;"), false);
+  assert.equal(looksLikeSecret("const key = config.apiKey;"), false);
 });

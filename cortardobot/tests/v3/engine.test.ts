@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { CortadoV3Engine } from "../../src/v3/engine.ts";
+import { ModelError } from "../../src/v3/models.ts";
 import { MemorySandbox } from "../../src/v3/sandbox-memory.ts";
 import { MemoryCacheStore } from "../../src/v3/cache/memory-store.ts";
 import { scriptedClient, silentLogger } from "./helpers.ts";
@@ -76,9 +77,21 @@ function repairScript(): ModelClient {
     return JSON.stringify({ thought: "apply the root-cause fix", strategy: `fix ${name}`, actions: [{ tool: "apply_edit", args: { edits: [edit] } }] });
   });
   const astra = scriptedClient("astra", (task: ModelTask) => {
+    if (task.label === "astra-report") {
+      const files = [...task.user.matchAll(/^- (client\/src\/pages\/[\w.-]+\.tsx) \(/gm)].map((match) => match[1]);
+      return JSON.stringify({
+        verdict: { decision: "approve", confidence: 0.9, rationale: "all confirmed defects are fixed and verified" },
+        summary: "Pricing/docs/auth fixes verified in the sandbox.",
+        walkthrough: files.map((file) => ({ file, intent: "fix the defect", changeSummary: "root-cause fix", risk: "low" })),
+        risks: [],
+        testCoverage: { assessed: true, signals: ["browser checks"], gaps: [] },
+        observations: [],
+        limitations: [],
+      });
+    }
     const ids = [...task.user.matchAll(/## Finding (\S+)/g)].map((match) => match[1]);
     return JSON.stringify({
-      reviews: ids.map((candidateId) => ({ candidateId, validity: "valid", fixCorrectness: "correct", risk: "low", approval: "approve", confidence: 0.9, summary: "verified fix" })),
+      reviews: ids.map((candidateId) => ({ candidateId, validity: "valid", fixCorrectness: "correct", risk: "low", approval: "approve", confidence: 0.9, summary: "verified fix", rationale: "reproduction disproven after the fix", evidenceRefs: ["browser check"] })),
     });
   });
   return { id: "combined", async complete(task) { return (task.role === "luna" ? luna : task.role === "astra" ? astra : terra).complete(task); } };
@@ -102,7 +115,7 @@ test("PR6 golden replay: 3 confirmed, 3 verified in one attempt each, real patch
   const model = repairScript();
   const engine = new CortadoV3Engine({
     config: { mode: "live" },
-    models: { luna: model, terra: model, astra: model },
+    models: { luna: model, terra: model, codegen: model, astra: model },
     sandboxFactory: async () => sandbox,
     cache: new MemoryCacheStore(),
     logger: silentLogger,
@@ -118,7 +131,12 @@ test("PR6 golden replay: 3 confirmed, 3 verified in one attempt each, real patch
     assert.equal(finding.verification?.passed, true);
   }
   assert.equal(result.models.luna, "openai/gpt-5.6-luna");
-  assert.equal(result.models.astra, "openai/gpt-6-astra");
+  assert.equal(result.models.codegen, "openai/gpt-6-astra");
+  assert.equal(result.models.astra, "openai/gpt-5.6-sol");
+  // The gateway key and base URL must never reach the result (3.4).
+  assert.deepEqual(Object.keys(result.models).sort(), ["astra", "codegen", "luna", "reasoning", "terra"]);
+  assert.equal(JSON.stringify(result).includes("apiKey"), false);
+  assert.equal(JSON.stringify(result).includes("baseUrl"), false);
   assert.ok(result.swarm, "swarm report is attached");
   assert.equal(result.swarm.mode, "agentic");
   assert.equal(result.swarm.agents.length, 4);
@@ -155,7 +173,7 @@ test("agentic swarm hypotheses flow into candidates and decisions", async () => 
   };
   const engine = new CortadoV3Engine({
     config: { mode: "live" },
-    models: { luna: model, terra: model, astra: model },
+    models: { luna: model, terra: model, codegen: model, astra: model },
     sandboxFactory: async () => sandbox,
     cache: new MemoryCacheStore(),
     logger: silentLogger,
@@ -170,9 +188,15 @@ test("agentic swarm hypotheses flow into candidates and decisions", async () => 
   assert.equal(result.swarm?.hypotheses, 1);
   assert.equal(result.swarm?.candidates, 1);
   const decision = result.decisions.find((entry) => entry.candidateId === swarmCandidate.id);
-  assert.equal(decision?.verdict, "STATIC_ONLY");
+  // 3.3 downgraded this to STATIC_ONLY ("No executable proof available"),
+  // which silently disabled the loop. The judge verdict is now binding (3.4).
+  assert.equal(decision?.verdict, "PROVE");
+  const coverage = result.loop?.candidates.find((entry) => entry.candidateId === swarmCandidate.id);
+  assert.ok(coverage, "the judge-approved candidate has a recorded loop state");
+  assert.equal(coverage?.proofState, "UNPROVABLE", "the scripted prover produced no reproduction, recorded honestly");
   assert.equal(result.summary.issuesConfirmed, 3);
   assert.equal(result.summary.issuesVerified, 3);
+  assert.equal(result.degraded, true, "an unprovable judge-approved candidate degrades the run");
 });
 
 test("repeating the identical run is served from cache with zero model calls", async () => {
@@ -185,7 +209,7 @@ test("repeating the identical run is served from cache with zero model calls", a
   const model = repairScript();
   const first = new CortadoV3Engine({
     config: { mode: "live" },
-    models: { luna: model, terra: model, astra: model },
+    models: { luna: model, terra: model, codegen: model, astra: model },
     sandboxFactory: async () => buildSandbox({ ...files }),
     cache,
     logger: silentLogger,
@@ -196,7 +220,7 @@ test("repeating the identical run is served from cache with zero model calls", a
 
   const second = new CortadoV3Engine({
     config: { mode: "live" },
-    models: { luna: model, terra: model, astra: model },
+    models: { luna: model, terra: model, codegen: model, astra: model },
     sandboxFactory: async () => buildSandbox({ ...files }),
     cache,
     logger: silentLogger,
@@ -225,7 +249,7 @@ test("deterministic fallback still lands a verified fix when the model gives up"
   });
   const engine = new CortadoV3Engine({
     config: { mode: "live" },
-    models: { luna: combined, terra: combined, astra: combined },
+    models: { luna: combined, terra: combined, codegen: combined, astra: combined },
     sandboxFactory: async () => sandbox,
     logger: silentLogger,
   });
@@ -237,4 +261,64 @@ test("deterministic fallback still lands a verified fix when the model gives up"
   for (const repair of result.repairs) {
     assert.match(repair.attempts[repair.attempts.length - 1]!.strategy, /deterministic/);
   }
+});
+
+test("a stage timeout degrades the run and is never reported as success", async () => {
+  const hanging: ModelClient = { id: "hang", complete: () => new Promise(() => {}) };
+  const engine = new CortadoV3Engine({
+    config: {
+      mode: "live",
+      budgets: { swarmMs: 60, judgeMs: 60, proofMs: 60, repairMs: 60, verifyMs: 60, astraMs: 60, globalMs: 30_000 },
+    },
+    models: { luna: hanging, terra: hanging, codegen: hanging, astra: hanging },
+    sandboxFactory: async () =>
+      buildSandbox({
+        "client/src/pages/Docs.tsx": docsContent,
+        "client/src/pages/Pricing.tsx": pricingContent,
+        "client/src/pages/Auth.tsx": authContent,
+      }),
+    logger: silentLogger,
+  });
+  const result = await engine.run(request());
+  assert.equal(result.status, "completed");
+  assert.equal(result.degraded, true);
+  assert.ok(result.events.some((event) => event.status === "timed_out"), "a timed-out stage must be visible in the events");
+  assert.ok(
+    result.events.some((event) => event.status === "completed" && event.stage !== "models"),
+    "other stages still complete",
+  );
+});
+
+test("a sandbox failure keeps error proofs and degrades the run", async () => {
+  const failing: ModelClient = {
+    id: "failing",
+    async complete() {
+      throw new ModelError("gateway down", false);
+    },
+  };
+  const engine = new CortadoV3Engine({
+    config: { mode: "live" },
+    models: { luna: failing, terra: failing, codegen: failing, astra: failing },
+    sandboxFactory: async () => {
+      throw new Error("E2B quota exceeded");
+    },
+    logger: silentLogger,
+  });
+  const result = await engine.run(request());
+  assert.equal(result.status, "completed");
+  assert.equal(result.degraded, true);
+  assert.match(result.degradedReason ?? "", /sandbox/i);
+  assert.equal(result.proofs.length, 3, "every candidate that needed proof keeps an error proof");
+  assert.ok(result.proofs.every((proof) => proof.status === "error"));
+  const setup = result.events.find((event) => event.stage === "sandbox_setup" && event.status === "failed");
+  assert.match(setup?.detail ?? "", /E2B quota exceeded/);
+});
+
+test("a malformed request returns a failed result instead of rejecting", async () => {
+  const engine = new CortadoV3Engine({ config: { mode: "live" }, logger: silentLogger });
+  const result = await engine.run({ runId: "bad-request", pr: {} } as unknown as ReviewRequest);
+  assert.equal(result.status, "failed");
+  assert.match(result.error ?? "", /invalid review request/);
+  assert.equal(result.degraded, true);
+  assert.ok(result.markdown.includes("Cortado"));
 });

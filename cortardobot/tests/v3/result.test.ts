@@ -67,7 +67,8 @@ test("summaryFrom counts only isVerifiedFix findings", () => {
     { hits: 2, misses: 3, writes: 1, byKind: {}, creditsSavedUsd: 0.05 },
   );
   assert.equal(summary.issuesVerified, 1);
-  assert.equal(summary.issuesFixed, 2);
+  // A VERIFIED repair without a passing verification is not a fix (3.4).
+  assert.equal(summary.issuesFixed, 1);
   assert.equal(summary.cacheHits, 2);
   assert.equal(summary.maxAttempts, 0);
 });

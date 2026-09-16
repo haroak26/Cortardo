@@ -11,6 +11,8 @@ export interface RepoProfile {
   buildCommand?: string;
   devCommand?: string;
   scripts: Record<string, string>;
+  /** Repo-wide test file index discovered during setup (3.4). */
+  testFiles?: string[];
 }
 
 export interface Sandbox {
@@ -19,7 +21,7 @@ export interface Sandbox {
   prepare(options: { cloneUrl: string; token: string; ref: string; headBranch?: string }): Promise<void>;
   install(): Promise<void>;
   profile(): Promise<RepoProfile>;
-  exec(command: string, options?: { cwd?: string; timeoutMs?: number; allowFailure?: boolean }): Promise<ExecResult>;
+  exec(command: string, options?: { cwd?: string; timeoutMs?: number; allowFailure?: boolean; signal?: AbortSignal }): Promise<ExecResult>;
   read(path: string): Promise<string>;
   write(path: string, content: string): Promise<void>;
   exists(path: string): Promise<boolean>;
@@ -68,6 +70,7 @@ function sleep(ms) {
     let assertionPassed = false;
     let harnessError = false;
     let detail = "";
+    let landedPath = "";
     const timeoutMs = typeof check.timeoutMs === "number" && check.timeoutMs > 0 ? check.timeoutMs : 20000;
     try {
       let loaded = false;
@@ -86,49 +89,61 @@ function sleep(ms) {
       }
       if (!loaded) throw new Error("navigation failed: " + lastError);
 
-      if (check.clickText) {
-        const locator = page.getByText(check.clickText, { exact: false }).first();
-        await locator.waitFor({ state: "visible", timeout: timeoutMs });
-        await locator.click({ timeout: timeoutMs });
-        await sleep(350);
+      try {
+        landedPath = new URL(page.url()).pathname;
+      } catch (error) {
+        landedPath = "";
       }
-
-      if (check.assert.type === "noPageError") {
-        await sleep(1500);
-        assertionPassed = pageErrors.length === 0;
-      } else if (check.assert.type === "pathEquals") {
-        const expected = String(check.assert.value);
-        const deadline = Date.now() + timeoutMs;
-        let current = new URL(page.url()).pathname;
-        while (Date.now() < deadline && current !== expected) {
-          await sleep(250);
-          current = new URL(page.url()).pathname;
+      const redirected = !check.clickText && check.assert.type !== "pathEquals" && landedPath !== check.path;
+      if (redirected) {
+        harnessError = true;
+        passed = false;
+        detail = "harness error: " + check.path + " redirected to " + (landedPath || page.url()) + "; the assertion never evaluated " + check.path;
+      } else {
+        if (check.clickText) {
+          const locator = page.getByText(check.clickText, { exact: false }).first();
+          await locator.waitFor({ state: "visible", timeout: timeoutMs });
+          await locator.click({ timeout: timeoutMs });
+          await sleep(350);
         }
-        assertionPassed = current === expected;
-      } else if (check.assert.type === "textContains") {
-        const needle = String(check.assert.value).toLowerCase();
-        const deadline = Date.now() + timeoutMs;
-        let body = "";
-        do {
-          body = (await page.locator("body").innerText().catch(() => "")) || "";
-          if (!body.toLowerCase().includes(needle)) await sleep(300);
-        } while (Date.now() < deadline && !body.toLowerCase().includes(needle));
-        assertionPassed = body.toLowerCase().includes(needle);
-      } else if (check.assert.type === "textAbsent") {
-        const needle = String(check.assert.value).toLowerCase();
-        await sleep(1500);
-        const body = (await page.locator("body").innerText().catch(() => "")) || "";
-        assertionPassed = !body.toLowerCase().includes(needle);
-      }
 
-      passed = check.expected === "pass" ? assertionPassed : !assertionPassed;
-      detail =
-        "assertion " +
-        (assertionPassed ? "passed" : "failed") +
-        " (expected " +
-        check.expected +
-        ") at " +
-        page.url();
+        if (check.assert.type === "noPageError") {
+          await sleep(1500);
+          assertionPassed = pageErrors.length === 0;
+        } else if (check.assert.type === "pathEquals") {
+          const expected = String(check.assert.value);
+          const deadline = Date.now() + timeoutMs;
+          let current = new URL(page.url()).pathname;
+          while (Date.now() < deadline && current !== expected) {
+            await sleep(250);
+            current = new URL(page.url()).pathname;
+          }
+          assertionPassed = current === expected;
+        } else if (check.assert.type === "textContains") {
+          const needle = String(check.assert.value).toLowerCase();
+          const deadline = Date.now() + timeoutMs;
+          let body = "";
+          do {
+            body = (await page.locator("body").innerText().catch(() => "")) || "";
+            if (!body.toLowerCase().includes(needle)) await sleep(300);
+          } while (Date.now() < deadline && !body.toLowerCase().includes(needle));
+          assertionPassed = body.toLowerCase().includes(needle);
+        } else if (check.assert.type === "textAbsent") {
+          const needle = String(check.assert.value).toLowerCase();
+          await sleep(1500);
+          const body = (await page.locator("body").innerText().catch(() => "")) || "";
+          assertionPassed = !body.toLowerCase().includes(needle);
+        }
+
+        passed = check.expected === "pass" ? assertionPassed : !assertionPassed;
+        detail =
+          "assertion " +
+          (assertionPassed ? "passed" : "failed") +
+          " (expected " +
+          check.expected +
+          ") at " +
+          page.url();
+      }
     } catch (error) {
       harnessError = true;
       passed = false;
@@ -142,6 +157,7 @@ function sleep(ms) {
       consoleErrors,
       detail,
       durationMs: Date.now() - started,
+      landedPath,
       harnessError,
     });
     await context.close().catch(() => {});

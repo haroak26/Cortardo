@@ -1,144 +1,279 @@
-import { useState } from 'react';
-import { ListChecks, Plus, Search, Trash2 } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { Check, ListChecks, Pencil, Plus, Trash2, X } from 'lucide-react';
 import { Button } from '@/components/button';
-import { Badge } from '@/components/ds';
+import { Badge, EmptyState, ListSkeleton, PillFilter } from '@/components/ds';
 import { FramedCard } from '@/components/framed-card';
+import { TextInput, Textarea } from '@/components/text-input';
 import { ReviewPageShell } from '@/components/review/bits';
+import { BotSearch, BotStat, RepoScopeSelect } from '@/components/bot/bot-ui';
 import { timeAgo } from '@/lib/mock-review-data';
 import { useWorkspace } from '@/contexts/workspace-context';
-import { useBotRules, useCreateRule, useDeleteRule, useUpdateRule } from '@/hooks/use-bot-memory';
+import { useBotRules, useCreateRule, useDeleteRule, useUpdateRule, type ApiRule } from '@/hooks/use-bot-memory';
+
+type StatusFilter = 'all' | 'active' | 'paused';
+
+function RuleMeta({ rule }: { rule: ApiRule }) {
+  return (
+    <div className="flex flex-wrap items-center gap-2 mt-1.5">
+      {rule.glob && (
+        <span className="rounded-[6px] bg-surface-hover px-1.5 py-0.5 font-mono text-[11.5px] text-fg-soft">
+          {rule.glob}
+        </span>
+      )}
+      <span className="text-[11.5px] text-fg-muted">{rule.scope}</span>
+      <span className="text-[11.5px] text-fg-faint">· added {timeAgo(rule.createdAt)}</span>
+    </div>
+  );
+}
 
 export default function BotRulesPage() {
   const { activeWorkspaceId } = useWorkspace();
   const [search, setSearch] = useState('');
+  const [status, setStatus] = useState<StatusFilter>('all');
   const [showForm, setShowForm] = useState(false);
   const [instruction, setInstruction] = useState('');
   const [glob, setGlob] = useState('');
+  const [repositoryId, setRepositoryId] = useState('');
+
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editInstruction, setEditInstruction] = useState('');
+  const [editGlob, setEditGlob] = useState('');
+  const [editRepositoryId, setEditRepositoryId] = useState('');
 
   const { data: rules = [], isLoading, error } = useBotRules(activeWorkspaceId);
   const createRule = useCreateRule(activeWorkspaceId);
   const updateRule = useUpdateRule();
   const deleteRule = useDeleteRule();
 
-  const filtered = rules.filter(
-    (rule) =>
-      rule.instruction.toLowerCase().includes(search.toLowerCase()) ||
-      (rule.glob ?? '').toLowerCase().includes(search.toLowerCase()) ||
-      rule.scope.toLowerCase().includes(search.toLowerCase()),
+  const counts = useMemo(
+    () => ({
+      total: rules.length,
+      active: rules.filter((rule) => rule.enabled).length,
+      paused: rules.filter((rule) => !rule.enabled).length,
+    }),
+    [rules],
   );
+
+  const filtered = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    return rules.filter((rule) => {
+      if (status === 'active' && !rule.enabled) return false;
+      if (status === 'paused' && rule.enabled) return false;
+      if (!query) return true;
+      return (
+        rule.instruction.toLowerCase().includes(query) ||
+        (rule.glob ?? '').toLowerCase().includes(query) ||
+        rule.scope.toLowerCase().includes(query)
+      );
+    });
+  }, [rules, search, status]);
+
+  const resetForm = () => {
+    setInstruction('');
+    setGlob('');
+    setRepositoryId('');
+    setShowForm(false);
+  };
 
   const submit = () => {
     if (instruction.trim().length < 3) return;
     createRule.mutate(
-      { instruction: instruction.trim(), glob: glob.trim() || null },
       {
-        onSuccess: () => {
-          setInstruction('');
-          setGlob('');
-          setShowForm(false);
-        },
+        instruction: instruction.trim(),
+        glob: glob.trim() || null,
+        repositoryId: repositoryId || null,
       },
+      { onSuccess: resetForm },
+    );
+  };
+
+  const startEdit = (rule: ApiRule) => {
+    setEditingId(rule.id);
+    setEditInstruction(rule.instruction);
+    setEditGlob(rule.glob ?? '');
+    setEditRepositoryId(rule.repositoryId ?? '');
+  };
+
+  const saveEdit = () => {
+    if (!editingId || editInstruction.trim().length < 3) return;
+    updateRule.mutate(
+      {
+        id: editingId,
+        instruction: editInstruction.trim(),
+        glob: editGlob.trim() || null,
+        repositoryId: editRepositoryId || null,
+      },
+      { onSuccess: () => setEditingId(null) },
     );
   };
 
   return (
     <ReviewPageShell
       title="Rules"
-      description="Instructions the bot applies to every review it runs."
+      description="Standing instructions the bot applies to every review it runs."
       actions={
-        <Button size="sm" onClick={() => setShowForm((value) => !value)}>
+        <Button size="sm" onClick={() => (showForm ? resetForm() : setShowForm(true))}>
           <Plus size={15} />
           New rule
         </Button>
       }
     >
       {showForm && (
-        <FramedCard>
-          <div className="p-4 space-y-3">
-            <input
+        <FramedCard className="mb-5">
+          <div className="space-y-3 p-4">
+            <Textarea
+              autoFocus
               value={instruction}
-              onChange={(e) => setInstruction(e.target.value)}
+              onChange={(event) => setInstruction(event.target.value)}
               placeholder="e.g. All queries must use bound parameters. Flag string interpolation in SQL."
               aria-label="Rule instruction"
-              className="w-full h-[36px] px-3 rounded-[10px] text-[14px] text-foreground placeholder:text-fg-faint bg-surface-hover border-none outline-none"
+              rows={2}
             />
-            <div className="flex items-center gap-3">
-              <input
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+              <TextInput
                 value={glob}
-                onChange={(e) => setGlob(e.target.value)}
+                onChange={(event) => setGlob(event.target.value)}
                 placeholder="Glob (optional), e.g. src/**/*.ts"
                 aria-label="Rule glob"
-                className="flex-1 h-[34px] px-3 rounded-[10px] text-[13px] font-mono text-foreground placeholder:text-fg-faint bg-surface-hover border-none outline-none"
+                className="font-mono text-[13px]"
               />
-              <Button size="sm" onClick={submit} disabled={createRule.isPending || instruction.trim().length < 3}>
-                {createRule.isPending ? 'Adding…' : 'Add rule'}
+              <RepoScopeSelect value={repositoryId} onChange={setRepositoryId} />
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-[12px] text-fg-muted">
+                Scoped rules only apply to the selected repository.
+              </p>
+              <Button
+                size="sm"
+                onClick={submit}
+                isLoading={createRule.isPending}
+                disabled={instruction.trim().length < 3}
+              >
+                Add rule
               </Button>
             </div>
-            {createRule.error && (
-              <p className="text-[12px] text-destructive">{(createRule.error as Error).message}</p>
-            )}
+            {createRule.error && <p className="text-[12px] text-destructive">{(createRule.error as Error).message}</p>}
           </div>
         </FramedCard>
       )}
 
-      <div className="relative mb-6 mt-6">
-        <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-fg-faint" />
-        <input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search rules..."
-          aria-label="Search rules"
-          className="w-full h-[36px] pl-9 pr-3 rounded-[10px] text-[14px] text-foreground placeholder:text-fg-faint bg-surface-hover border-none outline-none"
-        />
+      <div className="mb-4 flex flex-wrap items-end justify-between gap-4">
+        <div className="flex items-center gap-6">
+          <BotStat label="Rules" value={counts.total} />
+          <BotStat label="Active" value={counts.active} tone="success" />
+          <BotStat label="Paused" value={counts.paused} tone="muted" />
+        </div>
+        <div className="flex items-center gap-2">
+          <PillFilter active={status === 'all'} onClick={() => setStatus('all')}>
+            All
+          </PillFilter>
+          <PillFilter active={status === 'active'} onClick={() => setStatus('active')}>
+            Active
+          </PillFilter>
+          <PillFilter active={status === 'paused'} onClick={() => setStatus('paused')}>
+            Paused
+          </PillFilter>
+        </div>
       </div>
 
-      {error && <p className="text-[13px] text-destructive mb-4">{(error as Error).message}</p>}
+      <BotSearch value={search} onChange={setSearch} placeholder="Search rules…" className="mb-5" />
+
+      {error && <p className="mb-4 text-[13px] text-destructive">{(error as Error).message}</p>}
 
       {isLoading ? (
-        <p className="text-[13px] text-fg-muted">Loading rules…</p>
+        <ListSkeleton rows={4} />
       ) : filtered.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-12 text-center">
-          <ListChecks size={32} className="text-fg-faint mb-3" strokeWidth={1.5} />
-          <p className="text-[14px] font-medium text-foreground">No rules yet</p>
-          <p className="text-[12px] text-fg-muted mt-1">Add a rule to steer what the bot looks for.</p>
-        </div>
+        <EmptyState
+          icon={ListChecks}
+          title={rules.length === 0 ? 'No rules yet' : 'No matching rules'}
+          description={
+            rules.length === 0
+              ? 'Add a rule to steer what the bot looks for in every review.'
+              : 'Try a different search or status filter.'
+          }
+          actions={
+            rules.length === 0 ? (
+              <Button size="sm" onClick={() => setShowForm(true)}>
+                <Plus size={15} />
+                New rule
+              </Button>
+            ) : undefined
+          }
+        />
       ) : (
         <FramedCard>
           <ul>
-            {filtered.map((rule) => (
-              <li key={rule.id} className="border-b border-border-subtle last:border-b-0">
-                <div className="flex items-start gap-3 px-4 py-3.5">
-                  <div className="flex-1 min-w-0">
-                    <p className="text-[13.5px] text-foreground leading-snug">{rule.instruction}</p>
-                    <div className="flex flex-wrap items-center gap-2 mt-2">
-                      {rule.glob && (
-                        <span className="text-[11.5px] font-mono text-fg-soft bg-surface-hover rounded-[6px] px-1.5 py-0.5">
-                          {rule.glob}
-                        </span>
-                      )}
-                      <span className="text-[11.5px] text-fg-muted">{rule.scope}</span>
-                      <span className="text-[11.5px] text-fg-faint">· added {timeAgo(rule.createdAt)}</span>
+            {filtered.map((rule) => {
+              const editing = editingId === rule.id;
+              return (
+                <li key={rule.id} className="border-b border-border-subtle last:border-b-0">
+                  {editing ? (
+                    <div className="space-y-3 px-4 py-4">
+                      <Textarea
+                        autoFocus
+                        value={editInstruction}
+                        onChange={(event) => setEditInstruction(event.target.value)}
+                        aria-label="Edit rule instruction"
+                        rows={2}
+                      />
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                        <TextInput
+                          value={editGlob}
+                          onChange={(event) => setEditGlob(event.target.value)}
+                          placeholder="Glob (optional)"
+                          aria-label="Edit rule glob"
+                          className="font-mono text-[13px]"
+                        />
+                        <RepoScopeSelect value={editRepositoryId} onChange={setEditRepositoryId} />
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Button size="xs" onClick={saveEdit} isLoading={updateRule.isPending}>
+                          <Check size={13} />
+                          Save
+                        </Button>
+                        <Button size="xs" design="ghost" onClick={() => setEditingId(null)}>
+                          <X size={13} />
+                          Cancel
+                        </Button>
+                      </div>
                     </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => updateRule.mutate({ id: rule.id, enabled: !rule.enabled })}
-                    className="border-none bg-transparent cursor-pointer"
-                    aria-label={rule.enabled ? 'Pause rule' : 'Enable rule'}
-                  >
-                    <Badge tone={rule.enabled ? 'success' : 'neutral'}>{rule.enabled ? 'Active' : 'Paused'}</Badge>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => deleteRule.mutate(rule.id)}
-                    className="text-fg-faint hover:text-destructive transition-colors border-none bg-transparent cursor-pointer pt-0.5"
-                    aria-label="Delete rule"
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                </div>
-              </li>
-            ))}
+                  ) : (
+                    <div className="flex items-start gap-3 px-4 py-3.5">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[13.5px] leading-snug text-foreground">{rule.instruction}</p>
+                        <RuleMeta rule={rule} />
+                      </div>
+                      <div className="flex shrink-0 items-center gap-1.5 pt-0.5">
+                        <button
+                          type="button"
+                          onClick={() => updateRule.mutate({ id: rule.id, enabled: !rule.enabled })}
+                          className="cursor-pointer border-none bg-transparent p-0"
+                          aria-label={rule.enabled ? 'Pause rule' : 'Enable rule'}
+                        >
+                          <Badge tone={rule.enabled ? 'success' : 'neutral'}>{rule.enabled ? 'Active' : 'Paused'}</Badge>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => startEdit(rule)}
+                          className="cursor-pointer rounded-[6px] border-none bg-transparent p-1 text-fg-faint transition-colors hover:text-foreground"
+                          aria-label="Edit rule"
+                        >
+                          <Pencil size={13} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => deleteRule.mutate(rule.id)}
+                          className="cursor-pointer rounded-[6px] border-none bg-transparent p-1 text-fg-faint transition-colors hover:text-destructive"
+                          aria-label="Delete rule"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </li>
+              );
+            })}
           </ul>
         </FramedCard>
       )}

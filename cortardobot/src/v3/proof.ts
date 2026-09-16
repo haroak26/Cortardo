@@ -1,6 +1,7 @@
-import type { BrowserCheckResult, Candidate, PRContext, ProofAttempt, ProofResult } from "./types";
+import type { BrowserCheckResult, Candidate, PRContext, ProofArtifact, ProofAttempt, ProofResult } from "./types";
 import type { RepoProfile, Sandbox } from "./sandbox";
 import { truncate, type Logger } from "./util";
+import { relatedTestsFor } from "./test-index";
 
 export interface ProofDeps {
   sandbox: Sandbox;
@@ -8,6 +9,8 @@ export interface ProofDeps {
   logger: Logger;
   context?: PRContext;
   now?: () => number;
+  /** Cancellation signal from the owning stage (3.3). */
+  signal?: AbortSignal;
 }
 
 function emptyResult(candidate: Candidate, status: ProofResult["status"], explanation: string, started: number, now: () => number): ProofResult {
@@ -22,24 +25,35 @@ function emptyResult(candidate: Candidate, status: ProofResult["status"], explan
   };
 }
 
-function isHarnessFailure(result: BrowserCheckResult | undefined): boolean {
+function isHarnessFailure(result: BrowserCheckResult | undefined, check?: Candidate["check"]): boolean {
   if (!result) return true;
-  return Boolean(result.harnessError) || /failed to run|harness error/i.test(result.detail);
+  if (result.harnessError) return true;
+  // A redirect means the assertion never evaluated the page it targeted; a
+  // failure there is not evidence of the claimed defect (3.4 E2E fix).
+  if (check && !check.clickText && check.assert.type !== "pathEquals" && result.landedPath && result.landedPath !== check.path) return true;
+  return /failed to run|harness error/i.test(result.detail);
 }
 
-/** Source file -> test file that covers it, using the host test list. */
+/** Source file -> test file that covers it, using the repo-wide test index. */
 export function relatedTestFile(candidate: Candidate, profile: RepoProfile, context?: PRContext): string | undefined {
   if (!candidate.file || !context || !profile.testSingle) return undefined;
-  const base = candidate.file.split("/").pop()?.replace(/\.[^.]+$/, "") ?? "";
-  if (base.length < 3) return undefined;
-  const match = context.tests.find((test) => test.toLowerCase().includes(base.toLowerCase()));
+  const match = relatedTestsFor(candidate, context)[0];
   return match;
 }
 
+/** Command that replays the candidate's proof artifact, if any. */
+export function artifactCommand(candidate: Candidate): string | undefined {
+  const artifact = candidate.artifact;
+  if (artifact?.command) return artifact.command;
+  return undefined;
+}
+
 function testCommandFor(candidate: Candidate, profile: RepoProfile, context?: PRContext): string | undefined {
+  const artifact = artifactCommand(candidate);
+  if (artifact) return artifact;
   const related = relatedTestFile(candidate, profile, context);
   if (related) return profile.testSingle!(related);
-  if (candidate.suggestedProof === "existing_test" && profile.testCommand) return profile.testCommand;
+  if ((candidate.suggestedProof === "existing_test" || candidate.suggestedProof === "targeted_test") && profile.testCommand) return profile.testCommand;
   return undefined;
 }
 
@@ -55,7 +69,8 @@ async function runBrowserBatchWithConfirmation(
 ): Promise<Map<string, BrowserCheckResult>> {
   const first = await deps.sandbox.browserChecks(entries, appUrl);
   const byId = new Map(first.map((result) => [result.id, result]));
-  const passed = first.filter((result) => result.passed && !isHarnessFailure(result)).map((result) => result.id);
+  const checksById = new Map(entries.map((entry) => [entry.id, entry.check]));
+  const passed = first.filter((result) => result.passed && !isHarnessFailure(result, checksById.get(result.id))).map((result) => result.id);
   if (passed.length > 0) {
     const again = await deps.sandbox.browserChecks(
       entries.filter((entry) => passed.includes(entry.id)),
@@ -82,6 +97,102 @@ function browserAttempt(candidate: Candidate, result: BrowserCheckResult, confir
   };
 }
 
+function targetMentioned(candidate: Candidate, output: string): boolean {
+  const targetName = (candidate.file ?? "").split("/").pop()?.split(".")[0] ?? "";
+  return targetName.length > 0 && output.toLowerCase().includes(targetName.toLowerCase());
+}
+
+async function execArtifact(
+  candidate: Candidate,
+  command: string,
+  deps: ProofDeps,
+): Promise<{ result: Awaited<ReturnType<Sandbox["exec"]>>; output: string }> {
+  const result = await deps.sandbox.exec(command, { cwd: deps.sandbox.root, timeoutMs: 120_000, allowFailure: true, signal: deps.signal });
+  return { result, output: `${result.stdout}\n${result.stderr}` };
+}
+
+/**
+ * Replays an artifact. Probe artifacts must fail twice (flake guard) before a
+ * defect may be confirmed; existing/targeted tests run once in the proof stage
+ * and twice in verification.
+ */
+export async function proveArtifact(
+  candidate: Candidate,
+  command: string,
+  strategy: ProofArtifact["kind"] | "targeted_test",
+  deps: ProofDeps,
+  now: () => number,
+  attemptsRequired: number,
+): Promise<ProofResult> {
+  const started = now();
+  const attempts: ProofAttempt[] = [];
+  let failures = 0;
+  let firstFailureOutput = "";
+  for (let run = 0; run < attemptsRequired; run++) {
+    const { result, output } = await execArtifact(candidate, command, deps);
+    if (result.timedOut) {
+      return emptyResult(candidate, "error", `proof artifact timed out: ${truncate(output, 300)}`, started, now);
+    }
+    if (/not found|no test files|missing script|no such file|Cannot find module|MODULE_NOT_FOUND|ENOENT/i.test(output)) {
+      return emptyResult(candidate, "error", `proof artifact could not run: ${truncate(output, 300)}`, started, now);
+    }
+    const failed = result.exitCode !== 0;
+    if (failed) {
+      failures += 1;
+      if (!firstFailureOutput) firstFailureOutput = output;
+    }
+    attempts.push({
+      strategy: strategy === "browser_check" ? "browser" : strategy,
+      command,
+      exitCode: result.exitCode,
+      timedOut: result.timedOut,
+      output: truncate(output, 2400),
+      matched: failed,
+      durationMs: result.durationMs,
+    });
+    if (!failed) break;
+  }
+
+  const artifact: ProofArtifact | undefined = candidate.artifact
+    ? { ...candidate.artifact, preFixFailures: failures }
+    : undefined;
+
+  if (failures >= attemptsRequired) {
+    return {
+      candidateId: candidate.id,
+      status: "confirmed",
+      strategy: strategy === "browser_check" ? "browser" : strategy,
+      attempts,
+      reproduction: `${command}\n${truncate(firstFailureOutput, 700)}`,
+      explanation: `Reproduced by the candidate's proof artifact (${failures} consecutive failure(s) on the PR head)`,
+      durationMs: now() - started,
+      artifact,
+    };
+  }
+  if (failures > 0) {
+    return {
+      candidateId: candidate.id,
+      status: "likely",
+      strategy: strategy === "browser_check" ? "browser" : strategy,
+      attempts,
+      reproduction: `${command}\n${truncate(firstFailureOutput, 700)}`,
+      explanation: `Proof artifact failed once but did not confirm on the second run (flake guard)`,
+      durationMs: now() - started,
+      artifact,
+    };
+  }
+  return {
+    candidateId: candidate.id,
+    status: "disproven",
+    strategy: strategy === "browser_check" ? "browser" : strategy,
+    attempts,
+    reproduction: `${command}\nartifact passed on the PR head`,
+    explanation: "Proof artifact passes on the PR head; the claim did not reproduce",
+    durationMs: now() - started,
+    artifact,
+  };
+}
+
 export async function proveCandidates(
   toProve: Candidate[],
   context: PRContext,
@@ -90,7 +201,7 @@ export async function proveCandidates(
   const now = deps.now ?? (() => Date.now());
   const results: ProofResult[] = [];
   const browserCandidates = toProve.filter((candidate) => candidate.check);
-  const testCandidates = toProve.filter((candidate) => !candidate.check && (candidate.suggestedProof === "existing_test" || candidate.suggestedProof === "targeted_test"));
+  const testCandidates = toProve.filter((candidate) => !candidate.check && Boolean(testCommandFor(candidate, deps.profile, deps.context ?? context)));
   const rest = toProve.filter((candidate) => !browserCandidates.includes(candidate) && !testCandidates.includes(candidate));
   let appLog = "";
 
@@ -109,7 +220,7 @@ export async function proveCandidates(
       const duration = now() - started;
       for (const candidate of browserCandidates) {
         const result = checkResults.get(candidate.id);
-        if (isHarnessFailure(result)) {
+        if (isHarnessFailure(result, candidate.check)) {
           results.push(emptyResult(candidate, "error", `browser check could not run: ${result?.detail ?? "no result"}`, startedAll, now));
           continue;
         }
@@ -127,6 +238,7 @@ export async function proveCandidates(
             ? `Reproduced in a real browser: ${result!.detail}`
             : `Browser check passed twice on the PR head; the claim did not reproduce: ${result!.detail}`,
           durationMs: result!.durationMs,
+          artifact: { kind: "browser_check", check: candidate.check, preFixFailures: confirmed ? 2 : 0, artifactHash: "" },
         });
       }
       appLog = [...checkResults.values()]
@@ -146,45 +258,24 @@ export async function proveCandidates(
 
   for (const candidate of testCandidates) {
     const started = now();
-    const command = testCommandFor(candidate, deps.profile, deps.context ?? context);
-    if (!command) {
-      results.push(emptyResult(candidate, "error", `no repository test covers ${candidate.file ?? "this candidate"}`, started, now));
-      continue;
+    const command = testCommandFor(candidate, deps.profile, deps.context ?? context)!;
+    const strategy = candidate.artifact?.kind ?? "targeted_test";
+    const attemptsRequired = candidate.artifact?.kind === "probe" ? 2 : 1;
+    const proof = await proveArtifact(candidate, command, strategy, deps, now, attemptsRequired);
+    if (proof.status === "confirmed") {
+      const mention = targetMentioned(candidate, proof.reproduction);
+      if (!mention) {
+        results.push({
+          ...proof,
+          status: "likely",
+          explanation: `Proof artifact fails but the output does not reference ${candidate.file ?? "the candidate"}; treated as inconclusive`,
+        });
+        deps.logger.info(`proof: artifact for ${candidate.id} failed without referencing the candidate; inconclusive`);
+        continue;
+      }
     }
-    const exec = await deps.sandbox.exec(command, { cwd: deps.sandbox.root, timeoutMs: 120_000, allowFailure: true });
-    const output = `${exec.stdout}\n${exec.stderr}`;
-    const targetName = (candidate.file ?? "").split("/").pop()?.split(".")[0] ?? "";
-    const mentionsTarget = targetName.length > 0 && output.toLowerCase().includes(targetName.toLowerCase());
-    const failed = exec.exitCode !== 0 && !exec.timedOut;
-    const confirmed = failed && mentionsTarget;
-    const attempt: ProofAttempt = {
-      strategy: "targeted_test",
-      command,
-      exitCode: exec.exitCode,
-      timedOut: exec.timedOut,
-      output: truncate(output, 2400),
-      matched: confirmed,
-      durationMs: exec.durationMs,
-    };
-    results.push({
-      candidateId: candidate.id,
-      status: confirmed
-        ? "confirmed"
-        : exec.timedOut || /not found|no test files|missing script|no repository test/i.test(output)
-          ? "error"
-          : failed
-            ? "likely"
-            : "disproven",
-      strategy: "targeted_test",
-      attempts: [attempt],
-      reproduction: `${command}\n${truncate(output, 700)}`,
-      explanation: confirmed
-        ? `Repository test fails and references ${candidate.file}`
-        : failed
-          ? "Repository test fails without referencing the candidate file; treated as inconclusive"
-          : "Repository test passes on the PR head; claim not reproduced",
-      durationMs: exec.durationMs,
-    });
+    results.push(proof);
+    deps.logger.info(`proof: artifact for ${candidate.id} -> ${proof.status} in ${now() - started}ms`);
   }
 
   for (const candidate of rest) {
@@ -200,30 +291,8 @@ export async function proveOne(candidate: Candidate, deps: ProofDeps): Promise<P
   if (!candidate.check) {
     const command = testCommandFor(candidate, deps.profile, deps.context);
     if (!command) return emptyResult(candidate, "error", "no executable proof available", started, now);
-    const exec = await deps.sandbox.exec(command, { cwd: deps.sandbox.root, timeoutMs: 120_000, allowFailure: true });
-    if (exec.timedOut || /not found|no test files|missing script|no repository test/i.test(`${exec.stdout}\n${exec.stderr}`)) {
-      return emptyResult(candidate, "error", `targeted test could not run: ${truncate(exec.stderr || exec.stdout, 300)}`, started, now);
-    }
-    const failed = exec.exitCode !== 0;
-    return {
-      candidateId: candidate.id,
-      status: failed ? "likely" : "disproven",
-      strategy: "targeted_test",
-      attempts: [
-        {
-          strategy: "targeted_test",
-          command,
-          exitCode: exec.exitCode,
-          timedOut: exec.timedOut,
-          output: truncate(`${exec.stdout}\n${exec.stderr}`, 2000),
-          matched: failed,
-          durationMs: exec.durationMs,
-        },
-      ],
-      reproduction: `${command}\n${truncate(exec.stdout + exec.stderr, 600)}`,
-      explanation: failed ? "targeted test still failing" : "targeted test passes",
-      durationMs: now() - started,
-    };
+    const attemptsRequired = candidate.artifact?.kind === "probe" ? 2 : 1;
+    return proveArtifact(candidate, command, candidate.artifact?.kind ?? "targeted_test", deps, now, attemptsRequired);
   }
 
   let app: { url: string; stop: () => Promise<void> } | undefined;
@@ -231,7 +300,7 @@ export async function proveOne(candidate: Candidate, deps: ProofDeps): Promise<P
     app = await deps.sandbox.startApp({ port: 4173, readyPath: candidate.check.path });
     const results = await runBrowserBatchWithConfirmation([{ id: candidate.id, check: candidate.check }], deps, app.url);
     const result = results.get(candidate.id);
-    if (isHarnessFailure(result)) {
+    if (isHarnessFailure(result, candidate.check)) {
       return emptyResult(candidate, "error", `browser check could not run: ${result?.detail ?? "no result"}`, started, now);
     }
     const confirmed = !result!.passed;
@@ -245,6 +314,7 @@ export async function proveOne(candidate: Candidate, deps: ProofDeps): Promise<P
         ? `Reproduction still fails: ${result!.detail}`
         : `Reproduction passes twice on a fresh boot: ${result!.detail}`,
       durationMs: result!.durationMs,
+      artifact: { kind: "browser_check", check: candidate.check, preFixFailures: confirmed ? 2 : 0, artifactHash: "" },
     };
   } catch (error) {
     return emptyResult(candidate, "error", `app boot failed: ${error instanceof Error ? error.message : String(error)}`, started, now);

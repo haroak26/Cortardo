@@ -42,11 +42,12 @@ const AnalyticsPage = lazy(() => import("@/pages/AnalyticsPage"));
 const ReviewsPage = lazy(() => import("@/pages/ReviewsPage"));
 const SecurityPage = lazy(() => import("@/pages/SecurityPage"));
 const RepositoriesPage = lazy(() => import("@/pages/RepositoriesPage"));
+const SelectRepositoriesPage = lazy(() => import("@/pages/SelectRepositoriesPage"));
 const ActivityPage = lazy(() => import("@/pages/ActivityPage"));
 const BotRulesPage = lazy(() => import("@/pages/BotRulesPage"));
 const BotLearningsPage = lazy(() => import("@/pages/BotLearningsPage"));
-const BotPullRequestsPage = lazy(() => import("@/pages/BotPullRequestsPage"));
-const BotCommitsPage = lazy(() => import("@/pages/BotCommitsPage"));
+const BotConfigurationPage = lazy(() => import("@/pages/BotConfigurationPage"));
+const BotExclusionsPage = lazy(() => import("@/pages/BotExclusionsPage"));
 const AdminLogin = lazy(() => import("@/pages/AdminLogin"));
 const AdminPage = lazy(() => import("@/pages/Admin"));
 const Account = lazy(() => import("@/pages/Account"));
@@ -117,11 +118,14 @@ function Router() {
       <Route path="/review/reviews">{() => <ProtectedRoute component={() => <DesignAppLayout><ReviewsPage /></DesignAppLayout>} />}</Route>
       <Route path="/review/security">{() => <ProtectedRoute component={() => <DesignAppLayout><SecurityPage /></DesignAppLayout>} />}</Route>
       <Route path="/review/repositories">{() => <ProtectedRoute component={() => <DesignAppLayout><RepositoriesPage /></DesignAppLayout>} />}</Route>
+      <Route path="/review/repositories/select">{() => <ProtectedRoute component={() => <DesignAppLayout><SelectRepositoriesPage /></DesignAppLayout>} />}</Route>
       <Route path="/review/activity">{() => <ProtectedRoute component={() => <DesignAppLayout><ActivityPage /></DesignAppLayout>} />}</Route>
       <Route path="/bot/rules">{() => <ProtectedRoute component={() => <DesignAppLayout><BotRulesPage /></DesignAppLayout>} />}</Route>
       <Route path="/bot/learnings">{() => <ProtectedRoute component={() => <DesignAppLayout><BotLearningsPage /></DesignAppLayout>} />}</Route>
-      <Route path="/bot/pull-requests">{() => <ProtectedRoute component={() => <DesignAppLayout><BotPullRequestsPage /></DesignAppLayout>} />}</Route>
-      <Route path="/bot/commits">{() => <ProtectedRoute component={() => <DesignAppLayout><BotCommitsPage /></DesignAppLayout>} />}</Route>
+      <Route path="/bot/configuration">{() => <ProtectedRoute component={() => <DesignAppLayout><BotConfigurationPage /></DesignAppLayout>} />}</Route>
+      <Route path="/bot/exclusions">{() => <ProtectedRoute component={() => <DesignAppLayout><BotExclusionsPage /></DesignAppLayout>} />}</Route>
+      <Route path="/bot/pull-requests">{() => <Redirect to="/bot/configuration" />}</Route>
+      <Route path="/bot/commits">{() => <Redirect to="/bot/configuration" />}</Route>
       <Route path="/bot">{() => <Redirect to="/bot/rules" />}</Route>
 
       <Route path="/account">{() => <Redirect to="/account/profile" />}</Route>

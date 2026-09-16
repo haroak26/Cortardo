@@ -1,6 +1,16 @@
 import type { Candidate, PRContext, ProofResult, RepairResult, VerificationReport, VerificationStep } from "./types";
 import type { RepoProfile, Sandbox } from "./sandbox";
 import { truncate, type Logger } from "./util";
+import { relatedTestsFor } from "./test-index";
+
+export { relatedTestsFor };
+
+export type BaselineStatus = "green" | "red" | "unavailable" | "timeout";
+
+export interface BaselineTestResult {
+  status: BaselineStatus;
+  output: string;
+}
 
 export interface VerifyDeps {
   sandbox: Sandbox;
@@ -11,22 +21,17 @@ export interface VerifyDeps {
    * (a single app boot for browser checks) instead of one boot per candidate.
    */
   proveMany?: (candidates: Candidate[]) => Promise<ProofResult[]>;
-  baselineTypecheckPassed: boolean | undefined;
-  /** Baseline full test-suite result captured on the pristine head. */
-  baselineTests?: { passed: boolean; output: string } | undefined;
+  /**
+   * Baseline typecheck captured on the pristine head (3.3). Only a genuinely
+   * red baseline may skip the post-fix check; timeouts/unavailable still run.
+   */
+  baselineTypecheck?: BaselineStatus;
+  /** Baseline full test-suite result captured on the pristine head (3.3). */
+  baselineTests?: BaselineTestResult | undefined;
   logger?: Logger;
   now?: () => number;
-}
-
-/** Test files that genuinely cover a source file (no substring false positives). */
-export function relatedTestsFor(candidate: Candidate, context: PRContext): string[] {
-  if (!candidate.file) return [];
-  const base = candidate.file.split("/").pop()?.replace(/\.[^.]+$/, "") ?? "";
-  if (base.length === 0) return [];
-  return context.tests.filter((test) => {
-    const testBase = test.split("/").pop()?.replace(/\.[^.]+$/, "") ?? "";
-    return testBase === base || testBase.startsWith(`${base}.`) || testBase.startsWith(`${base}-`);
-  });
+  /** Cancellation signal from the owning stage (3.3). */
+  signal?: AbortSignal;
 }
 
 interface CommandOutcome {
@@ -124,7 +129,7 @@ export async function verifyRepairs(
   // 2. Typecheck: once for the whole run.
   let typecheckStep: VerificationStep | undefined;
   if (deps.profile.typecheckCommand) {
-    if (deps.baselineTypecheckPassed === false) {
+    if (deps.baselineTypecheck === "red") {
       typecheckStep = {
         kind: "typecheck",
         command: deps.profile.typecheckCommand,
@@ -134,7 +139,7 @@ export async function verifyRepairs(
         durationMs: 0,
       };
     } else {
-      const result = await deps.sandbox.exec(deps.profile.typecheckCommand, { cwd: deps.sandbox.root, timeoutMs: 180_000, allowFailure: true });
+      const result = await deps.sandbox.exec(deps.profile.typecheckCommand, { cwd: deps.sandbox.root, timeoutMs: 180_000, allowFailure: true, signal: deps.signal });
       typecheckStep = {
         kind: "typecheck",
         command: deps.profile.typecheckCommand,
@@ -150,7 +155,7 @@ export async function verifyRepairs(
   // 3. Build: once, only when the change is complex.
   let buildStep: VerificationStep | undefined;
   if (context.size === "complex" && deps.profile.buildCommand) {
-    const result = await deps.sandbox.exec(deps.profile.buildCommand, { cwd: deps.sandbox.root, timeoutMs: 300_000, allowFailure: true });
+    const result = await deps.sandbox.exec(deps.profile.buildCommand, { cwd: deps.sandbox.root, timeoutMs: 300_000, allowFailure: true, signal: deps.signal });
     buildStep = {
       kind: "build",
       command: deps.profile.buildCommand,
@@ -165,7 +170,7 @@ export async function verifyRepairs(
   // 4. Targeted tests: one run per unique command, shared across repairs.
   const commandCache = new Map<string, CommandOutcome>();
   const runOnce = async (command: string): Promise<CommandOutcome> => {
-    const result = await deps.sandbox.exec(command, { cwd: deps.sandbox.root, timeoutMs: 120_000, allowFailure: true });
+    const result = await deps.sandbox.exec(command, { cwd: deps.sandbox.root, timeoutMs: 120_000, allowFailure: true, signal: deps.signal });
     return {
       passed: result.exitCode === 0 && !result.timedOut,
       output: truncate(`${result.stdout}\n${result.stderr}`, 1200),
@@ -219,7 +224,7 @@ export async function verifyRepairs(
       reason: "no baseline test run was captured for this repository",
       durationMs: 0,
     };
-  } else if (deps.baselineTests.passed === false) {
+  } else if (deps.baselineTests.status === "red") {
     affectedStep = {
       kind: "affected_tests",
       command: deps.profile.testCommand,
@@ -227,6 +232,19 @@ export async function verifyRepairs(
       skipped: true,
       reason: "baseline test suite already failing before the fix",
       durationMs: 0,
+    };
+  } else if (deps.baselineTests.status !== "green") {
+    // Unknown baselines (timeout/unavailable) must not silently disable the
+    // strongest regression check; run the suite and judge the result.
+    const outcome = await runCommand(deps.profile.testCommand);
+    affectedStep = {
+      kind: "affected_tests",
+      command: deps.profile.testCommand,
+      passed: outcome.passed,
+      skipped: false,
+      reason: `full test suite after the fix (baseline ${deps.baselineTests.status})` + flakeNote(outcome),
+      durationMs: outcome.durationMs,
+      output: outcome.output,
     };
   } else {
     const outcome = await runCommand(deps.profile.testCommand);
@@ -246,9 +264,12 @@ export async function verifyRepairs(
     const steps: VerificationStep[] = [];
     const proof = proofById.get(entry.candidate.id)!;
     const reproductionPassed = proof.status === "disproven";
+    const artifact = entry.candidate.artifact ?? proof.artifact;
     steps.push({
       kind: "reproduction",
-      command: entry.candidate.check ? `playwright ${entry.candidate.check.label} @ ${entry.candidate.check.path}` : "candidate reproduction",
+      command:
+        artifact?.command ??
+        (entry.candidate.check ? `playwright ${entry.candidate.check.label} @ ${entry.candidate.check.path}` : "candidate reproduction"),
       passed: reproductionPassed,
       skipped: false,
       reason:

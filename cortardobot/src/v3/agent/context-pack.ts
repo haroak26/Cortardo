@@ -2,9 +2,20 @@ import type { Candidate, ContextPack, ContextPackFile, PRContext, ProofResult } 
 import type { RepoProfile, Sandbox } from "../sandbox";
 import { renderCompactDiff, renderNumberedFile } from "../patch";
 import { hashContent, normalizeLearnings, renderLearnings, stableStringify, truncate } from "../util";
+import { repoTestIndex } from "../test-index";
 
-const MAX_FILES = 6;
-const MAX_PACK_CHARS = 60_000;
+const MAX_FILES = 8;
+const MAX_PACK_CHARS = 70_000;
+
+/** Paths referenced by detector evidence (`path`, `path:line`, `path:l-c`). */
+function evidencePaths(evidence: string[]): string[] {
+  const paths: string[] = [];
+  for (const entry of evidence) {
+    const match = /^([\w@./-]+\.[A-Za-z0-9]+)(?::\d+(?:-\d+)?)?/.exec(entry.trim());
+    if (match) paths.push(normalizePath(match[1]));
+  }
+  return [...new Set(paths)];
+}
 
 export interface BuildContextPackInput {
   candidate: Candidate;
@@ -137,6 +148,9 @@ export async function buildContextPack(input: BuildContextPackInput): Promise<Co
 
   if (target) {
     await addFile(target, true);
+    for (const path of evidencePaths(candidate.evidence)) {
+      if (path !== target) await addFile(path, false);
+    }
     const content = await readIfExists(sandbox, target);
     if (content) {
       symbols.push(...extractSymbols(content));
@@ -152,7 +166,7 @@ export async function buildContextPack(input: BuildContextPackInput): Promise<Co
 
   const tests: string[] = [];
   const base = target ? (target.split("/").pop()?.replace(/\.[^.]+$/, "") ?? "") : "";
-  for (const test of context.tests) {
+  for (const test of repoTestIndex(context)) {
     const testBase = test.split("/").pop()?.replace(/\.[^.]+$/, "") ?? "";
     if (base && (testBase === base || testBase.startsWith(`${base}.`) || testBase.startsWith(`${base}-`))) {
       tests.push(test);
@@ -178,9 +192,12 @@ export async function buildContextPack(input: BuildContextPackInput): Promise<Co
   pack.hash = hashContent(
     stableStringify({
       files: files.map((file) => [file.path, file.hash]),
+      imports: pack.imports,
+      tests: pack.tests,
       reproduction: pack.reproduction,
       check: pack.check ?? null,
       diff: pack.diff,
+      instructions: pack.instructions ?? "",
       learnings: pack.learnings ?? [],
     }),
   );
@@ -208,12 +225,22 @@ export async function buildSwarmContext(input: BuildSwarmContextInput): Promise<
   const files: ContextPackFile[] = [];
   let totalChars = 0;
 
+  const missingFiles: string[] = [];
   for (const file of context.files) {
-    if (files.length >= SWARM_MAX_FILES) break;
+    if (files.length >= SWARM_MAX_FILES) {
+      missingFiles.push(file.path);
+      continue;
+    }
     if (file.status === "removed") continue;
     const content = (await readIfExists(sandbox, file.path)) ?? file.content;
-    if (content === undefined) continue;
-    if (totalChars + content.length > SWARM_MAX_CHARS && files.length > 0) continue;
+    if (content === undefined) {
+      missingFiles.push(file.path);
+      continue;
+    }
+    if (totalChars + content.length > SWARM_MAX_CHARS && files.length > 0) {
+      missingFiles.push(file.path);
+      continue;
+    }
     totalChars += content.length;
     files.push({ path: file.path, content, numbered: renderNumberedFile(content), hash: hashContent(content), changed: true });
   }
@@ -224,11 +251,12 @@ export async function buildSwarmContext(input: BuildSwarmContextInput): Promise<
     files,
     imports: [],
     symbols: context.symbols.slice(0, 40).map((symbol) => `${symbol.kind} ${symbol.name} (${symbol.file}:${symbol.line})`),
-    tests: context.tests.slice(0, 20),
+    tests: repoTestIndex(context).slice(0, 20),
     routes: context.routes.slice(0, 20),
     diff,
     reproduction: "",
     detectorEvidence: [],
+    missingFiles,
     instructions: input.instructions,
     learnings: normalizeLearnings(context.learnings),
     hash: "",
@@ -238,7 +266,9 @@ export async function buildSwarmContext(input: BuildSwarmContextInput): Promise<
       files: files.map((file) => [file.path, file.hash]),
       diff,
       tests: pack.tests,
+      symbols: pack.symbols,
       profile: [profile.testCommand ?? "", profile.typecheckCommand ?? "", profile.buildCommand ?? ""],
+      instructions: pack.instructions ?? "",
       learnings: pack.learnings ?? [],
     }),
   );

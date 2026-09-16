@@ -1,13 +1,14 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronDown, FolderGit2, Plus, Search, Settings2 } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { useLocation } from 'wouter';
+import { FolderGit2, Plus, Search, Settings2, X } from 'lucide-react';
 import { ReviewPageShell } from '@/components/review/bits';
 import { RepositoryReviewSettingsDialog } from '@/components/review/RepositoryReviewSettings';
 import { Badge } from '@/components/ds';
 import { Button } from '@/components/button';
 import { SettingsCardSkeleton } from '@/components/skeleton-cards';
 import { SettingsCard, SettingsRow } from '@/components/settings-ui';
+import { TextInput } from '@/components/text-input';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/base/dialog';
-import { RepositoryPicker } from '@/components/github/RepositoryPicker';
 import { RepositoryCodebaseMap, RepositoryCodebaseMapPreview } from '@/components/review/codegraph/RepositoryCodebaseMap';
 import { TinyToggle } from '@/components/ui/tiny-toggle';
 import { useToast } from '@/hooks/use-toast';
@@ -38,14 +39,12 @@ const PROVIDER_LABELS: Record<string, string> = {
 export default function RepositoriesPage() {
   const { toast } = useToast();
   const { activeWorkspaceId } = useWorkspace();
+  const [, setLocation] = useLocation();
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<FilterId>('all');
-  const [filterOpen, setFilterOpen] = useState(false);
   const [overrides, setOverrides] = useState<Record<string, boolean>>({});
-  const [pickerOpen, setPickerOpen] = useState(false);
   const [mapRepository, setMapRepository] = useState<ApiRepository | null>(null);
   const [settingsRepository, setSettingsRepository] = useState<ApiRepository | null>(null);
-  const filterRef = useRef<HTMLDivElement>(null);
 
   const statusQuery = useGithubStatus(activeWorkspaceId);
   const reposQuery = useRepositories(activeWorkspaceId);
@@ -65,19 +64,6 @@ export default function RepositoriesPage() {
       }),
     [repositories, query, filter, overrides],
   );
-
-  useEffect(() => {
-    if (!filterOpen) return;
-    const handler = (event: MouseEvent) => {
-      if (filterRef.current && !filterRef.current.contains(event.target as Node)) {
-        setFilterOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [filterOpen]);
-
-  const activeFilterLabel = FILTERS.find((option) => option.id === filter)?.label ?? 'All';
 
   const handleConnect = () => {
     if (!activeWorkspaceId) return;
@@ -124,7 +110,6 @@ export default function RepositoriesPage() {
   };
 
   const hasInstallation = (statusQuery.data?.installations.length ?? 0) > 0;
-  const installation = statusQuery.data?.installations[0] ?? null;
 
   return (
     <ReviewPageShell
@@ -133,9 +118,8 @@ export default function RepositoriesPage() {
       actions={
         <div className="flex items-center gap-2">
           {hasInstallation ? (
-            <Button size="sm" onClick={() => setPickerOpen(true)}>
-              <Plus size={15} />
-              Choose repositories
+            <Button size="sm" onClick={() => setLocation('/review/repositories/select')}>
+              Manage Repositories
             </Button>
           ) : (
             <Button size="sm" onClick={handleConnect} isLoading={startInstall.isPending}>
@@ -164,9 +148,8 @@ export default function RepositoriesPage() {
               : 'Install the Cortardo GitHub App to give the bot access to your pull requests. You choose which repositories it can see.'}
           </p>
           {hasInstallation ? (
-            <Button size="sm" className="mt-5" onClick={() => setPickerOpen(true)}>
-              <Plus size={15} />
-              Choose repositories
+            <Button size="sm" className="mt-5" onClick={() => setLocation('/review/repositories/select')}>
+              Manage Repositories
             </Button>
           ) : (
             <Button size="sm" className="mt-5" onClick={handleConnect} isLoading={startInstall.isPending}>
@@ -178,56 +161,49 @@ export default function RepositoriesPage() {
       ) : (
         <>
           <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-            <div ref={filterRef} className="relative">
-              <button
-                type="button"
-                onClick={() => setFilterOpen((open) => !open)}
-                aria-haspopup="menu"
-                aria-expanded={filterOpen}
-                className={`flex h-[30px] items-center gap-1.5 rounded-[10px] px-3 text-[12.5px] font-medium transition-colors border-none cursor-pointer ${
-                  filterOpen
-                    ? 'bg-surface-hover text-foreground'
-                    : 'bg-transparent text-fg-muted hover:bg-surface-hover hover:text-foreground'
-                }`}
-              >
-                {activeFilterLabel}
-                <ChevronDown
-                  size={13}
-                  className={`transition-transform duration-150 ${filterOpen ? 'rotate-180' : ''}`}
-                />
-              </button>
-              {filterOpen && (
-                <>
-                  <div className="fixed inset-0 z-10" onClick={() => setFilterOpen(false)} />
-                  <div className="absolute left-0 top-[calc(100%+6px)] z-20 min-w-[140px] bg-background border border-border rounded-[14px] p-1 flex flex-col gap-1 shadow-md">
-                    {FILTERS.map((option) => (
-                      <button
-                        key={option.id}
-                        type="button"
-                        onClick={() => {
-                          setFilter(option.id);
-                          setFilterOpen(false);
-                        }}
-                        className={`flex w-full items-center px-2 py-1.5 rounded-[8px] text-[12.5px] font-medium text-fg-soft transition-colors border-none cursor-pointer text-left ${
-                          option.id === filter ? 'bg-surface-hover' : 'hover:bg-surface-hover'
-                        }`}
-                      >
-                        {option.label}
-                      </button>
-                    ))}
-                  </div>
-                </>
-              )}
+            <div
+              role="group"
+              aria-label="Filter repositories"
+              className="inline-flex items-center gap-0.5 rounded-[12px] border border-border bg-background p-[3px]"
+            >
+              {FILTERS.map((option) => {
+                const active = option.id === filter;
+                return (
+                  <button
+                    key={option.id}
+                    type="button"
+                    onClick={() => setFilter(option.id)}
+                    aria-pressed={active}
+                    className={`h-[28px] rounded-[9px] px-3 text-[12.5px] font-medium transition-colors border-none cursor-pointer ${
+                      active
+                        ? 'bg-brand text-brand-foreground'
+                        : 'bg-transparent text-fg-muted hover:bg-surface-hover hover:text-foreground'
+                    }`}
+                  >
+                    {option.label}
+                  </button>
+                );
+              })}
             </div>
-            <div className="relative w-full sm:w-[260px]">
-              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-fg-faint" />
-              <input
+            <div className="relative w-full sm:w-[240px]">
+              <Search size={15} className="pointer-events-none absolute left-3 top-1/2 z-10 -translate-y-1/2 text-fg-faint" />
+              <TextInput
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="Search repositories..."
                 aria-label="Search repositories"
-                className="h-[36px] w-full rounded-[10px] bg-surface-hover pl-9 pr-3 text-[14px] text-foreground placeholder:text-fg-faint border-none outline-none"
+                className="pl-9 pr-8"
               />
+              {query && (
+                <button
+                  type="button"
+                  onClick={() => setQuery('')}
+                  aria-label="Clear search"
+                  className="absolute right-2.5 top-1/2 z-10 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-full border-none bg-transparent p-0 text-fg-faint cursor-pointer transition-colors hover:text-foreground"
+                >
+                  <X size={12} />
+                </button>
+              )}
             </div>
           </div>
 
@@ -305,12 +281,6 @@ export default function RepositoriesPage() {
           )}
         </>
       )}
-
-      <RepositoryPicker
-        open={pickerOpen}
-        onOpenChange={setPickerOpen}
-        installation={installation}
-      />
 
       {settingsRepository && (
         <RepositoryReviewSettingsDialog

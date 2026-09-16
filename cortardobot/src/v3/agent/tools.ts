@@ -17,6 +17,8 @@ export interface ToolContext {
   recordAppliedEdits: (edits: RepairEdit[]) => void;
   /** Captures every probe execution for promotion into verification (3.2). */
   recordProbe?: (probe: AuthoredProbe) => void;
+  /** Cancellation signal from the owning stage (3.3). */
+  signal?: AbortSignal;
 }
 
 function shellQuote(value: string): string {
@@ -58,7 +60,7 @@ async function exec(
   command: string,
   timeoutMs = 60_000,
 ): Promise<{ exitCode: number; output: string; timedOut: boolean; durationMs: number }> {
-  const result = await ctx.sandbox.exec(command, { cwd: ctx.sandbox.root, timeoutMs, allowFailure: true });
+  const result = await ctx.sandbox.exec(command, { cwd: ctx.sandbox.root, timeoutMs, allowFailure: true, signal: ctx.signal });
   return {
     exitCode: result.exitCode,
     output: `${result.stdout}\n${result.stderr}`.trim(),
@@ -274,7 +276,7 @@ export async function executeTool(call: ToolCall, ctx: ToolContext): Promise<Too
         }
         const command = ctx.profile.testSingle
           ? ctx.profile.testSingle(path)
-          : `npx vitest run --reporter=basic --passWithNoTests ${shellQuote(path)} 2>&1 | tail -120`;
+          : `npx vitest run ${shellQuote(path)}`;
         const result = await exec(ctx, command, 180_000);
         const ok = result.exitCode === 0 && !result.timedOut;
         const content = await safeRead(ctx.sandbox, path);

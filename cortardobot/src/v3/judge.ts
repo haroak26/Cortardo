@@ -33,13 +33,14 @@ export function fallbackJudge(candidates: Candidate[], maxToProve: number): Judg
   const ordered = [...candidates].sort((a, b) => b.score - a.score);
   let proved = 0;
   return ordered.map((candidate) => {
-    const provable = Boolean(candidate.check) || candidate.suggestedProof === "existing_test" || candidate.suggestedProof === "targeted_test" || candidate.suggestedProof === "browser";
-    const funded = provable && proved < maxToProve && candidate.severity !== "info";
+    // Funding is a budget decision, never a provability guess: the prover is
+    // responsible for producing a reproduction, not the judge (3.4).
+    const funded = candidate.severity !== "info" && proved < maxToProve;
     if (funded) proved++;
     return {
       candidateId: candidate.id,
       verdict: funded ? ("PROVE" as const) : ("STATIC_ONLY" as const),
-      reason: funded ? "High-value, provable candidate" : provable ? "Below proof budget" : "No executable proof available",
+      reason: funded ? "Selected for execution-based proof" : "Below the proof budget for this run",
       priority: funded ? proved : 99,
     };
   });
@@ -57,7 +58,7 @@ export async function judgeCandidates(
     const list = candidates
       .map(
         (candidate) =>
-          `- id=${candidate.id} severity=${candidate.severity} confidence=${candidate.confidence.toFixed(2)} file=${candidate.file ?? "n/a"}:${candidate.line ?? "?"} provable=${Boolean(candidate.check) || candidate.suggestedProof !== "none"} claim=${candidate.claim.slice(0, 260)}`,
+          `- id=${candidate.id} severity=${candidate.severity} confidence=${candidate.confidence.toFixed(2)} file=${candidate.file ?? "n/a"}:${candidate.line ?? "?"} experiment=${(candidate.suggestedExperiment ?? "none").slice(0, 200)} claim=${candidate.claim.slice(0, 260)}`,
       )
       .join("\n");
     const learnings = renderLearnings(context.learnings);
@@ -86,19 +87,21 @@ export async function judgeCandidates(
       seen.add(decision.candidateId);
       decisions.push(decision);
     }
-    const fallback = fallbackJudge(candidates.filter((candidate) => !seen.has(candidate.id)), 0);
-    decisions.push(...fallback);
+    for (const candidate of candidates) {
+      if (seen.has(candidate.id)) continue;
+      decisions.push({
+        candidateId: candidate.id,
+        verdict: "STATIC_ONLY",
+        reason: "the judge did not return a decision for this candidate",
+        priority: 99,
+      });
+    }
 
     const ordered = decisions.sort((a, b) => a.priority - b.priority || a.candidateId.localeCompare(b.candidateId));
     let proved = 0;
     for (const decision of ordered) {
       const candidate = byId.get(decision.candidateId);
       if (!candidate) continue;
-      const provable =
-        Boolean(candidate.check) ||
-        candidate.suggestedProof === "existing_test" ||
-        candidate.suggestedProof === "targeted_test" ||
-        candidate.suggestedProof === "browser";
       const detectorCritical =
         candidate.source === "detector" &&
         Boolean(candidate.check) &&
@@ -107,9 +110,13 @@ export async function judgeCandidates(
         decision.verdict = "PROVE";
         decision.reason = `${decision.reason} (upgraded: deterministic, executable proof available)`;
       }
-      if (decision.verdict === "PROVE" && (!provable || proved >= maxToProve)) {
+      // The only permitted downgrade is the proof budget. Whether a candidate
+      // is provable is the prover's call, never the judge's or the engine's
+      // (3.4) — the 3.3 "No executable proof available" gate silently disabled
+      // the autonomous loop on every logic bug.
+      if (decision.verdict === "PROVE" && proved >= maxToProve) {
         decision.verdict = "STATIC_ONLY";
-        decision.reason = provable ? `${decision.reason} (downgraded: proof budget)` : "No executable proof available";
+        decision.reason = `${decision.reason} (downgraded: proof budget)`;
         decision.priority = 90;
         continue;
       }

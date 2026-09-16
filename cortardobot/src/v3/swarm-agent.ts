@@ -75,7 +75,9 @@ const hypothesisSchema = z.object({
 export type SwarmHypothesis = z.infer<typeof hypothesisSchema>;
 
 export const hypothesisListSchema = z.object({
-  hypotheses: z.array(hypothesisSchema).max(4),
+  // Arrays are clamped, never rejected: one over-long response must not kill
+  // the whole investigator and lose its hypotheses (3.4).
+  hypotheses: z.array(hypothesisSchema),
 });
 
 const actionSchema = z.object({
@@ -87,9 +89,9 @@ const actionSchema = z.object({
         args: z.record(z.unknown()).optional().default({}),
       }),
     )
-    .max(4)
-    .optional(),
-  hypotheses: z.array(hypothesisSchema).max(2).optional(),
+    .optional()
+    .default([]),
+  hypotheses: z.array(hypothesisSchema).optional(),
   done: z.boolean().optional().default(false),
   summary: z.string().max(600).optional(),
 });
@@ -151,13 +153,18 @@ export function candidateFromHypothesis(hypothesis: SwarmHypothesis, agent: Swar
     source: "luna",
     agentKind: agent.kind,
     suggestedProof: "none",
+    suggestedExperiment: hypothesis.suggestedExperiment || undefined,
+    proofPlan: hypothesis.suggestedExperiment || undefined,
     tags: [agent.kind],
     occurrences: 1,
     mergedFrom: [],
     score: 0,
   };
   candidate.check = inferCheck(candidate, context);
-  candidate.suggestedProof = candidate.check ? "browser" : context.tests.some((test) => /auth|docs|pricing/i.test(test)) ? "targeted_test" : "none";
+  // The proof strategy is decided by the prover (repo-wide tests, probes),
+  // never by a filename heuristic. A browser check is the only strategy that
+  // is already known here, so it is the only one set (3.4).
+  candidate.suggestedProof = candidate.check ? "browser" : "none";
   return candidate;
 }
 
@@ -169,6 +176,7 @@ export function investigatorSystemPrompt(agent: SwarmAgentSpec): string {
     "Report only defects introduced or exposed by the current diff, and verify each claim against the real code before reporting it.",
     "Rules:",
     "- At most 2 hypotheses. One strong, well-evidenced hypothesis is better than two weak ones.",
+    "- Investigate before answering: use the tools to read the real code and confirm the behaviour. Do not answer from the diff summary alone.",
     "- Every hypothesis must cite evidence as path:line where the path is one of the changed files and the line is part of the diff or its immediate context.",
     "- severity is one of critical, high, medium, low, info. confidence is a number between 0 and 1.",
     "- Do not report style, formatting, naming, or generic advice.",
@@ -248,6 +256,8 @@ export interface SwarmAgentDeps {
   deadline: number;
   maxTurns: number;
   maxToolsPerTurn: number;
+  /** Cancellation signal from the owning stage (3.3). */
+  signal?: AbortSignal;
 }
 
 export interface SwarmAgentOutcome {
@@ -277,6 +287,7 @@ export async function runSwarmAgent(deps: SwarmAgentDeps): Promise<SwarmAgentOut
     pack: deps.pack,
     logger: deps.logger,
     probeDir: `${deps.sandbox.root}/.cortado-probes`,
+    signal: deps.signal,
     runReproduction: async () => {
       throw new Error("investigators cannot run reproductions");
     },
@@ -284,8 +295,9 @@ export async function runSwarmAgent(deps: SwarmAgentDeps): Promise<SwarmAgentOut
   };
 
   const acceptHypotheses = (hypotheses: SwarmHypothesis[]): void => {
-    hypothesesCount = hypotheses.length;
-    candidates = hypotheses.flatMap((hypothesis) => {
+    const accepted = hypotheses.slice(0, 2);
+    hypothesesCount = accepted.length;
+    candidates = accepted.flatMap((hypothesis) => {
       const candidate = candidateFromHypothesis(hypothesis, agent, deps.context);
       if (!candidate) {
         deps.logger.warn(`swarm ${agent.id}: dropped hypothesis with unresolvable evidence`, { claim: hypothesis.claim.slice(0, 120) });
@@ -314,6 +326,7 @@ export async function runSwarmAgent(deps: SwarmAgentDeps): Promise<SwarmAgentOut
         expectJson: true,
         timeoutMs: Math.max(8_000, Math.min(remaining - 2_000, 45_000)),
         retries: 0,
+        signal: deps.signal,
         label: agent.id,
       });
       raw = response.text;
@@ -397,6 +410,7 @@ export async function runSwarmAgent(deps: SwarmAgentDeps): Promise<SwarmAgentOut
           expectJson: true,
           timeoutMs: Math.max(8_000, Math.min(remaining - 2_000, 45_000)),
           retries: 0,
+          signal: deps.signal,
           label: `${agent.id}-final`,
         });
         turns += 1;

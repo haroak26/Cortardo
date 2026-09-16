@@ -80,6 +80,8 @@ export interface AgentLoopDeps {
   /** Per-run memory shared across findings (3.2). */
   memory?: RepairRunMemory;
   now?: () => number;
+  /** Cancellation signal from the owning stage (3.3). */
+  signal?: AbortSignal;
 }
 
 export interface AgentLoopOutcome {
@@ -195,6 +197,8 @@ export interface DiagnoseInput {
   originalContent: string;
   models: ModelRouter;
   logger: Logger;
+  /** Cancellation signal from the owning stage (3.3). */
+  signal?: AbortSignal;
 }
 
 const SEMANTIC_FAILURES: ReadonlySet<FailureCategory> = new Set(["reproduction_still_confirms", "harness_error", "no_edit"]);
@@ -216,12 +220,13 @@ export async function diagnoseFailure(input: DiagnoseInput): Promise<FailureRepo
   if (!SEMANTIC_FAILURES.has(failure.category) || input.attempt >= input.maxAttempts) return failure;
   try {
     const response = await input.models.complete({
-      role: "terra",
+      role: "codegen",
       kind: "diagnosis",
       system: diagnosisSystemPrompt(),
       user: diagnosisUserPrompt({ claim: input.candidate.claim, attempt: input.attempt, maxAttempts: input.maxAttempts, failure }),
       expectJson: true,
       maxTokens: 800,
+      signal: input.signal,
       label: `diagnosis-${input.candidate.id}-a${input.attempt}`,
     });
     const parsed = diagnosisSchema.safeParse(extractJson(response.text));
@@ -267,6 +272,7 @@ export async function runRepairAgent(deps: AgentLoopDeps): Promise<AgentLoopOutc
       pack: deps.contextPack,
       logger: deps.logger,
       probeDir: `${deps.sandbox.root}/.cortado-probes`,
+      signal: deps.signal,
       runReproduction: deps.proveCandidate,
       recordAppliedEdits: (edits) => appliedEdits.push(...edits),
       recordProbe: (probe) => attemptProbes.push(probe),
@@ -291,13 +297,14 @@ export async function runRepairAgent(deps: AgentLoopDeps): Promise<AgentLoopOutc
       let raw = "";
       try {
         const response = await deps.models.complete({
-          role: "terra",
+          role: "codegen",
           kind: "repair_agent",
           system: repairAgentSystemPrompt(),
           user,
           history,
           expectJson: true,
           maxTokens: 7000,
+          signal: deps.signal,
           label: `repair-agent-${candidate.id}-a${attempt}-t${turn}`,
         });
         raw = response.text;
@@ -314,6 +321,7 @@ export async function runRepairAgent(deps: AgentLoopDeps): Promise<AgentLoopOutc
           turns: attemptTurns,
           tools: attemptTools,
         };
+        await restoreAttempt(deps.sandbox, beforeSnapshot, file, deps.originalContent);
         attempts.push(record);
         return record;
       }
@@ -333,6 +341,7 @@ export async function runRepairAgent(deps: AgentLoopDeps): Promise<AgentLoopOutc
             turns: attemptTurns,
             tools: attemptTools,
           };
+          await restoreAttempt(deps.sandbox, beforeSnapshot, file, deps.originalContent);
           attempts.push(record);
           return record;
         }
@@ -380,6 +389,7 @@ export async function runRepairAgent(deps: AgentLoopDeps): Promise<AgentLoopOutc
             turns: attemptTurns,
             tools: attemptTools,
           };
+          await restoreAttempt(deps.sandbox, beforeSnapshot, file, deps.originalContent);
           attempts.push(record);
           return record;
         }
@@ -431,7 +441,7 @@ export async function runRepairAgent(deps: AgentLoopDeps): Promise<AgentLoopOutc
         thought: action.thought,
         actions: calls,
         observations,
-        modelId: deps.models.idFor("terra"),
+        modelId: deps.models.idFor("codegen"),
         durationMs: 0,
       });
 
@@ -442,9 +452,12 @@ export async function runRepairAgent(deps: AgentLoopDeps): Promise<AgentLoopOutc
       const newEdits = appliedEdits.filter((edit) => !appliedThisAttempt.includes(edit));
       if (newEdits.length > 0) {
         appliedThisAttempt = [...appliedThisAttempt, ...newEdits];
-        const proof = reproductionObservation?.ok ? undefined : await deps.proveCandidate();
-        const confirmed = reproductionObservation ? !reproductionObservation.ok : proof!.status === "confirmed" || proof!.status === "error" || proof!.status === "likely";
-        if (!confirmed) {
+        const proof = reproductionObservation ? undefined : await deps.proveCandidate();
+        // Only a disproven reproduction proves the fix. "error" (the harness
+        // could not run) and "likely" are inconclusive and must never verify a
+        // repair, even though they mean the defect did not reproduce (3.4).
+        const fixed = reproductionObservation ? reproductionObservation.ok : proof!.status === "disproven";
+        if (fixed) {
           promotedProbe = [...attemptProbes].reverse().find((probe) => !probe.passed);
           const record: RepairAttempt = {
             attempt,
@@ -531,6 +544,7 @@ export async function runRepairAgent(deps: AgentLoopDeps): Promise<AgentLoopOutc
         originalContent: deps.originalContent,
         models: deps.models,
         logger: deps.logger,
+        signal: deps.signal,
       });
       failed.failure = failure;
       failed.diagnosis = failure.summary;

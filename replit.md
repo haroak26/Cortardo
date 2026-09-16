@@ -1,6 +1,6 @@
 # Cortardo
 
-AI-powered code review workspace — connect repositories and review pull requests for bugs, security issues, and style drift. The Cortardo Bot engine is not implemented in this repository yet.
+AI-powered code review workspace — connect repositories and review pull requests for bugs, security issues, and style drift. The CortardoBot review engine (v3.3) lives in `cortardobot/src/v3/` and is wired into the server through `server/lib/review/`; see `docs/cortardo-3.3.md` for the engine handoff.
 
 ## Architecture
 
