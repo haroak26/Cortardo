@@ -42,11 +42,13 @@ export function SettingsSection({
   action,
   children,
   className,
+  cardClassName,
 }: {
   title: React.ReactNode;
   action?: React.ReactNode;
   children: React.ReactNode;
   className?: string;
+  cardClassName?: string;
 }) {
   return (
     <section className={cn("w-full", className)}>
@@ -56,9 +58,9 @@ export function SettingsSection({
             {title}
           </h2>
         </div>
-        {action && <div className="shrink-0">{action}</div>}
+        {action && <div className="flex shrink-0 items-center">{action}</div>}
       </header>
-      <SettingsCard className="mt-[14px]">{children}</SettingsCard>
+      <SettingsCard className={cn("mt-[14px]", cardClassName)}>{children}</SettingsCard>
     </section>
   );
 }
@@ -401,6 +403,7 @@ export function SaveButton({
   hasChanges = true,
   saveLabel = "Save",
   className,
+  pill = false,
 }: {
   onSave: () => void;
   onCancel?: () => void;
@@ -408,15 +411,16 @@ export function SaveButton({
   hasChanges?: boolean;
   saveLabel?: string;
   className?: string;
+  pill?: boolean;
 }) {
   return (
     <div className={cn("flex items-center justify-end gap-2 pt-4", className)}>
       {onCancel && (
-        <Button design="ghost" size="xs" className="px-3" onClick={onCancel}>
+        <Button design={pill ? "pill-ghost" : "ghost"} size="xs" className="px-3" onClick={onCancel}>
           Cancel
         </Button>
       )}
-      <Button design="primary" size="xs" className="px-3" onClick={onSave} disabled={!hasChanges || isSaving} isLoading={isSaving}>
+      <Button design={pill ? "pill" : "primary"} size="xs" className="px-3" onClick={onSave} disabled={!hasChanges || isSaving} isLoading={isSaving}>
         {isSaving ? null : saveLabel}
       </Button>
     </div>

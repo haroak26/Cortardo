@@ -1,8 +1,7 @@
 import { useMemo } from 'react';
-import { GitPullRequest, ShieldAlert, Timer, Wrench } from 'lucide-react';
-import { Panel, ReviewPageShell, SeverityBars } from '@/components/review/bits';
-import { StatCard } from '@/components/ds';
-import { FramedCard } from '@/components/framed-card';
+import { Gauge, GitPullRequest, ShieldAlert, Wrench } from 'lucide-react';
+import { ReviewPageShell, SeverityBars } from '@/components/review/bits';
+import { MetricCard } from '@/components/ds';
 import { cn } from '@/lib/utils';
 import {
   analyticsSummary,
@@ -10,7 +9,6 @@ import {
   openSeverity,
   repoAnalytics,
   reviewActivity,
-  reviewTrend,
   type ActivityDay,
 } from '@/lib/mock-review-data';
 
@@ -37,13 +35,11 @@ function ActivityHeatmap() {
   const total = reviewActivity.reduce((sum, day) => sum + day.count, 0);
 
   return (
-    <Panel
-      title="Review activity"
-      meta={
-        <span className="text-[11.5px] tabular-nums text-fg-faint">
-          {total.toLocaleString()} runs in the last 6 months
-        </span>
-      }
+    <MetricCard
+      label="Review activity"
+      hint={`${total.toLocaleString()} runs in the last 6 months`}
+      textPosition="top"
+      dotMatrix={false}
     >
       <div className="overflow-x-auto pb-1 scrollbar-none">
         <div className="flex gap-[3px]">
@@ -70,42 +66,14 @@ function ActivityHeatmap() {
         ))}
         More
       </div>
-    </Panel>
-  );
-}
-
-function ReviewVolume() {
-  const max = Math.max(...reviewTrend.map((point) => point.reviews), 1);
-  return (
-    <Panel
-      title="Review volume"
-      meta={<span className="text-[11.5px] text-fg-faint">Last 12 weeks</span>}
-    >
-      <div className="flex h-[150px] items-end gap-1.5">
-        {reviewTrend.map((point) => (
-          <div key={point.label} className="flex h-full flex-1 flex-col justify-end" title={`${point.label}: ${point.reviews} reviews · ${point.findings} findings`}>
-            <div
-              className="w-full rounded-[3px] bg-brand/80 transition-[height] duration-300"
-              style={{ height: `${Math.round((point.reviews / max) * 100)}%` }}
-            />
-          </div>
-        ))}
-      </div>
-      <div className="mt-2 flex justify-between text-[10.5px] text-fg-faint">
-        <span>{reviewTrend[0]?.label}</span>
-        <span>{reviewTrend[reviewTrend.length - 1]?.label}</span>
-      </div>
-    </Panel>
+    </MetricCard>
   );
 }
 
 function FindingsByCategory() {
   const max = Math.max(...findingsByCategory.map((row) => row.count), 1);
   return (
-    <Panel
-      title="Findings by category"
-      meta={<span className="text-[11.5px] text-fg-faint">All time</span>}
-    >
+    <MetricCard label="Findings by category" hint="All time" textPosition="top" dotMatrix={false}>
       <div className="space-y-2.5">
         {findingsByCategory.map((row) => (
           <div key={row.category} className="flex items-center gap-3">
@@ -122,44 +90,45 @@ function FindingsByCategory() {
           </div>
         ))}
       </div>
-    </Panel>
+    </MetricCard>
   );
 }
 
 function RepositoryHealth() {
   return (
-    <FramedCard>
-      <div className="flex items-center justify-between gap-3 px-4 pt-4 pb-3 sm:px-5">
-        <h2 className="text-[14px] font-semibold text-foreground">Repository health</h2>
-        <span className="text-[11.5px] text-fg-faint">Open vs fixed findings</span>
-      </div>
-      <div className="overflow-x-auto">
+    <MetricCard
+      label="Repository health"
+      hint="Open vs fixed findings"
+      textPosition="top"
+      dotMatrix={false}
+    >
+      <div className="-mx-1 overflow-x-auto">
         <table className="w-full min-w-[520px] text-left">
           <thead>
             <tr className="text-[11px] uppercase tracking-wide text-fg-faint">
-              <th className="px-4 pb-2 font-medium sm:px-5">Repository</th>
-              <th className="px-4 pb-2 text-right font-medium">Reviews</th>
-              <th className="px-4 pb-2 text-right font-medium">Open</th>
-              <th className="px-4 pb-2 text-right font-medium">Fixed</th>
-              <th className="px-4 pb-2 pr-4 text-right font-medium sm:pr-5">Fix rate</th>
+              <th className="px-1 pb-2 font-medium">Repository</th>
+              <th className="px-1 pb-2 text-right font-medium">Reviews</th>
+              <th className="px-1 pb-2 text-right font-medium">Open</th>
+              <th className="px-1 pb-2 text-right font-medium">Fixed</th>
+              <th className="px-1 pb-2 text-right font-medium">Fix rate</th>
             </tr>
           </thead>
           <tbody>
             {repoAnalytics.map((repo) => (
               <tr key={repo.repository} className="border-t border-border-subtle">
-                <td className="max-w-[220px] truncate px-4 py-2.5 font-mono text-[12px] text-foreground sm:px-5">
+                <td className="max-w-[220px] truncate px-1 py-2.5 font-mono text-[12px] text-foreground">
                   {repo.repository}
                 </td>
-                <td className="px-4 py-2.5 text-right text-[12.5px] tabular-nums text-fg-muted">
+                <td className="px-1 py-2.5 text-right text-[12.5px] tabular-nums text-fg-muted">
                   {repo.reviews}
                 </td>
-                <td className="px-4 py-2.5 text-right text-[12.5px] tabular-nums text-warning">
+                <td className="px-1 py-2.5 text-right text-[12.5px] tabular-nums text-warning">
                   {repo.open}
                 </td>
-                <td className="px-4 py-2.5 text-right text-[12.5px] tabular-nums text-success">
+                <td className="px-1 py-2.5 text-right text-[12.5px] tabular-nums text-success">
                   {repo.fixed}
                 </td>
-                <td className="px-4 py-2.5 pr-4 text-right text-[12.5px] tabular-nums text-foreground sm:pr-5">
+                <td className="px-1 py-2.5 text-right text-[12.5px] tabular-nums text-foreground">
                   {repo.fixRate}%
                 </td>
               </tr>
@@ -167,7 +136,7 @@ function RepositoryHealth() {
           </tbody>
         </table>
       </div>
-    </FramedCard>
+    </MetricCard>
   );
 }
 
@@ -178,48 +147,46 @@ export default function AnalyticsPage() {
       description="Review volume, findings, and fix rates across your repositories."
     >
       <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard
+        <MetricCard
           label="Reviews run"
           value={analyticsSummary.reviews}
           hint={analyticsSummary.reviewsHint}
           icon={GitPullRequest}
           tone="brand"
         />
-        <StatCard
+        <MetricCard
           label="Findings found"
           value={analyticsSummary.findings}
           hint={analyticsSummary.findingsHint}
           icon={ShieldAlert}
           tone="warning"
         />
-        <StatCard
+        <MetricCard
           label="Fix rate"
           value={`${analyticsSummary.fixRate}%`}
           hint={analyticsSummary.fixRateHint}
           icon={Wrench}
           tone="success"
         />
-        <StatCard
-          label="Avg. time to fix"
-          value={`${analyticsSummary.timeToFix}h`}
-          hint={analyticsSummary.timeToFixHint}
-          icon={Timer}
+        <MetricCard
+          label="Findings per review"
+          value={analyticsSummary.perReview}
+          hint={analyticsSummary.perReviewHint}
+          icon={Gauge}
           tone="info"
         />
       </div>
 
-      <div className="mb-4">
-        <ActivityHeatmap />
-      </div>
-
       <div className="mb-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <ReviewVolume />
-        <Panel
-          title="Open findings by severity"
-          meta={<span className="text-[11.5px] text-fg-faint">Currently open</span>}
+        <ActivityHeatmap />
+        <MetricCard
+          label="Open findings by severity"
+          hint="Currently open"
+          textPosition="top"
+          dotMatrix={false}
         >
           <SeverityBars severity={openSeverity} />
-        </Panel>
+        </MetricCard>
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">

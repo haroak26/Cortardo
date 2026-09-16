@@ -195,17 +195,8 @@ export function EmptyState({
 }
 
 /* ──────────────────────────────────────────────────────────────────────────
-   8) STAT — flat stat block (no card border)
+   8) TONE HELPERS — shared by the tile card delta rows
    ────────────────────────────────────────────────────────────────────────── */
-
-export interface StatCardProps {
-  label: string;
-  value: React.ReactNode;
-  hint?: React.ReactNode;
-  icon?: LucideIcon;
-  tone?: BadgeTone;
-  className?: string;
-}
 
 const STAT_TONES: Record<BadgeTone, string> = {
   brand: "text-brand",
@@ -218,54 +209,9 @@ const STAT_TONES: Record<BadgeTone, string> = {
 
 const STAT_DELTA = /^([+-]\d+)\s+(.+)$/;
 
-/** Framed stat block: large value on top, tone icon, quiet label + subtext below. */
-export function StatCard({ label, value, hint, icon: Icon, tone = "brand", className }: StatCardProps) {
-  const delta = typeof hint === "string" ? STAT_DELTA.exec(hint) : null;
-  const positive = delta?.[1].startsWith("+") ?? true;
-  return (
-    <FramedCard className={cn("flex h-full flex-col p-4", className)}>
-      <div className="flex items-start justify-between gap-3">
-        <p className="text-[36px] font-semibold leading-none tracking-[-0.02em] tabular-nums text-foreground">
-          {value}
-        </p>
-        {Icon && (
-          <Icon size={15} strokeWidth={2} className={cn("mt-1 shrink-0 opacity-80", STAT_TONES[tone])} />
-        )}
-      </div>
-      <div className="mt-auto min-w-0 pt-3">
-        <p className="truncate text-[13.5px] font-medium leading-snug text-fg-muted">{label}</p>
-        {hint && (
-          <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[12px] font-[450] leading-snug text-fg-warm/80">
-            {delta ? (
-              <>
-                <span
-                  className={cn(
-                    "inline-flex shrink-0 items-center gap-0.5 font-semibold tabular-nums",
-                    positive ? "text-success" : "text-danger",
-                  )}
-                >
-                  {positive ? (
-                    <ArrowUpRight size={13} strokeWidth={2.5} />
-                  ) : (
-                    <ArrowDownRight size={13} strokeWidth={2.5} />
-                  )}
-                  {delta[1].replace(/^[+-]/, "")}
-                </span>
-                <span className="truncate">{delta[2]}</span>
-              </>
-            ) : (
-              <span className="truncate">{hint}</span>
-            )}
-          </div>
-        )}
-      </div>
-    </FramedCard>
-  );
-}
-
 /* ──────────────────────────────────────────────────────────────────────────
    8.1) TILE CARD — rounded secondary card for grids & compact lists
-   Softer companion to StatCard: same tone system and delta hints, but
+   Softer companion to MetricCard: same tone system and delta hints, but
    border-radius instead of the framed corner treatment. Use for repository
    lists, integrations, and any grid where stat blocks repeat too heavily.
    ────────────────────────────────────────────────────────────────────────── */

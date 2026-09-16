@@ -3,8 +3,7 @@ import { useLocation } from 'wouter';
 import { useUser } from '@/hooks/use-user';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/button';
-import { StatCard } from '@/components/ds';
-import { FramedCard } from '@/components/framed-card';
+import { MetricCard } from '@/components/ds';
 import { SeverityChips, RunStatusDot, RunStatusBadge } from '@/components/review/bits';
 import {
   dashboardMetrics,
@@ -23,7 +22,6 @@ import {
   FolderGit2,
   GitPullRequest,
   ShieldAlert,
-  type LucideIcon,
 } from 'lucide-react';
 
 const METRIC_ICONS = {
@@ -39,15 +37,6 @@ const CODE_STATUS_META: Record<CodeFileStatus, { label: string; color: string; s
   error: { label: 'Error', color: 'hsl(var(--danger))', swatch: 'bg-danger' },
 };
 
-function CardHeader({ label, icon: Icon, tone }: { label: string; icon: LucideIcon; tone: string }) {
-  return (
-    <div className="flex items-center justify-between gap-3">
-      <p className="truncate text-[12.5px] font-medium text-fg-muted">{label}</p>
-      <Icon size={15} strokeWidth={2} className={cn('shrink-0 opacity-80', tone)} />
-    </div>
-  );
-}
-
 function CardFooter({ label, onClick }: { label: string; onClick: () => void }) {
   return (
     <button
@@ -62,19 +51,20 @@ function CardFooter({ label, onClick }: { label: string; onClick: () => void }) 
 
 function FixQueueCard({ reviews, onOpen }: { reviews: MockReview[]; onOpen: () => void }) {
   return (
-    <FramedCard className="flex h-full flex-col p-4">
-      <CardHeader label="Fix queue" icon={AlertTriangle} tone="text-danger" />
-      <p className="mt-3 text-[32px] font-semibold leading-none tracking-[-0.02em] tabular-nums text-foreground">
-        {reviews.length}
-      </p>
-      <p className="mt-2 text-[12px] text-fg-subtle">Pull requests with critical or high findings</p>
+    <MetricCard
+      label="Fix queue"
+      hint="Pull requests with critical or high findings"
+      icon={AlertTriangle}
+      tone="danger"
+      textPosition="top"
+    >
       {reviews.length === 0 ? (
-        <div className="mt-3 flex flex-1 items-center gap-2 py-4 text-[13px] text-fg-muted">
+        <div className="flex flex-1 items-center gap-2 py-4 text-[13px] text-fg-muted">
           <CheckCircle2 size={15} className="shrink-0 text-success" />
           No pull requests are waiting on fixes.
         </div>
       ) : (
-        <ul className="mt-3 flex-1">
+        <ul className="flex-1">
           {reviews.map((review) => (
             <li key={review.id} className="border-b border-border-subtle last:border-b-0">
               <button
@@ -100,25 +90,26 @@ function FixQueueCard({ reviews, onOpen }: { reviews: MockReview[]; onOpen: () =
         </ul>
       )}
       <CardFooter label="View all reviews" onClick={onOpen} />
-    </FramedCard>
+    </MetricCard>
   );
 }
 
 function ActiveReviewsCard({ reviews, onOpen }: { reviews: MockReview[]; onOpen: () => void }) {
   return (
-    <FramedCard className="flex h-full flex-col p-4">
-      <CardHeader label="Active reviews" icon={GitPullRequest} tone="text-brand" />
-      <p className="mt-3 text-[32px] font-semibold leading-none tracking-[-0.02em] tabular-nums text-foreground">
-        {reviews.length}
-      </p>
-      <p className="mt-2 text-[12px] text-fg-subtle">Reviews running right now</p>
+    <MetricCard
+      label="Active reviews"
+      hint="Reviews running right now"
+      icon={GitPullRequest}
+      tone="brand"
+      textPosition="top"
+    >
       {reviews.length === 0 ? (
-        <div className="mt-3 flex flex-1 items-center gap-2 py-4 text-[13px] text-fg-muted">
+        <div className="flex flex-1 items-center gap-2 py-4 text-[13px] text-fg-muted">
           <CheckCircle2 size={15} className="shrink-0 text-success" />
           All caught up. No reviews are running.
         </div>
       ) : (
-        <ul className="mt-3 flex-1">
+        <ul className="flex-1">
           {reviews.map((review) => (
             <li key={review.id} className="border-b border-border-subtle last:border-b-0">
               <button
@@ -147,11 +138,11 @@ function ActiveReviewsCard({ reviews, onOpen }: { reviews: MockReview[]; onOpen:
         </ul>
       )}
       <CardFooter label="View all reviews" onClick={onOpen} />
-    </FramedCard>
+    </MetricCard>
   );
 }
 
-const CODE_BLOCK_PX = 15;
+const CODE_BLOCK_PX = 14;
 const CODE_BLOCK_GAP_PX = 5;
 const CODEBASE_ROWS = 5;
 
@@ -195,15 +186,17 @@ function CodebaseCard() {
     status === 'clean' ? totals.clean : status === 'fixing' ? totals.fixing : totals.error;
 
   return (
-    <FramedCard className="flex flex-col p-4">
-      <CardHeader label="Codebase" icon={Boxes} tone="text-fg-muted" />
-      <p className="mt-2 text-[12px] text-fg-subtle">
-        Each block is one indexed file, coloured by its current state.
-      </p>
-
+    <MetricCard
+      label="Codebase"
+      hint="Each block is one indexed file, coloured by its current state."
+      icon={Boxes}
+      tone="neutral"
+      textPosition="top"
+      dotMatrix={false}
+    >
       {(
         <>
-          <div ref={gridRef} className="mt-4 flex flex-wrap gap-[4px]">
+          <div ref={gridRef} className="flex flex-wrap justify-start gap-[5px]">
             {visibleFiles.map((file: CodebaseFile) => {
               const meta = CODE_STATUS_META[file.status];
               return (
@@ -216,7 +209,7 @@ function CodebaseCard() {
               );
             })}
           </div>
-          <div className="mt-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11.5px] text-fg-muted">
               {(Object.keys(CODE_STATUS_META) as CodeFileStatus[]).map((status) => (
                 <span key={status} className="inline-flex items-center gap-1.5">
@@ -234,7 +227,7 @@ function CodebaseCard() {
           </div>
         </>
       )}
-    </FramedCard>
+    </MetricCard>
   );
 }
 
@@ -264,9 +257,11 @@ export default function HomePage() {
             </p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
-            <Button onClick={diagnoseError}>
-              <GitPullRequest size={14} />
+            <Button design="pill" onClick={diagnoseError}>
               Diagnose Error
+            </Button>
+            <Button design="pill-secondary" onClick={() => setLocation('/bot/rules')}>
+              Bot
             </Button>
           </div>
         </div>
@@ -276,7 +271,7 @@ export default function HomePage() {
           {dashboardMetrics.map((metric) => {
             const Icon = METRIC_ICONS[metric.key as keyof typeof METRIC_ICONS] ?? GitPullRequest;
             return (
-              <StatCard
+              <MetricCard
                 key={metric.key}
                 label={metric.label}
                 value={metric.value}

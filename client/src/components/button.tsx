@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 
 /* ─── Types ─── */
 
-export type ButtonDesign = "primary" | "secondary" | "outline" | "ghost" | "destructive" | "pill" | "pill-secondary" | "pill-ghost";
+export type ButtonDesign = "primary" | "secondary" | "outline" | "ghost" | "destructive" | "pill" | "pill-secondary" | "pill-ghost" | "pill-destructive";
 export type IconButtonDesign = "outline" | "ghost" | "secondary" | "brand";
 export type ButtonSize = "xs" | "sm" | "md";
 
@@ -55,6 +55,8 @@ const mainDesign: Record<ButtonDesign, string> = {
     "bg-surface-hover text-foreground hover:bg-surface-hover/80 active:bg-surface-active/80 rounded-full",
   "pill-ghost":
     "bg-transparent text-foreground hover:bg-surface-active active:bg-surface-active/80 rounded-full",
+  "pill-destructive":
+    "bg-destructive text-destructive-foreground hover:bg-destructive/90 active:bg-destructive/90 rounded-full",
 };
 
 const loaderSize: Record<ButtonSize, string> = {
@@ -73,7 +75,7 @@ const iconSize: Record<ButtonSize, string> = {
 
 /** Brand-filled icon button surface, shared by `IconButton design="brand"`. */
 export const brandIconButtonClass =
-  "relative inline-flex h-[36px] w-[36px] max-md:h-[40px] max-md:w-[40px] shrink-0 cursor-pointer items-center justify-center rounded-[10px] border-none px-0 " +
+  "relative inline-flex h-[36px] w-[36px] max-md:h-[40px] max-md:w-[40px] shrink-0 cursor-pointer items-center justify-center rounded-full border-none px-0 " +
   "bg-brand text-brand-foreground " +
   "transition-[background-color,transform] duration-150 ease-out " +
   "hover:bg-[hsl(var(--brand-hover))] active:scale-[0.97] active:bg-[hsl(var(--brand-hover))] " +

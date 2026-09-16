@@ -205,7 +205,7 @@ export function GithubIntegrationsPage() {
                 ) : connected ? (
                   <SecureLock />
                 ) : null}
-                <ChevronRight size={14} className="text-fg-faint" />
+                <ChevronRight size={14} strokeWidth={2.5} className="text-fg-faint" />
               </div>
             </div>
           </Link>

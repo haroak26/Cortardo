@@ -6,10 +6,12 @@ import { useTheme } from "@/hooks/use-theme";
 import { useQueryClient, useMutation, useQuery } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { DashboardSpeed01Icon, Edit01Icon } from "@hugeicons/core-free-icons";
 import { useWorkspace } from "@/contexts/workspace-context";
 import {
-  Check, Clock, Download, Lock, ChevronRight, ChevronDown, ArrowLeft,
-  User, CreditCard, Globe, Hash,
+  Check, Clock, Download, Lock, ChevronRight, ChevronDown, ArrowLeft, ArrowRight,
+  User, CreditCard, Globe,
   Zap, Trash2, Smartphone, Key, Unplug,
   Plus, Loader, AlertCircle, X, Menu,
   Users,
@@ -17,7 +19,7 @@ import {
 import { Button } from "@/components/button";
 import { TextInput } from "@/components/text-input";
 import { OtpInput } from "@/components/otp-input";
-import { Badge, ListSkeleton } from "@/components/ds";
+import { Badge, ListSkeleton, MetricCard } from "@/components/ds";
 import { OpenDropdown, OpenDropdownBackdrop, OpenDropdownItem, OpenDropdownMenu } from "@/components/open-dropdown";
 import { TinyToggle } from "@/components/ui/tiny-toggle";
 import {
@@ -33,9 +35,8 @@ import {
 
 import TeamPageView from "@/pages/TeamPage";
 import { GithubIntegrationsPage, GithubIntegrationDetailsPage } from "@/components/account/GithubIntegrationSection";
-import { PLAN_LIMITS, type PlanTier, type BillingPeriod } from "@shared/schema";
+import { PLAN_LIMITS, type PlanTier } from "@shared/schema";
 import { CURRENCIES, CURRENCY_CODES, type CurrencyCode } from "@/lib/billing";
-import { CanvasDropdown } from "@/components/CanvasDropdown";
 import { cn } from "@/lib/utils";
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -184,34 +185,43 @@ function AvatarUpload({ user, onUpdated }: { user: any; onUpdated: () => void })
 
   return (
     <SettingsRow label="Logo / Avatar" description="Shown on your profile and review comments.">
-      <div className="flex items-center gap-3">
-        {user.avatarUrl ? (
-          <img src={user.avatarUrl} alt="Avatar" className="w-10 h-10 rounded-full object-cover shrink-0" />
-        ) : (
-          <div className="w-10 h-10 rounded-full bg-foreground flex items-center justify-center shrink-0">
-            <span className="text-white text-[15px] font-semibold">{initials || "U"}</span>
-          </div>
-        )}
-        <div className="flex flex-col gap-1">
-          <div className="flex items-center gap-2">
-            <input
-              ref={fileRef}
-              type="file"
-              accept="image/png,image/jpeg,image/gif,image/webp"
-              onChange={handleUpload}
-              className="hidden"
-              id="avatar-upload"
-            />
-            <label
-              htmlFor="avatar-upload"
-              className="cursor-pointer inline-flex items-center gap-1 h-7 px-2.5 rounded-lg border border-input bg-background text-[12px] font-medium text-foreground hover:bg-surface-hover transition-colors whitespace-nowrap"
-            >
-              {uploading ? "Uploading…" : "Upload"}
-            </label>
-          </div>
-          <p className="text-[12px] font-[450] text-fg-warm">Max 25MB</p>
-          {error && <p className="text-[11px] text-destructive m-0">{error}</p>}
-        </div>
+      <div className="flex flex-col gap-1">
+        <input
+          ref={fileRef}
+          type="file"
+          accept="image/png,image/jpeg,image/gif,image/webp"
+          onChange={handleUpload}
+          className="hidden"
+          id="avatar-upload"
+        />
+        <button
+          type="button"
+          onClick={() => fileRef.current?.click()}
+          disabled={uploading}
+          aria-label="Change avatar"
+          className="group relative h-10 w-10 shrink-0 cursor-pointer overflow-hidden rounded-full border-none bg-transparent p-0 disabled:cursor-default"
+        >
+          {user.avatarUrl ? (
+            <img src={user.avatarUrl} alt="Avatar" className="h-10 w-10 rounded-full object-cover" />
+          ) : (
+            <span className="flex h-10 w-10 items-center justify-center rounded-full bg-foreground">
+              <span className="text-[15px] font-semibold text-white">{initials || "U"}</span>
+            </span>
+          )}
+          <span
+            className={cn(
+              "absolute inset-0 flex items-center justify-center rounded-full bg-black/45 transition-opacity",
+              uploading ? "opacity-100" : "opacity-0 group-hover:opacity-100",
+            )}
+          >
+            {uploading ? (
+              <Loader className="h-4 w-4 animate-spin text-white" />
+            ) : (
+              <HugeiconsIcon icon={Edit01Icon} size={16} strokeWidth={1.75} className="text-white" />
+            )}
+          </span>
+        </button>
+        {error && <p className="text-[11px] text-destructive m-0">{error}</p>}
       </div>
     </SettingsRow>
   );
@@ -346,7 +356,7 @@ function PasswordRow() {
   if (!open) {
     return (
       <SettingsRow label="Password" description="Change the password used to sign in.">
-        <Button design="ghost" size="xs" onClick={() => setOpen(true)}>Change password</Button>
+        <Button design="pill-ghost" size="xs" onClick={() => setOpen(true)}>Change password</Button>
       </SettingsRow>
     );
   }
@@ -375,6 +385,7 @@ function PasswordRow() {
       </SettingsRow>
       <div className="flex justify-end">
         <SaveButton
+          pill
           onSave={() => submit()}
           onCancel={() => { setCurrent(''); setNext(''); setConfirm(''); setError(null); }}
           isSaving={saving}
@@ -417,7 +428,7 @@ function DeleteRow({ username }: { username: string }) {
   if (!open) {
     return (
       <SettingsRow label="Delete account" description="Permanently delete your account and all data.">
-        <Button design="destructive" size="xs" onClick={() => setOpen(true)}>
+        <Button design="pill-destructive" size="xs" onClick={() => setOpen(true)}>
           <Trash2 className="h-3.5 w-3.5" /> Delete account
         </Button>
       </SettingsRow>
@@ -437,10 +448,10 @@ function DeleteRow({ username }: { username: string }) {
         </div>
         {error && <p className="text-[12px] text-destructive m-0">{error}</p>}
         <div className="flex gap-2 pt-1">
-          <Button design="destructive" size="xs" type="submit" disabled={deleting} isLoading={deleting}>
+          <Button design="pill-destructive" size="xs" type="submit" disabled={deleting} isLoading={deleting}>
             {deleting ? "Deleting…" : "Delete"}
           </Button>
-          <Button design="ghost" size="xs" onClick={() => { setOpen(false); setError(null); }}>Cancel</Button>
+          <Button design="pill-ghost" size="xs" onClick={() => { setOpen(false); setError(null); }}>Cancel</Button>
         </div>
       </form>
     </SettingsRow>
@@ -475,36 +486,36 @@ function VerificationBanner({ emailVerified, pendingEmail, onResend, isResending
 
 // ── Sub-pages ──────────────────────────────────────────────────────────────
 
-type AccountLink = { label: string; href: string; hint: string; icon: React.ElementType };
+type AccountLink = { label: string; href: string; hint: string; icon: React.ReactNode };
 type AccountNavGroup = { label: string; items: AccountLink[] };
 
 const ACCOUNT_NAV: AccountNavGroup[] = [
   {
     label: "Account",
     items: [
-      { label: "Profile", href: "/account/profile", hint: "Name, email, username", icon: User },
-      { label: "Sessions", href: "/account/sessions", hint: "Devices where you're signed in", icon: Smartphone },
+      { label: "Profile", href: "/account/profile", hint: "Name, email, username", icon: <User className="h-4 w-4 text-muted-foreground shrink-0" strokeWidth={1.5} /> },
+      { label: "Sessions", href: "/account/sessions", hint: "Devices where you're signed in", icon: <Smartphone className="h-4 w-4 text-muted-foreground shrink-0" strokeWidth={1.5} /> },
     ],
   },
   {
     label: "Billing",
     items: [
-      { label: "Billing", href: "/account/billing", hint: "Plans & payment", icon: CreditCard },
-      { label: "Usage", href: "/account/usage", hint: "Emails, inboxes & domains", icon: Hash },
+      { label: "Billing", href: "/account/billing", hint: "Plans & payment", icon: <CreditCard className="h-4 w-4 text-muted-foreground shrink-0" strokeWidth={1.5} /> },
+      { label: "Usage", href: "/account/usage", hint: "Emails, inboxes & domains", icon: <HugeiconsIcon icon={DashboardSpeed01Icon} size={16} strokeWidth={1.5} className="shrink-0 text-muted-foreground" /> },
     ],
   },
   {
     label: "Security & Auth",
     items: [
-      { label: "Security", href: "/account/security", hint: "Password & sign out", icon: Lock },
-      { label: "Authentication", href: "/account/authentication", hint: "Two-factor authentication", icon: Key },
-      { label: "Integrations", href: "/account/integrations", hint: "GitHub & connected apps", icon: Unplug },
+      { label: "Security", href: "/account/security", hint: "Password & sign out", icon: <Lock className="h-4 w-4 text-muted-foreground shrink-0" strokeWidth={1.5} /> },
+      { label: "Authentication", href: "/account/authentication", hint: "Two-factor authentication", icon: <Key className="h-4 w-4 text-muted-foreground shrink-0" strokeWidth={1.5} /> },
+      { label: "Integrations", href: "/account/integrations", hint: "GitHub & connected apps", icon: <Unplug className="h-4 w-4 text-muted-foreground shrink-0" strokeWidth={1.5} /> },
     ],
   },
   {
     label: "Danger Zone",
     items: [
-      { label: "Danger Zone", href: "/account/actions", hint: "Sign out & delete account", icon: Zap },
+      { label: "Danger Zone", href: "/account/actions", hint: "Sign out & delete account", icon: <Zap className="h-4 w-4 text-muted-foreground shrink-0" strokeWidth={1.5} /> },
     ],
   },
 ];
@@ -555,7 +566,7 @@ function AccountOverview({ user, planLabel, currentPlan }: any) {
               <a key={link.href} href={link.href} className="block no-underline group">
                 <div className="flex items-center justify-between gap-3 py-3 border-b border-[hsl(var(--surface-hover))] last:border-b-0">
                   <div className="flex items-center gap-2.5 min-w-0">
-                    <link.icon className="h-4 w-4 text-muted-foreground shrink-0" strokeWidth={1.5} />
+                    {link.icon}
                     <div className="min-w-0">
                       <p className="text-[13.5px] font-medium text-foreground leading-snug">{link.label}</p>
                       <p className="mt-0.5 text-[12px] text-muted-foreground leading-snug">{link.hint}</p>
@@ -649,8 +660,8 @@ function TwoFactorSection() {
                 <Button design="ghost" size="xs" onClick={() => setView('setup')}>Reconfigure</Button>
               </div>
             ) : (
-              <Button design="ghost" size="xs" onClick={handleSetup} isLoading={saving}>
-                <Smartphone size={12} /> Set up
+              <Button design="pill-secondary" size="xs" onClick={handleSetup} isLoading={saving}>
+                Get Started
               </Button>
             )}
           </SettingsRow>
@@ -778,15 +789,14 @@ function SessionsSection() {
       title="Active Sessions"
       action={
         otherSessions.length > 0 ? (
-          <Button
-            design="ghost"
-            size="xs"
+          <button
+            type="button"
             onClick={() => revokeAllMutation.mutate()}
             disabled={revokeAllMutation.isPending}
-            isLoading={revokeAllMutation.isPending}
+            className="inline-flex shrink-0 cursor-pointer items-center gap-1 border-none bg-transparent p-0 text-[12px] font-medium text-fg-muted transition-colors hover:text-foreground disabled:cursor-default disabled:opacity-50"
           >
-            Revoke all
-          </Button>
+            {revokeAllMutation.isPending ? "Revoking…" : "Revoke all"}
+          </button>
         ) : undefined
       }
     >
@@ -829,14 +839,14 @@ function SessionsSection() {
                   </p>
                 </div>
               </div>
-              <Button
-                design="secondary"
-                size="xs"
+              <button
+                type="button"
                 onClick={() => revokeMutation.mutate(session.id)}
                 disabled={revokeMutation.isPending}
+                className="inline-flex shrink-0 cursor-pointer items-center gap-1 border-none bg-transparent p-0 text-[12px] font-medium text-fg-muted transition-colors hover:text-foreground disabled:cursor-default disabled:opacity-50"
               >
                 Revoke
-              </Button>
+              </button>
             </div>
           ))}
         </>
@@ -854,7 +864,7 @@ function SecurityPage() {
       </SettingsSection>
       <SettingsSection title="Sign Out">
         <SettingsRow label="Sign out" description="End your session on this device.">
-          <Button design="secondary" size="xs" onClick={() => logout.mutate()} disabled={logout.isPending} isLoading={logout.isPending}>
+          <Button design="pill-secondary" size="xs" onClick={() => logout.mutate()} disabled={logout.isPending} isLoading={logout.isPending}>
             {logout.isPending ? "Signing out…" : "Sign out"}
           </Button>
         </SettingsRow>
@@ -879,7 +889,7 @@ function SessionsPage() {
   );
 }
 
-function BillingPage({ planInfo, checkoutMutation, cancelMutation, portalMutation }: any) {
+function BillingPage({ planInfo, checkoutMutation, portalMutation }: any) {
   const currentPlan: Plan = planInfo?.plan ?? "free";
   const limits = PLAN_LIMITS[currentPlan] ?? PLAN_LIMITS.free;
   const price = limits.prices.monthly;
@@ -887,8 +897,8 @@ function BillingPage({ planInfo, checkoutMutation, cancelMutation, portalMutatio
     ? new Date(planInfo.renewsAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })
     : null;
 
-  const [billingPeriod, setBillingPeriod] = useState<BillingPeriod>("monthly");
   const [currency, setCurrency] = useState<CurrencyCode>("USD");
+  const [currencyOpen, setCurrencyOpen] = useState(false);
 
   const { data: transactionsData } = useQuery<{ transactions: Array<{ id: string; description: string; amount: number; date: string; status: string }> }>({
     queryKey: ['/api/credits/transactions'],
@@ -905,93 +915,83 @@ function BillingPage({ planInfo, checkoutMutation, cancelMutation, portalMutatio
 
   return (
     <div className="py-4 space-y-6">
-      <SettingsSection
-        title="Current Plan"
-        action={
-          <div className="flex items-center gap-2">
-            {!planInfo?.cancelAtPeriodEnd && currentPlan !== "free" && (
-              <Button design="ghost" size="xs" onClick={() => cancelMutation.mutate()} disabled={cancelMutation.isPending}>
-                {cancelMutation.isPending ? "Cancelling…" : "Cancel"}
-              </Button>
-            )}
-            <Button design="ghost" size="xs" onClick={() => portalMutation.mutate()} disabled={portalMutation.isPending}>
-              {portalMutation.isPending ? "Opening…" : "Manage billing"}
-            </Button>
+      <section className="w-full">
+        <header className="flex items-end justify-between gap-3">
+          <h2 className="font-sans text-[15px] font-medium leading-tight text-foreground">Current Plan</h2>
+          <div className="flex shrink-0 items-center">
+            <button
+              type="button"
+              onClick={() => portalMutation.mutate()}
+              disabled={portalMutation.isPending}
+              className="inline-flex shrink-0 cursor-pointer items-center gap-1 border-none bg-transparent p-0 text-[12px] font-medium text-fg-muted transition-colors hover:text-foreground disabled:cursor-default disabled:opacity-50"
+            >
+              {portalMutation.isPending ? "Opening…" : "Manage Subscription"}
+              <ArrowRight size={12} />
+            </button>
           </div>
-        }
-      >
-        <div className="pt-2 pb-4">
-          <div className="flex items-baseline gap-2 mb-1">
-            <span className="text-[32px] font-semibold text-foreground tracking-[-0.02em] tabular-nums">${price}</span>
-            <span className="text-[13px] font-[450] text-fg-warm">/month</span>
-          </div>
-          <div className="flex items-center gap-2 mt-2">
-            <span className="text-[13.5px] font-medium text-fg-strong">{limits.label} Plan</span>
-            {planInfo?.billingPeriod === "annual" && (
-              <span className="text-[10px] font-medium text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded-full">Annual</span>
-            )}
-          </div>
-          {renewsLabel && (
-            <p className="text-[12px] font-[450] text-fg-warm mt-0.5">Renews {renewsLabel}</p>
-          )}
+        </header>
+        <div className="mt-[14px]">
+          <MetricCard
+            label={`${limits.label} Plan`}
+            value={`${CURRENCIES[currency].symbol}${Math.round(price / CURRENCIES[currency].usdPerUnit)}`}
+            hint={renewsLabel ? `Renews ${renewsLabel}` : "Billed monthly"}
+          />
         </div>
-      </SettingsSection>
+      </section>
 
       <SettingsSection
         title="Change Plan"
         action={
-          <div className="flex items-center gap-2">
-            <CanvasDropdown
+          <div className="relative min-w-[120px]">
+            <OpenDropdown
+              open={currencyOpen}
+              onClick={() => setCurrencyOpen((open) => !open)}
               value={currency}
-              onChange={(code) => setCurrency(code as CurrencyCode)}
-              options={CURRENCY_CODES.map((code) => ({
-                value: code,
-                label: (
-                  <span className="flex w-full items-center justify-between gap-3">
-                    <span>{CURRENCIES[code].label}</span>
-                    <span className="font-semibold">{code}</span>
-                  </span>
-                ),
-              }))}
-              align="right"
-            >
-              <button className="flex items-center gap-1 h-7 px-2.5 rounded-full border border-border bg-background text-[12px] font-semibold text-foreground hover:border-brand/40 transition-colors cursor-pointer">
-                {currency}
-                <ChevronDown size={12} strokeWidth={2.5} />
-              </button>
-            </CanvasDropdown>
-            <TinyToggle
-              checked={billingPeriod === "annual"}
-              onCheckedChange={(v) => setBillingPeriod(v ? "annual" : "monthly")}
-              title={billingPeriod === "annual" ? "Switch to monthly billing" : "Switch to annual billing (save ~20%)"}
+              aria-label="Currency"
             />
+            {currencyOpen && (
+              <>
+                <OpenDropdownBackdrop onClick={() => setCurrencyOpen(false)} />
+                <OpenDropdownMenu align="right" className="min-w-[170px]">
+                  {CURRENCY_CODES.map((code) => (
+                    <OpenDropdownItem
+                      key={code}
+                      selected={code === currency}
+                      onClick={() => {
+                        setCurrency(code as CurrencyCode);
+                        setCurrencyOpen(false);
+                      }}
+                    >
+                      {CURRENCIES[code].label}
+                    </OpenDropdownItem>
+                  ))}
+                </OpenDropdownMenu>
+              </>
+            )}
           </div>
         }
       >
         {paidTiers.map((key) => {
           const tierLimits = PLAN_LIMITS[key];
           const usdPerUnit = CURRENCIES[currency].usdPerUnit;
-          const displayPrice = billingPeriod === "annual" ? tierLimits.prices.annual / 12 : tierLimits.prices.monthly;
-          const convertedPrice = Math.round(displayPrice / usdPerUnit);
-          const convertedAnnual = Math.round(tierLimits.prices.annual / usdPerUnit);
-          const isCurrent = key === currentPlan && planInfo?.billingPeriod === billingPeriod;
+          const convertedPrice = Math.round(tierLimits.prices.monthly / usdPerUnit);
+          const isCurrent = key === currentPlan;
           return (
             <div key={key} className="flex items-center justify-between gap-3 py-[12px]">
               <div className="min-w-0">
                 <p className="text-[13.5px] font-medium text-fg-strong">{tierLimits.label}</p>
                 <p className="text-[12px] font-[450] text-fg-warm mt-0.5">
                   {CURRENCIES[currency].symbol}{convertedPrice}/mo
-                  {billingPeriod === "annual" && ` · ${CURRENCIES[currency].symbol}${convertedAnnual} billed annually`}
                 </p>
               </div>
               <Button
-                design={key === currentPlan ? "secondary" : "primary"}
+                design={isCurrent ? "pill-secondary" : "pill"}
                 size="xs"
-                onClick={() => checkoutMutation.mutate({ plan: key, billingPeriod, currency: currency.toLowerCase() })}
+                onClick={() => checkoutMutation.mutate({ plan: key, currency: currency.toLowerCase() })}
                 disabled={isCurrent || checkoutMutation.isPending}
                 isLoading={checkoutMutation.isPending}
               >
-                {isCurrent ? "Current plan" : key === currentPlan ? "Switch" : "Upgrade"}
+                {isCurrent ? "Current plan" : "Select"}
               </Button>
             </div>
           );
@@ -1100,7 +1100,7 @@ function ActionsPage({ username }: { username: string }) {
     <div className="py-4 space-y-8">
       <SettingsSection title="Session">
         <SettingsRow label="Sign out" description="End your session on this device.">
-          <Button design="secondary" size="xs" onClick={() => logout.mutate()} disabled={logout.isPending} isLoading={logout.isPending}>
+          <Button design="pill-secondary" size="xs" onClick={() => logout.mutate()} disabled={logout.isPending} isLoading={logout.isPending}>
             {logout.isPending ? "Signing out…" : "Sign out"}
           </Button>
         </SettingsRow>
@@ -1153,29 +1153,11 @@ function UsagePage({ planInfo }: any) {
 
   return (
     <div className="py-4 space-y-6">
-      <SettingsSection title="Usage Overview">
-        <div className="pt-2 pb-4">
-          <div className="flex items-baseline gap-2 mb-1">
-            <span className="text-[32px] font-semibold text-foreground tracking-[-0.02em] tabular-nums">{overall}%</span>
-            <span className="text-[13px] font-[450] text-fg-warm">plan used</span>
-          </div>
-          <div className="h-2 bg-muted rounded-full overflow-hidden max-w-xs mt-3">
-            <div
-              className={`h-full rounded-full transition-all ${overall >= 80 ? 'bg-red-500' : overall >= 60 ? 'bg-yellow-500' : 'bg-brand'}`}
-              style={{ width: `${overall}%` }}
-            />
-          </div>
-          <div className="flex items-center gap-1 mt-2">
-            <span className="text-[12px] font-[450] text-fg-warm">
-              <span className="text-foreground font-medium">{limits.label}</span> plan
-            </span>
-            <span className="text-[11px] text-fg-faint mx-1">·</span>
-            <span className="text-[12px] font-[450] text-fg-warm">
-              Resets <span className="text-foreground font-medium">{planInfo?.renewsAt ? new Date(planInfo.renewsAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'monthly'}</span>
-            </span>
-          </div>
-        </div>
-      </SettingsSection>
+      <MetricCard
+        label={`${limits.label} plan`}
+        value={`${overall}%`}
+        hint={`Resets ${planInfo?.renewsAt ? new Date(planInfo.renewsAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'monthly'}`}
+      />
 
       <SettingsSection title="Detailed Usage">
         <UsageBar
@@ -1289,19 +1271,6 @@ export default function Account() {
     onError: (err) => toast({ title: "Billing unavailable", description: (err as Error).message, variant: "destructive" }),
   });
 
-  const cancelMutation = useMutation({
-    mutationFn: async () => {
-      const r = await fetch("/api/billing/cancel", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify({}) });
-      if (!r.ok) throw new Error("Failed"); return r.json();
-    },
-    onSuccess: () => {
-      toast({ title: "Subscription cancelled", variant: "success" });
-      queryClient.invalidateQueries({ queryKey: ["/api/me"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/me/plan"] });
-    },
-    onError: (err) => toast({ title: "Cancellation failed", description: (err as Error).message, variant: "destructive" }),
-  });
-
   type PlanInfo = {
     plan: PlanTier; status: string | null; cancelAtPeriodEnd: boolean;
     billingPeriod: "monthly" | "annual";
@@ -1376,7 +1345,7 @@ const contentBySection: Record<string, React.ReactNode> = {
   "settings": <SecurityPage />,
   "authentication": <AuthenticationPage />,
   "sessions": <SessionsPage />,
-  "billing": <BillingPage planInfo={planInfo} checkoutMutation={checkoutMutation} cancelMutation={cancelMutation} portalMutation={portalMutation} />,
+  "billing": <BillingPage planInfo={planInfo} checkoutMutation={checkoutMutation} portalMutation={portalMutation} />,
   "usage": <UsagePage planInfo={planInfo} />,
   "integrations": <GithubIntegrationsPage />,
   "integrations/github": <GithubIntegrationDetailsPage />,

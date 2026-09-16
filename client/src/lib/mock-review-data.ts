@@ -553,8 +553,8 @@ export interface AnalyticsSummary {
   findingsHint: string;
   fixRate: number;
   fixRateHint: string;
-  timeToFix: number;
-  timeToFixHint: string;
+  perReview: number;
+  perReviewHint: string;
 }
 
 export const analyticsSummary: AnalyticsSummary = {
@@ -564,8 +564,8 @@ export const analyticsSummary: AnalyticsSummary = {
   findingsHint: '+23 in the last 7 days',
   fixRate: 68,
   fixRateHint: '+5pts in the last 7 days',
-  timeToFix: 9.4,
-  timeToFixHint: '-2.1h in the last 7 days',
+  perReview: 1.7,
+  perReviewHint: '212 findings across 128 reviews',
 };
 
 export interface TrendPoint {

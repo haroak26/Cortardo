@@ -7,7 +7,7 @@ import {
   SourceCodeIcon, Activity01Icon, Book02Icon, GraduationCapIcon,
   Settings02Icon, EyeOffIcon,
   UserGroupIcon, UserAdd01Icon, UserIcon, SmartPhone01Icon,
-  CreditCardIcon, Chart01Icon, Key01Icon, UnplugIcon,
+  CreditCardIcon, DashboardSpeed01Icon, Key01Icon, UnplugIcon,
   Alert02Icon,
 } from '@hugeicons/core-free-icons';
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -74,7 +74,7 @@ const ACCOUNT_NAV: { label: string; tabs: Tab[] }[] = [
     label: 'Billing',
     tabs: [
       { id: 'account-billing', label: 'Billing', href: '/account/billing', icon: CreditCardIcon },
-      { id: 'account-usage', label: 'Usage', href: '/account/usage', icon: Chart01Icon },
+      { id: 'account-usage', label: 'Usage', href: '/account/usage', icon: DashboardSpeed01Icon },
     ],
   },
   {

@@ -1,18 +1,21 @@
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
-import { CornerMarkers } from "@/components/framed-card";
 
-export function StatCardSkeleton({ className }: { className?: string }) {
+export function MetricCardSkeleton({ className }: { className?: string }) {
   return (
-    <div className={cn("relative flex flex-col border border-border/70 bg-background p-4 animate-pulse", className)}>
-      <CornerMarkers />
-      <div className="flex items-center justify-between gap-3">
-        <Skeleton className="h-3 w-16" />
+    <div
+      className={cn(
+        "flex flex-col rounded-[12px] border border-[hsl(var(--surface-hover))] bg-background p-3 animate-pulse",
+        className,
+      )}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <Skeleton className="h-[41px] w-[52px] rounded-[6px]" />
         <Skeleton className="h-4 w-4 rounded-sm" />
       </div>
-      <Skeleton className="mt-3 h-8 w-16" />
-      <div className="mt-auto pt-3">
+      <div className="mt-auto pt-6">
         <Skeleton className="h-3.5 w-24" />
+        <Skeleton className="mt-1.5 h-3 w-32" />
       </div>
     </div>
   );
@@ -179,7 +182,7 @@ export function StatGridSkeleton({ count = 4 }: { count?: number }) {
   return (
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
       {Array.from({ length: count }).map((_, i) => (
-        <StatCardSkeleton key={i} />
+        <MetricCardSkeleton key={i} />
       ))}
     </div>
   );

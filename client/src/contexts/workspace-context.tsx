@@ -22,7 +22,20 @@ type WorkspaceContextType = {
   switchingWsName: string;
 };
 
-const WorkspaceContext = createContext<WorkspaceContextType | null>(null);
+/**
+ * Keep a single context instance across module (re)loads. In dev, HMR can
+ * re-instantiate this module while a lazy page chunk still holds the previous
+ * copy — the provider and consumer would then disagree on the context object
+ * and `useWorkspace` would throw even though the provider is mounted.
+ */
+const WORKSPACE_CONTEXT_KEY = "__cortardo_workspace_context__";
+
+const contextStore = globalThis as typeof globalThis & {
+  [WORKSPACE_CONTEXT_KEY]?: React.Context<WorkspaceContextType | null>;
+};
+
+const WorkspaceContext: React.Context<WorkspaceContextType | null> =
+  contextStore[WORKSPACE_CONTEXT_KEY] ?? (contextStore[WORKSPACE_CONTEXT_KEY] = createContext<WorkspaceContextType | null>(null));
 
 function WorkspaceProviderInner({ children }: { children: React.ReactNode }) {
   const { data: user } = useUser();

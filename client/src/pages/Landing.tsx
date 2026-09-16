@@ -135,7 +135,7 @@ export default function Landing() {
 
           <Reveal delay={0.1}>
             <p className="mx-auto mt-5 max-w-[520px] text-[14.5px] md:text-[15.5px] text-foreground/80 font-normal leading-[1.7] text-pretty">
-              Cortardo reviews every pull request — catching bugs, security
+              Cortardo reviews every pull request, catching bugs, security
               <br /> issues, and style drift before they reach production.
             </p>
           </Reveal>

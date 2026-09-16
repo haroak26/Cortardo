@@ -67,6 +67,7 @@ export default {
         ring: "hsl(var(--ring) / <alpha-value>)",
         surface: "hsl(var(--surface) / <alpha-value>)",
         "surface-hover": "hsl(var(--surface-hover) / <alpha-value>)",
+        "surface-hover-strong": "hsl(var(--surface-hover-strong) / <alpha-value>)",
         "surface-active": "hsl(var(--surface-active) / <alpha-value>)",
         "surface-muted": "hsl(var(--surface-muted) / <alpha-value>)",
         "surface-subtle": "hsl(var(--surface-subtle) / <alpha-value>)",

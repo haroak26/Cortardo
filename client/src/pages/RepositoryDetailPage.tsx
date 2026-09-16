@@ -92,8 +92,8 @@ export default function RepositoryDetailPage() {
           </div>
         </section>
 
-        <div className="grid grid-cols-1 gap-8 lg:grid-cols-2 lg:items-start">
-          <SettingsSection title="Overview">
+        <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
+          <SettingsSection title="Overview" className="flex h-full flex-col" cardClassName="min-h-0 lg:flex-1">
             <SettingsRow
               label="Automatic reviews"
               description="Review every pull request opened against this repository."
@@ -156,11 +156,13 @@ export default function RepositoryDetailPage() {
 }
 
 function RecentActivity({ runs }: { runs: ApiReviewRun[] }) {
-  const recent = runs.slice(0, 8);
+  const recent = runs;
 
   return (
     <SettingsSection
       title="Recent activity"
+      className="flex h-full flex-col"
+      cardClassName="flex min-h-0 flex-col lg:flex-1"
       action={
         runs.length > 0 ? (
           <Link
@@ -179,35 +181,37 @@ function RecentActivity({ runs }: { runs: ApiReviewRun[] }) {
           description="The bot reviews every pull request automatically once one is opened."
         />
       ) : (
-        <div className="relative py-3">
-          <span
-            aria-hidden="true"
-            className="absolute bottom-7 left-[7px] top-7 w-px -translate-x-1/2 bg-[hsl(var(--surface-hover))]"
-          />
-          <ul className="space-y-0.5">
-            {recent.map((run) => (
-              <li key={run.id}>
-                <Link
-                  href={`/review/reviews?diagnose=${run.id}`}
-                  className="flex items-start gap-3 rounded-[10px] py-2 no-underline transition-colors hover:bg-surface-hover/60"
-                >
-                  <span className="relative z-10 mt-px flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full bg-background">
-                    <RunStatusDot status={run.status} />
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[13px] font-medium leading-snug text-foreground">
-                      {run.title ?? 'Review run'}
+        <div className="max-h-[286px] min-h-0 overflow-y-auto py-2 lg:max-h-none lg:min-h-[286px] lg:flex-1">
+          <div className="relative">
+            <span
+              aria-hidden="true"
+              className="absolute bottom-4 left-[7px] top-4 w-px -translate-x-1/2 bg-[hsl(var(--surface-hover))]"
+            />
+            <ul className="space-y-0.5">
+              {recent.map((run) => (
+                <li key={run.id}>
+                  <Link
+                    href={`/review/reviews?diagnose=${run.id}`}
+                    className="-mx-2 flex items-start gap-3 rounded-[11px] px-2 py-2 no-underline transition-colors hover:bg-surface-hover/60"
+                  >
+                    <span className="relative z-10 mt-px flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full bg-background">
+                      <RunStatusDot status={run.status} />
                     </span>
-                    <span className="mt-0.5 block truncate font-mono text-[11px] text-fg-muted">
-                      {run.pullRequestNumber ? `#${run.pullRequestNumber} · ` : ''}
-                      {timeAgo(run.createdAt)}
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[13px] font-medium leading-snug text-foreground">
+                        {run.title ?? 'Review run'}
+                      </span>
+                      <span className="mt-0.5 block truncate font-mono text-[11px] text-fg-muted">
+                        {run.pullRequestNumber ? `#${run.pullRequestNumber} · ` : ''}
+                        {timeAgo(run.createdAt)}
+                      </span>
                     </span>
-                  </span>
-                  <RunStatusIcon status={run.status} />
-                </Link>
-              </li>
-            ))}
-          </ul>
+                    <RunStatusIcon status={run.status} />
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
         </div>
       )}
     </SettingsSection>

@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { Eye, Users, MousePointerClick, LayoutDashboard, LogOut, Mail, Calendar, ShieldCheck, Loader } from "lucide-react";
-import { AppPage, PageHeader, PageHeading, StatCard, DataTable, Badge, FilterChip, ContentPanel, type DataTableColumn } from "@/components/ds";
-import { StatCardSkeleton } from "@/components/skeleton-cards";
+import { AppPage, PageHeader, PageHeading, MetricCard, DataTable, Badge, FilterChip, ContentPanel, type DataTableColumn } from "@/components/ds";
+import { MetricCardSkeleton } from "@/components/skeleton-cards";
 import { Button } from "@/components/button";
 
 type AdminStats = {
@@ -70,33 +70,33 @@ function AdminDashboard() {
       {loading ? (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           {[...Array(4)].map((_, i) => (
-            <StatCardSkeleton key={i} />
+            <MetricCardSkeleton key={i} />
           ))}
         </div>
       ) : stats ? (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <StatCard
+          <MetricCard
             label="Pageviews"
             value={stats.totalPageviews.toLocaleString()}
             hint={`Last ${days} days`}
             icon={Eye}
             tone="brand"
           />
-          <StatCard
+          <MetricCard
             label="Sessions"
             value={stats.totalSessions.toLocaleString()}
             hint={`Last ${days} days`}
             icon={MousePointerClick}
             tone="info"
           />
-          <StatCard
+          <MetricCard
             label="Total Users"
             value={stats.totalUsers.toLocaleString()}
             hint="All time"
             icon={Users}
             tone="success"
           />
-          <StatCard
+          <MetricCard
             label="Workspaces"
             value={stats.totalWorkspaces.toLocaleString()}
             hint="All time"

@@ -28,6 +28,7 @@
   --surface-muted: 0 0% 98%;
   --surface-subtle: 220 20% 97%;
   --surface-hover: 220 14% 96%;
+  --surface-hover-strong: 220 14% 93%;
   --surface-active: 205 50% 97%;
   --surface-deep: 220 14% 90%;
 
@@ -54,6 +55,8 @@
   --brand-muted: 204 42% 27% / 0.1;
   --brand-border: 204 42% 27% / 0.25;
   --brand-hover: 204 42% 20%;
+  --brand-soft: 204 42% 40%;
+  --brand-soft-hover: 204 42% 33%;
 
   /* Toggle (on state) */
   --toggle-on: 152 58% 45%;
@@ -110,6 +113,7 @@
   --surface-muted: 0 0% 9%;
   --surface-subtle: 220 10% 12%;
   --surface-hover: 220 10% 14%;
+  --surface-hover-strong: 220 10% 16%;
   --surface-active: 45 4% 14%;
   --surface-deep: 220 10% 13%;
 
@@ -135,6 +139,8 @@
   --brand-muted: 204 42% 60% / 0.12;
   --brand-border: 204 42% 60% / 0.25;
   --brand-hover: 204 42% 32%;
+  --brand-soft: 204 42% 48%;
+  --brand-soft-hover: 204 42% 41%;
 
   --toggle-on: 152 55% 48%;
 

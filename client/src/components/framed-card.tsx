@@ -16,10 +16,18 @@ export function CornerMarkers() {
 }
 
 /** Square-cornered surface with a light outline and corner markers. */
-export function FramedCard({ className, children }: { className?: string; children: ReactNode }) {
+export function FramedCard({
+  className,
+  children,
+  cornerMarkers = true,
+}: {
+  className?: string;
+  children: ReactNode;
+  cornerMarkers?: boolean;
+}) {
   return (
     <div className={cn('relative border border-border/70 bg-background', className)}>
-      <CornerMarkers />
+      {cornerMarkers && <CornerMarkers />}
       {children}
     </div>
   );

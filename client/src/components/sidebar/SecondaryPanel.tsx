@@ -4,7 +4,7 @@ import { cn } from '@/lib/utils';
 import {
   UserIcon, CreditCardIcon, UserGroupIcon, Settings01Icon,
   Shield01Icon, Key01Icon, SmartPhone01Icon, Alert01Icon,
-  Chart01Icon, Coins01Icon,
+  DashboardSpeed01Icon, Coins01Icon,
 } from '@hugeicons/core-free-icons';
 import { HugeiconsIcon } from '@hugeicons/react';
 
@@ -124,7 +124,7 @@ function AccountPanel() {
       <SectionLabel>Billing</SectionLabel>
       <SubItemRow item={{ id: 'account-billing', label: 'Billing', href: '/account/billing', icon: CreditCardIcon }} location={location} />
       <SubItemRow item={{ id: 'account-credits', label: 'Credits', href: '/account/credits', icon: Coins01Icon }} location={location} />
-      <SubItemRow item={{ id: 'account-usage', label: 'Usage', href: '/account/usage', icon: Chart01Icon }} location={location} />
+      <SubItemRow item={{ id: 'account-usage', label: 'Usage', href: '/account/usage', icon: DashboardSpeed01Icon }} location={location} />
       <div className="h-2" />
       <SectionLabel>Security &amp; Auth</SectionLabel>
       <SubItemRow item={{ id: 'account-security', label: 'Security', href: '/account/security', icon: Shield01Icon }} location={location} />

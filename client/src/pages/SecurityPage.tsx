@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { Search, ShieldAlert, ShieldCheck, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/button';
 import { Panel, ReviewPageShell, SeverityBars, SeverityDot, FINDING_STATUS_META } from '@/components/review/bits';
-import { Badge, StatCard } from '@/components/ds';
+import { Badge, MetricCard } from '@/components/ds';
 import { FramedCard } from '@/components/framed-card';
 import {
   emptySeverity,
@@ -49,14 +49,14 @@ export default function SecurityPage() {
       }
     >
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 mb-4">
-        <StatCard
+        <MetricCard
           label="Open security findings"
           value={openCount}
           hint={`${criticalHigh} critical or high`}
           icon={ShieldAlert}
           tone="danger"
         />
-        <StatCard
+        <MetricCard
           label="Resolved"
           value={securityFindings.filter((f) => f.status === 'fixed').length}
           hint="Fixed after review"
