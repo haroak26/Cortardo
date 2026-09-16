@@ -37,9 +37,9 @@ export const OpenDropdown = React.forwardRef<HTMLButtonElement, OpenDropdownProp
         aria-haspopup="menu"
         aria-expanded={open}
         className={cn(
-          'group flex w-full min-w-[170px] cursor-pointer select-none items-center justify-between gap-2 rounded-[8px] bg-surface-hover px-2 py-1.5 text-left transition-colors duration-100',
-          'hover:outline hover:outline-1 hover:outline-[hsl(var(--border-strong))]',
-          open && 'outline outline-1 outline-[hsl(var(--border-strong))]',
+          'group flex w-full cursor-pointer select-none items-center justify-between gap-2 rounded-[8px] bg-surface-hover px-2 py-1.5 text-left transition-colors duration-100',
+          'hover:outline hover:outline-1 hover:outline-[hsl(var(--border))]',
+          open && 'outline outline-1 outline-[hsl(var(--border))]',
           'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 focus-visible:ring-offset-2 focus-visible:ring-offset-background',
           disabled && 'pointer-events-none opacity-50',
           className,
@@ -94,7 +94,7 @@ export function OpenDropdownMenu({
     <div
       role="menu"
       className={cn(
-        'absolute z-30 flex min-w-[170px] flex-col gap-1 rounded-[14px] border border-border bg-background p-1 shadow-md',
+        'absolute z-30 flex min-w-[150px] flex-col gap-1 rounded-[14px] border border-border bg-background p-1 shadow-md',
         side === 'top' ? 'bottom-[calc(100%+6px)]' : 'top-[calc(100%+6px)]',
         align === 'right' ? 'right-0' : 'left-0',
         className,

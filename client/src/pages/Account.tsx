@@ -261,7 +261,7 @@ function ProfilePage({ user, updateProfile, emailVerified, pendingEmail, onResen
 
       <SettingsSection title="Preferences">
         <SettingsRow label="Theme" description="Choose how Cortardo looks to you.">
-          <div className="relative min-w-[160px]">
+          <div className="relative min-w-[120px]">
             <OpenDropdown
               open={themeOpen}
               onClick={() => setThemeOpen((open) => !open)}
