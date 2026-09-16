@@ -2,19 +2,16 @@ import { useMemo, useState } from 'react';
 import { AlertCircle, RefreshCw, Sparkles } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { buildGraphLayout } from '@/lib/codegraph-layout';
-import { timeAgo } from '@/lib/mock-review-data';
-import { Button } from '@/components/button';
 import { useGenerateRepositoryCodegraph, useRepositoryCodegraph } from '@/hooks/use-github';
 import { CodebaseMap } from './CodebaseMap';
 
 export interface RepositoryCodebaseMapProps {
   repositoryId: string | null;
-  repositoryName: string;
   className?: string;
 }
 
 /** Codebase map rendered from the repository's generated codegraph. */
-export function RepositoryCodebaseMap({ repositoryId, repositoryName, className }: RepositoryCodebaseMapProps) {
+export function RepositoryCodebaseMap({ repositoryId, className }: RepositoryCodebaseMapProps) {
   const graphQuery = useRepositoryCodegraph(repositoryId);
   const generate = useGenerateRepositoryCodegraph();
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -40,29 +37,21 @@ export function RepositoryCodebaseMap({ repositoryId, repositoryName, className 
         className,
       )}
     >
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border-subtle px-3 py-2">
-        <div className="min-w-0">
-          <p className="truncate font-mono text-[12.5px] font-medium text-foreground">{repositoryName}</p>
-          <p className="mt-0.5 text-[11px] text-fg-muted">
-            {status === 'ready' && data
-              ? `${data.fileCount} files · ${data.connections.length} connections${
-                  data.generatedAt ? ` · updated ${timeAgo(data.generatedAt)}` : ''
-                }`
-              : 'Codebase map'}
-          </p>
-        </div>
-        <Button
-          design="outline"
-          size="xs"
-          onClick={() => repositoryId && generate.mutate(repositoryId)}
-          isLoading={busy}
-        >
-          <RefreshCw size={12} />
-          {status === 'ready' ? 'Rebuild' : 'Build map'}
-        </Button>
-      </div>
-
       <div className="relative min-h-0 flex-1">
+        <button
+          type="button"
+          onClick={() => repositoryId && generate.mutate(repositoryId)}
+          disabled={!repositoryId || busy}
+          className={cn(
+            'absolute top-2 z-20 flex h-7 w-7 items-center justify-center rounded-[8px] bg-background/80 text-fg-muted transition-colors hover:bg-surface-hover hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60',
+            layout && status === 'ready' && !busy ? 'right-11' : 'right-2',
+          )}
+          aria-label={status === 'ready' ? 'Rebuild codebase map' : 'Build codebase map'}
+          title={status === 'ready' ? 'Rebuild map' : 'Build map'}
+        >
+          <RefreshCw size={14} className={busy ? 'animate-spin' : undefined} />
+        </button>
+
         {graphQuery.isLoading ? (
           <MapMessage icon={<RefreshCw size={16} className="animate-spin" />} title="Loading codebase map…" />
         ) : graphQuery.isError ? (

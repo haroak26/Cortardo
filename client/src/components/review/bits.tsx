@@ -1,4 +1,6 @@
 import React from 'react';
+import { Link } from 'wouter';
+import { ArrowRight } from 'lucide-react';
 import { Badge } from '@/components/ds';
 import { FramedCard } from '@/components/framed-card';
 import { cn } from '@/lib/utils';
@@ -111,12 +113,14 @@ export function SeverityBars({ severity, className }: { severity: SeverityCounts
 export function ReviewPageShell({
   title,
   description,
+  back,
   actions,
   children,
   maxWidth = 'max-w-5xl',
 }: {
   title?: React.ReactNode;
   description?: React.ReactNode;
+  back?: { href: string; label: string };
   actions?: React.ReactNode;
   children: React.ReactNode;
   maxWidth?: string;
@@ -127,16 +131,29 @@ export function ReviewPageShell({
       <div className={`flex-1 px-4 sm:px-6 md:px-8 pt-10 pb-4 sm:pt-14 sm:pb-6 ${maxWidth} mx-auto w-full`}>
         {hasHeader && (
           <div className="flex items-start justify-between gap-4 mb-6">
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1">
               {title && (
                 <h1 className="font-sans text-[15px] font-medium leading-tight text-foreground truncate">
                   {title}
                 </h1>
               )}
-              {description && (
-                <p className="mt-0.5 text-[12px] font-[450] leading-snug text-fg-warm">
-                  {description}
-                </p>
+              {(description || back) && (
+                <div className="mt-0.5 flex items-center justify-between gap-3">
+                  {description && (
+                    <p className="min-w-0 text-[12px] font-[450] leading-snug text-fg-warm">
+                      {description}
+                    </p>
+                  )}
+                  {back && (
+                    <Link
+                      href={back.href}
+                      className="inline-flex shrink-0 items-center gap-1 text-[12px] font-medium text-fg-muted no-underline transition-colors hover:text-foreground"
+                    >
+                      {back.label}
+                      <ArrowRight size={12} />
+                    </Link>
+                  )}
+                </div>
               )}
             </div>
             {actions && <div className="flex items-center gap-2 shrink-0">{actions}</div>}

@@ -1,24 +1,26 @@
-import { useMemo, useState } from 'react';
-import { useLocation } from 'wouter';
-import { FolderGit2, Plus, Search, Settings2, X } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Link } from 'wouter';
+import { ExternalLink, FolderGit2, Plus, Search, SlidersHorizontal, X } from 'lucide-react';
 import { ReviewPageShell } from '@/components/review/bits';
-import { RepositoryReviewSettingsDialog } from '@/components/review/RepositoryReviewSettings';
 import { Badge } from '@/components/ds';
-import { Button } from '@/components/button';
+import { Button, IconButton, brandIconButtonClass } from '@/components/button';
+import { OpenDropdown, OpenDropdownBackdrop, OpenDropdownItem, OpenDropdownMenu } from '@/components/open-dropdown';
 import { SettingsCardSkeleton } from '@/components/skeleton-cards';
-import { SettingsCard, SettingsRow } from '@/components/settings-ui';
+import { SettingsRow, SettingsSection } from '@/components/settings-ui';
 import { TextInput } from '@/components/text-input';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/base/dialog';
-import { RepositoryCodebaseMap, RepositoryCodebaseMapPreview } from '@/components/review/codegraph/RepositoryCodebaseMap';
+import { RepositoryCodebaseMapPreview } from '@/components/review/codegraph/RepositoryCodebaseMap';
 import { TinyToggle } from '@/components/ui/tiny-toggle';
 import { useToast } from '@/hooks/use-toast';
 import { useWorkspace } from '@/contexts/workspace-context';
 import {
   useGithubStatus,
+  useInstallationRepositories,
   useRepositories,
   useStartGithubInstall,
   useUpdateRepository,
+  useUpdateRepositorySelection,
   type ApiRepository,
+  type InstallationRepository,
 } from '@/hooks/use-github';
 import { timeAgo } from '@/lib/mock-review-data';
 
@@ -39,20 +41,37 @@ const PROVIDER_LABELS: Record<string, string> = {
 export default function RepositoriesPage() {
   const { toast } = useToast();
   const { activeWorkspaceId } = useWorkspace();
-  const [, setLocation] = useLocation();
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<FilterId>('all');
+  const [filterOpen, setFilterOpen] = useState(false);
   const [overrides, setOverrides] = useState<Record<string, boolean>>({});
-  const [mapRepository, setMapRepository] = useState<ApiRepository | null>(null);
-  const [settingsRepository, setSettingsRepository] = useState<ApiRepository | null>(null);
+  const [connectOpen, setConnectOpen] = useState(false);
+  const [connectingId, setConnectingId] = useState<string | null>(null);
 
   const statusQuery = useGithubStatus(activeWorkspaceId);
   const reposQuery = useRepositories(activeWorkspaceId);
   const startInstall = useStartGithubInstall();
   const updateRepository = useUpdateRepository();
+  const updateSelection = useUpdateRepositorySelection();
+
+  const installation = statusQuery.data?.installations[0] ?? null;
+  const catalogQuery = useInstallationRepositories(installation?.id ?? null);
+  const available = useMemo(
+    () => (catalogQuery.data ?? []).filter((repo) => !repo.imported),
+    [catalogQuery.data],
+  );
 
   const repositories = reposQuery.data ?? [];
   const isEnabled = (repo: ApiRepository) => overrides[repo.id] ?? repo.reviewEnabled;
+
+  const autoOpened = useRef(false);
+  useEffect(() => {
+    if (autoOpened.current || !installation || !catalogQuery.data) return;
+    if (repositories.length === 0 && available.length > 0) {
+      autoOpened.current = true;
+      setConnectOpen(true);
+    }
+  }, [installation, catalogQuery.data, repositories.length, available.length]);
 
   const filtered = useMemo(
     () =>
@@ -109,28 +128,93 @@ export default function RepositoriesPage() {
     );
   };
 
-  const hasInstallation = (statusQuery.data?.installations.length ?? 0) > 0;
+  const handleConnectRepository = (repository: InstallationRepository) => {
+    if (!installation) return;
+    setConnectingId(repository.externalId);
+    const importedIds = (catalogQuery.data ?? [])
+      .filter((repo) => repo.imported)
+      .map((repo) => repo.externalId);
+    updateSelection.mutate(
+      { installationId: installation.id, externalIds: [...new Set([...importedIds, repository.externalId])] },
+      {
+        onSuccess: () => {
+          toast({
+            title: 'Repository connected',
+            description: `${repository.fullName} — building its codebase map now.`,
+            variant: 'success',
+          });
+          setConnectingId(null);
+        },
+        onError: (error) => {
+          toast({
+            title: 'Could not connect repository',
+            description: (error as Error).message,
+            variant: 'destructive',
+          });
+          setConnectingId(null);
+        },
+      },
+    );
+  };
+
+  const hasInstallation = Boolean(installation);
+  const connectMode = connectOpen && hasInstallation;
 
   return (
     <ReviewPageShell
       title="Repositories"
       description="Connect repositories and control which ones the bot reviews."
       actions={
-        <div className="flex items-center gap-2">
-          {hasInstallation ? (
-            <Button size="sm" onClick={() => setLocation('/review/repositories/select')}>
-              Manage Repositories
-            </Button>
-          ) : (
-            <Button size="sm" onClick={handleConnect} isLoading={startInstall.isPending}>
-              <Plus size={15} />
-              Connect GitHub
-            </Button>
-          )}
-        </div>
+        !hasInstallation ? (
+          <Button size="sm" onClick={handleConnect} isLoading={startInstall.isPending}>
+            <Plus size={15} />
+            Connect GitHub
+          </Button>
+        ) : undefined
       }
     >
-      {reposQuery.isLoading ? (
+      {connectMode && installation ? (
+        <SettingsSection
+          title="Available repositories"
+          action={
+            <Button design="ghost" size="sm" onClick={() => setConnectOpen(false)}>
+              Done
+            </Button>
+          }
+        >
+          {catalogQuery.isLoading ? (
+            <SettingsRow label="Loading repositories…" />
+          ) : available.length === 0 ? (
+            <SettingsRow
+              label="No more repositories available"
+              description="This GitHub installation does not have access to any other repositories yet."
+            >
+              <Button design="outline" size="sm" onClick={handleConnect} isLoading={startInstall.isPending}>
+                <ExternalLink size={14} />
+                Manage GitHub access
+              </Button>
+            </SettingsRow>
+          ) : (
+            available.map((repo) => (
+              <SettingsRow
+                key={repo.externalId}
+                label={<span className="font-mono">{repo.fullName}</span>}
+                description={<span className="font-mono">{repo.defaultBranch}</span>}
+              >
+                <Button
+                  design="outline"
+                  size="xs"
+                  disabled={updateSelection.isPending}
+                  isLoading={connectingId === repo.externalId}
+                  onClick={() => handleConnectRepository(repo)}
+                >
+                  Connect
+                </Button>
+              </SettingsRow>
+            ))
+          )}
+        </SettingsSection>
+      ) : reposQuery.isLoading ? (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {Array.from({ length: 6 }).map((_, i) => (
             <SettingsCardSkeleton key={i} />
@@ -148,8 +232,9 @@ export default function RepositoriesPage() {
               : 'Install the Cortardo GitHub App to give the bot access to your pull requests. You choose which repositories it can see.'}
           </p>
           {hasInstallation ? (
-            <Button size="sm" className="mt-5" onClick={() => setLocation('/review/repositories/select')}>
-              Manage Repositories
+            <Button size="sm" className="mt-5" onClick={() => setConnectOpen(true)}>
+              <Plus size={15} />
+              Connect More
             </Button>
           ) : (
             <Button size="sm" className="mt-5" onClick={handleConnect} isLoading={startInstall.isPending}>
@@ -160,32 +245,8 @@ export default function RepositoriesPage() {
         </div>
       ) : (
         <>
-          <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-            <div
-              role="group"
-              aria-label="Filter repositories"
-              className="inline-flex items-center gap-0.5 rounded-[12px] border border-border bg-background p-[3px]"
-            >
-              {FILTERS.map((option) => {
-                const active = option.id === filter;
-                return (
-                  <button
-                    key={option.id}
-                    type="button"
-                    onClick={() => setFilter(option.id)}
-                    aria-pressed={active}
-                    className={`h-[28px] rounded-[9px] px-3 text-[12.5px] font-medium transition-colors border-none cursor-pointer ${
-                      active
-                        ? 'bg-brand text-brand-foreground'
-                        : 'bg-transparent text-fg-muted hover:bg-surface-hover hover:text-foreground'
-                    }`}
-                  >
-                    {option.label}
-                  </button>
-                );
-              })}
-            </div>
-            <div className="relative w-full sm:w-[240px]">
+          <div className="mb-5 flex flex-wrap items-center gap-3">
+            <div className="relative min-w-0 flex-1">
               <Search size={15} className="pointer-events-none absolute left-3 top-1/2 z-10 -translate-y-1/2 text-fg-faint" />
               <TextInput
                 value={query}
@@ -205,6 +266,54 @@ export default function RepositoriesPage() {
                 </button>
               )}
             </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <div className="relative shrink-0">
+                <OpenDropdown
+                  open={filterOpen}
+                  onClick={() => setFilterOpen((open) => !open)}
+                  chevron={false}
+                  className={brandIconButtonClass}
+                  aria-label="Filter repositories"
+                >
+                  <SlidersHorizontal size={16} strokeWidth={2} />
+                </OpenDropdown>
+                {filter !== 'all' && (
+                  <span
+                    aria-hidden="true"
+                    className="pointer-events-none absolute right-[8px] top-[8px] h-[5px] w-[5px] rounded-full bg-brand-foreground"
+                  />
+                )}
+                {filterOpen && (
+                  <>
+                    <OpenDropdownBackdrop onClick={() => setFilterOpen(false)} />
+                    <OpenDropdownMenu align="right" className="min-w-[150px]">
+                      {FILTERS.map((option) => (
+                        <OpenDropdownItem
+                          key={option.id}
+                          selected={option.id === filter}
+                          onClick={() => {
+                            setFilter(option.id);
+                            setFilterOpen(false);
+                          }}
+                        >
+                          {option.label}
+                        </OpenDropdownItem>
+                      ))}
+                    </OpenDropdownMenu>
+                  </>
+                )}
+              </div>
+              {hasInstallation && (
+                <IconButton
+                  design="brand"
+                  size="md"
+                  icon={Plus}
+                  title="Connect more repositories"
+                  aria-label="Connect more repositories"
+                  onClick={() => setConnectOpen(true)}
+                />
+              )}
+            </div>
           </div>
 
           {filtered.length === 0 ? (
@@ -218,14 +327,18 @@ export default function RepositoriesPage() {
               {filtered.map((repo) => {
                 const enabled = isEnabled(repo);
                 return (
-                  <SettingsCard key={repo.id} padded={false} className="flex h-full flex-col">
+                  <div
+                    key={repo.id}
+                    className="group relative flex h-full flex-col overflow-hidden rounded-[12px] border border-[hsl(var(--surface-hover))]"
+                  >
+                    <Link
+                      href={`/review/repositories/${repo.id}`}
+                      aria-label={`Open ${repo.fullName}`}
+                      className="absolute inset-0 z-0 rounded-[12px] cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50"
+                    />
+
                     <div className="px-[12px] py-[12px]">
-                      <button
-                        type="button"
-                        onClick={() => setMapRepository(repo)}
-                        aria-label={`Open codebase map for ${repo.fullName}`}
-                        className="group relative block w-full cursor-pointer overflow-hidden rounded-[8px] text-left"
-                      >
+                      <div className="pointer-events-none relative overflow-hidden rounded-[8px]">
                         <RepositoryCodebaseMapPreview
                           repositoryId={repo.id}
                           className="h-[140px]"
@@ -238,10 +351,10 @@ export default function RepositoriesPage() {
                             Suspended
                           </Badge>
                         )}
-                      </button>
+                      </div>
                     </div>
 
-                    <div className="px-[12px]">
+                    <div className="border-t border-[hsl(var(--surface-hover))] px-[12px] transition-colors group-hover:bg-surface-hover group-active:bg-surface-hover/80">
                       <SettingsRow
                         label={<span className="block truncate font-mono">{repo.fullName}</span>}
                         description={
@@ -257,15 +370,7 @@ export default function RepositoriesPage() {
                           </span>
                         }
                       >
-                        <div className="flex items-center gap-1">
-                          <Button
-                            design="ghost"
-                            size="xs"
-                            icon={Settings2}
-                            onClick={() => setSettingsRepository(repo)}
-                            aria-label={`Review settings for ${repo.fullName}`}
-                            title="Review settings"
-                          />
+                        <div className="relative z-10 flex items-center gap-1">
                           <TinyToggle
                             checked={enabled}
                             onCheckedChange={(checked) => handleToggle(repo, checked)}
@@ -274,44 +379,12 @@ export default function RepositoriesPage() {
                         </div>
                       </SettingsRow>
                     </div>
-                  </SettingsCard>
+                  </div>
                 );
               })}
             </div>
           )}
         </>
-      )}
-
-      {settingsRepository && (
-        <RepositoryReviewSettingsDialog
-          repository={settingsRepository}
-          onClose={() => setSettingsRepository(null)}
-        />
-      )}
-
-      {mapRepository && (
-        <Dialog
-          open
-          onOpenChange={(open) => {
-            if (!open) setMapRepository(null);
-          }}
-        >
-          <DialogContent className="flex h-[min(700px,88vh)] flex-col sm:max-w-5xl">
-            <DialogHeader>
-              <DialogTitle className="font-mono">{mapRepository.fullName}</DialogTitle>
-              <DialogDescription>
-                Every dot is a file and the lines show how files reference each other.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="min-h-0 flex-1">
-              <RepositoryCodebaseMap
-                repositoryId={mapRepository.id}
-                repositoryName={mapRepository.fullName}
-                className="h-full"
-              />
-            </div>
-          </DialogContent>
-        </Dialog>
       )}
     </ReviewPageShell>
   );

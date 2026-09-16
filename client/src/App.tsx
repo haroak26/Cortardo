@@ -42,7 +42,7 @@ const AnalyticsPage = lazy(() => import("@/pages/AnalyticsPage"));
 const ReviewsPage = lazy(() => import("@/pages/ReviewsPage"));
 const SecurityPage = lazy(() => import("@/pages/SecurityPage"));
 const RepositoriesPage = lazy(() => import("@/pages/RepositoriesPage"));
-const SelectRepositoriesPage = lazy(() => import("@/pages/SelectRepositoriesPage"));
+const RepositoryDetailPage = lazy(() => import("@/pages/RepositoryDetailPage"));
 const ActivityPage = lazy(() => import("@/pages/ActivityPage"));
 const BotRulesPage = lazy(() => import("@/pages/BotRulesPage"));
 const BotLearningsPage = lazy(() => import("@/pages/BotLearningsPage"));
@@ -118,7 +118,7 @@ function Router() {
       <Route path="/review/reviews">{() => <ProtectedRoute component={() => <DesignAppLayout><ReviewsPage /></DesignAppLayout>} />}</Route>
       <Route path="/review/security">{() => <ProtectedRoute component={() => <DesignAppLayout><SecurityPage /></DesignAppLayout>} />}</Route>
       <Route path="/review/repositories">{() => <ProtectedRoute component={() => <DesignAppLayout><RepositoriesPage /></DesignAppLayout>} />}</Route>
-      <Route path="/review/repositories/select">{() => <ProtectedRoute component={() => <DesignAppLayout><SelectRepositoriesPage /></DesignAppLayout>} />}</Route>
+      <Route path="/review/repositories/:id">{() => <ProtectedRoute component={() => <DesignAppLayout><RepositoryDetailPage /></DesignAppLayout>} />}</Route>
       <Route path="/review/activity">{() => <ProtectedRoute component={() => <DesignAppLayout><ActivityPage /></DesignAppLayout>} />}</Route>
       <Route path="/bot/rules">{() => <ProtectedRoute component={() => <DesignAppLayout><BotRulesPage /></DesignAppLayout>} />}</Route>
       <Route path="/bot/learnings">{() => <ProtectedRoute component={() => <DesignAppLayout><BotLearningsPage /></DesignAppLayout>} />}</Route>

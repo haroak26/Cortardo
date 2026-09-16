@@ -164,7 +164,7 @@ export function buildGraphLayout(files: CodeGraphFile[], connections: CodeGraphC
     return { nodes: sorted, byId, neighbours, edges, positions, clusterOf, clusterCount: 0 };
   }
   if (n === 1) {
-    positions.set(sorted[0].id, { x: 0, y: 0, z: RADIUS });
+    positions.set(sorted[0].id, { x: 0, y: 0, z: 0 });
     clusterOf.set(sorted[0].id, 0);
     return { nodes: sorted, byId, neighbours, edges, positions, clusterOf, clusterCount: 1 };
   }
@@ -357,13 +357,32 @@ export function buildGraphLayout(files: CodeGraphFile[], connections: CodeGraphC
     if (best !== -1) syntheticPairs.push([i, best]);
   }
 
+  // Centre the globe on the origin so the map always renders centred in its card.
+  let centreX = 0;
+  let centreY = 0;
+  let centreZ = 0;
+  for (let i = 0; i < n; i += 1) {
+    centreX += xs[i];
+    centreY += ys[i];
+    centreZ += zs[i];
+  }
+  centreX /= n;
+  centreY /= n;
+  centreZ /= n;
+
   const scaleRadius = Math.max(
-    ...Array.from({ length: n }, (_, i) => Math.hypot(xs[i], ys[i], zs[i])),
+    ...Array.from({ length: n }, (_, i) =>
+      Math.hypot(xs[i] - centreX, ys[i] - centreY, zs[i] - centreZ),
+    ),
     1e-6,
   );
   const scale = RADIUS / scaleRadius;
   sorted.forEach((file, index) => {
-    positions.set(file.id, { x: xs[index] * scale, y: ys[index] * scale, z: zs[index] * scale });
+    positions.set(file.id, {
+      x: (xs[index] - centreX) * scale,
+      y: (ys[index] - centreY) * scale,
+      z: (zs[index] - centreZ) * scale,
+    });
   });
 
   const resultEdges = edges.slice();

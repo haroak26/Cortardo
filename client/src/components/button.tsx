@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 /* ─── Types ─── */
 
 export type ButtonDesign = "primary" | "secondary" | "outline" | "ghost" | "destructive" | "pill" | "pill-secondary" | "pill-ghost";
-export type IconButtonDesign = "outline" | "ghost" | "secondary";
+export type IconButtonDesign = "outline" | "ghost" | "secondary" | "brand";
 export type ButtonSize = "xs" | "sm" | "md";
 
 export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
@@ -71,6 +71,15 @@ const iconSize: Record<ButtonSize, string> = {
   md: "max-md:h-[40px] max-md:w-[40px] h-[36px] w-[36px] rounded-[10px] [&>svg]:h-[16px] [&>svg]:w-[16px] [&>svg]:shrink-0",
 };
 
+/** Brand-filled icon button surface, shared by `IconButton design="brand"`. */
+export const brandIconButtonClass =
+  "relative inline-flex h-[36px] w-[36px] max-md:h-[40px] max-md:w-[40px] shrink-0 cursor-pointer items-center justify-center rounded-[10px] border-none px-0 " +
+  "bg-brand text-brand-foreground " +
+  "transition-[background-color,transform] duration-150 ease-out " +
+  "hover:bg-[hsl(var(--brand-hover))] active:scale-[0.97] active:bg-[hsl(var(--brand-hover))] " +
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 focus-visible:ring-offset-2 focus-visible:ring-offset-background " +
+  "disabled:pointer-events-none disabled:opacity-50";
+
 const iconDesign: Record<IconButtonDesign, string> = {
   outline:
     "bg-transparent border border-border text-fg-muted hover:bg-surface-hover hover:text-foreground",
@@ -78,6 +87,7 @@ const iconDesign: Record<IconButtonDesign, string> = {
     "bg-transparent text-fg-muted hover:bg-surface-hover hover:text-foreground",
   secondary:
     "bg-surface-hover text-foreground hover:bg-surface-active active:bg-surface-active/80",
+  brand: brandIconButtonClass,
 };
 
 export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(

@@ -17,7 +17,8 @@ import {
 import { Button } from "@/components/button";
 import { TextInput } from "@/components/text-input";
 import { OtpInput } from "@/components/otp-input";
-import { Badge, Dropdown, ListSkeleton } from "@/components/ds";
+import { Badge, ListSkeleton } from "@/components/ds";
+import { OpenDropdown, OpenDropdownBackdrop, OpenDropdownItem, OpenDropdownMenu } from "@/components/open-dropdown";
 import { TinyToggle } from "@/components/ui/tiny-toggle";
 import {
   SettingsSection,
@@ -40,6 +41,12 @@ import { cn } from "@/lib/utils";
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 type Plan = PlanTier;
+
+const THEME_OPTIONS = [
+  { value: "system", label: "System" },
+  { value: "light", label: "Light" },
+  { value: "dark", label: "Dark" },
+] as const;
 
 function StatusPill({ verified }: { verified: boolean }) {
   if (verified) {
@@ -212,6 +219,7 @@ function AvatarUpload({ user, onUpdated }: { user: any; onUpdated: () => void })
 
 function ProfilePage({ user, updateProfile, emailVerified, pendingEmail, onResend, isResending, refetch, saveAccountSettings }: any) {
   const [theme, setTheme] = useState(user?.theme ?? "system");
+  const [themeOpen, setThemeOpen] = useState(false);
   const [sectionDirty, setSectionDirty] = useState(false);
   const sectionSaveRef = useRef<() => Promise<void>>();
   const sectionCancelRef = useRef<() => void>();
@@ -253,21 +261,33 @@ function ProfilePage({ user, updateProfile, emailVerified, pendingEmail, onResen
 
       <SettingsSection title="Preferences">
         <SettingsRow label="Theme" description="Choose how Cortardo looks to you.">
-          <div className="relative min-w-[140px]">
-            <Dropdown
-              value={theme}
-              onChange={(v) => {
-                setTheme(v);
-                updateProfile("theme", v);
-              }}
-              options={[
-                { value: "system", label: "System" },
-                { value: "light", label: "Light" },
-                { value: "dark", label: "Dark" },
-              ]}
-              triggerClassName="inline-flex items-center justify-between gap-2 w-full cursor-pointer text-[13px] font-medium px-3 py-1.5 rounded-[14px] border border-border bg-background text-foreground hover:border-foreground/30 transition-colors"
-              showChevron
+          <div className="relative min-w-[160px]">
+            <OpenDropdown
+              open={themeOpen}
+              onClick={() => setThemeOpen((open) => !open)}
+              value={THEME_OPTIONS.find((option) => option.value === theme)?.label ?? "System"}
+              aria-label="Theme"
             />
+            {themeOpen && (
+              <>
+                <OpenDropdownBackdrop onClick={() => setThemeOpen(false)} />
+                <OpenDropdownMenu align="right" className="min-w-[150px]">
+                  {THEME_OPTIONS.map((option) => (
+                    <OpenDropdownItem
+                      key={option.value}
+                      selected={option.value === theme}
+                      onClick={() => {
+                        setTheme(option.value);
+                        updateProfile("theme", option.value);
+                        setThemeOpen(false);
+                      }}
+                    >
+                      {option.label}
+                    </OpenDropdownItem>
+                  ))}
+                </OpenDropdownMenu>
+              </>
+            )}
           </div>
         </SettingsRow>
         <SettingsRow label="Product updates" description="Occasional emails about new features and improvements.">
@@ -277,10 +297,19 @@ function ProfilePage({ user, updateProfile, emailVerified, pendingEmail, onResen
           />
         </SettingsRow>
         <SettingsRow label="Security alerts" description="Get notified about sign-ins and account changes.">
-          <TinyToggle
-            checked={user.securityAlerts ?? true}
-            onCheckedChange={(v) => saveAccountSettings.mutate({ securityAlerts: v })}
-          />
+          <div className="flex items-center gap-2">
+            <span className="flex h-4 items-center">
+              <Lock
+                size={13}
+                strokeWidth={2.5}
+                className="text-toggle-on grayscale opacity-50"
+                aria-hidden="true"
+              />
+            </span>
+            <span className="grayscale">
+              <TinyToggle checked disabled aria-label="Security alerts are always on" title="Security alerts are always on" />
+            </span>
+          </div>
         </SettingsRow>
       </SettingsSection>
     </div>

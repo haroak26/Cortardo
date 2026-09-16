@@ -382,7 +382,7 @@ export function GithubIntegrationDetailsPage() {
             <Button
               design="outline"
               size="sm"
-              onClick={() => setLocation("/review/repositories/select")}
+              onClick={() => setLocation("/review/repositories")}
             >
               <GitPullRequest size={14} />
               Manage Repositories

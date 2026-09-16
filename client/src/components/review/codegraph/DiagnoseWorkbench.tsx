@@ -48,7 +48,6 @@ export function DiagnoseWorkbench({ repository, repositoryId, className }: Diagn
       <div className={cn('h-full bg-background', className)}>
         <RepositoryCodebaseMap
           repositoryId={repositoryId}
-          repositoryName={repository}
           className="h-full rounded-none border-0 border-t"
         />
       </div>
