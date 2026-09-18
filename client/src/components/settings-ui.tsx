@@ -17,10 +17,13 @@
  * Design specs:
  *   Section heading: 15px font-medium, Inter (font-sans), outside the card
  *   Heading-to-card gap: mt-[14px]
- *   Card: rounded-[12px] outline in --surface-hover; 12px inset on all sides
+ *   Card: rounded-[12px] outline in --surface-hover (same grey as the sidebar); 12px inset on all sides
+ *   Card content: every row carries 12px padding on all sides, so the gap
+ *   around the content is an equal 12px at the card's top, bottom, and left
+ *   edge (row text uses tight leading so the measured gap matches the box)
  *   Row height: min-h-11 (44px) for standard rows; large-text rows are auto-height
- *   Row label: 13.5px font-medium text-fg-strong, vertically centred with content
- *   Row subtext: 12px font-[450] text-fg-warm, mt-0.5 below the label
+ *   Row label: 13.5px font-medium leading-tight text-fg-strong, vertically centred with content
+ *   Row subtext: 12px font-[450] leading-tight text-fg-warm, mt-0.5 below the label
  *   Row padding: 12px (px-[12px] py-[12px])
  *   Row dividers: border-b border-[hsl(var(--surface-hover))]
  */
@@ -83,7 +86,7 @@ export function SettingsCard({
   return (
     <div
       className={cn(
-        "overflow-hidden rounded-[12px] border border-[hsl(var(--surface-hover))] divide-y divide-[hsl(var(--surface-hover))]",
+        "overflow-hidden rounded-[12px] border border-[hsl(var(--surface-hover))] bg-card divide-y divide-[hsl(var(--surface-hover))]",
         padded && "px-[12px]",
         className,
       )}
@@ -125,11 +128,11 @@ export function SettingsRow({
       )}
     >
       <div className="min-w-0 flex-1">
-        <p className="text-[13.5px] font-medium leading-snug text-fg-strong">
+        <p className="text-[13.5px] font-medium leading-tight text-fg-strong">
           {label}
         </p>
         {description && (
-          <p className="mt-0.5 text-[12px] font-[450] leading-snug text-fg-warm">
+          <p className="mt-0.5 text-[12px] font-[450] leading-tight text-fg-warm">
             {description}
           </p>
         )}
@@ -165,6 +168,7 @@ export function SettingsTextRow({
   type = "text",
   disabled,
   readOnly,
+  suffix,
   className,
   onKeyDown,
   onBlur,
@@ -177,6 +181,7 @@ export function SettingsTextRow({
   type?: string;
   disabled?: boolean;
   readOnly?: boolean;
+  suffix?: string;
   className?: string;
   onKeyDown?: (e: React.KeyboardEvent<HTMLInputElement>) => void;
   onBlur?: (e: React.FocusEvent<HTMLInputElement>) => void;
@@ -190,6 +195,7 @@ export function SettingsTextRow({
         placeholder={placeholder}
         disabled={disabled}
         readOnly={readOnly}
+        suffix={suffix}
         className={cn(inputClass, className)}
         onKeyDown={onKeyDown}
         onBlur={onBlur}
@@ -222,11 +228,11 @@ export function SettingsLargeTextRow({
 }) {
   return (
     <div className="py-[12px]">
-      <p className="text-[13.5px] font-medium leading-snug text-fg-strong">
+      <p className="text-[13.5px] font-medium leading-tight text-fg-strong">
         {label}
       </p>
       {description && (
-        <p className="mt-0.5 text-[12px] font-[450] leading-snug text-fg-warm">
+        <p className="mt-0.5 text-[12px] font-[450] leading-tight text-fg-warm">
           {description}
         </p>
       )}

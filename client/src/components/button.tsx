@@ -27,6 +27,7 @@ export interface IconButtonProps extends React.ButtonHTMLAttributes<HTMLButtonEl
 
 const base =
   "inline-flex items-center justify-center font-medium leading-none shrink-0 whitespace-nowrap min-w-fit " +
+  "transition-transform duration-100 ease-out active:scale-[0.97] " +
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50 " +
   "disabled:cursor-not-allowed disabled:pointer-events-none select-none";
 
@@ -46,7 +47,7 @@ const mainDesign: Record<ButtonDesign, string> = {
   outline:
     "bg-transparent border border-border text-foreground hover:bg-surface-hover active:bg-surface-hover/80",
   ghost:
-    "bg-transparent text-foreground hover:bg-surface-active active:bg-surface-active/80",
+    "bg-transparent text-foreground hover:bg-surface-hover active:bg-surface-hover/80",
   destructive:
     "bg-destructive text-destructive-foreground hover:bg-destructive/90 active:bg-destructive/90",
   pill:
@@ -54,7 +55,7 @@ const mainDesign: Record<ButtonDesign, string> = {
   "pill-secondary":
     "bg-surface-hover text-foreground hover:bg-surface-hover/80 active:bg-surface-active/80 rounded-full",
   "pill-ghost":
-    "bg-transparent text-foreground hover:bg-surface-active active:bg-surface-active/80 rounded-full",
+    "bg-transparent text-foreground hover:bg-surface-hover active:bg-surface-hover/80 rounded-full",
   "pill-destructive":
     "bg-destructive text-destructive-foreground hover:bg-destructive/90 active:bg-destructive/90 rounded-full",
 };

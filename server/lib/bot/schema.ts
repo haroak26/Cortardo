@@ -24,7 +24,7 @@ const COMMIT_REVIEWS_DEFAULT = JSON.stringify({
 const WORKSPACE_SETTINGS_DEFAULT = JSON.stringify({
   instructions: "",
   pullRequests: {
-    autoReview: true,
+    autoReview: false,
     reviewDrafts: false,
     reReviewOnPush: true,
     inlineComments: true,

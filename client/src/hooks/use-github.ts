@@ -80,26 +80,6 @@ export interface RepositoryCodegraph {
   error: string | null;
 }
 
-export interface ApiReviewRun {
-  id: string;
-  workspaceId: string;
-  repositoryId: string | null;
-  pullRequestId: string | null;
-  trigger: string;
-  status: string;
-  title: string | null;
-  summary: string | null;
-  error: string | null;
-  stats: Record<string, unknown>;
-  startedAt: string | null;
-  finishedAt: string | null;
-  createdAt: string;
-  updatedAt: string;
-  repositoryFullName?: string | null;
-  pullRequestNumber?: number | null;
-  pullRequestAuthor?: string | null;
-}
-
 async function readJson<T>(res: Response): Promise<T> {
   const text = await res.text();
   const contentType = res.headers.get("content-type") ?? "";
@@ -210,34 +190,6 @@ export function useRepositoryCodegraph(repositoryId: string | null) {
   });
 }
 
-export interface ReviewFixAttempt {
-  id: string;
-  runId: string;
-  findingKey: string;
-  attempt: number;
-  status: string;
-  path: string | null;
-  line: number | null;
-  title: string | null;
-  patch: string | null;
-  reproPath: string | null;
-  verdict: Record<string, unknown>;
-  logs: string | null;
-  durationMs: number;
-  createdAt: string;
-}
-
-export function useReviewFixAttempts(runId: string | null) {
-  return useQuery<ReviewFixAttempt[]>({
-    queryKey: ["/api/runs", runId ?? "", "attempts"],
-    queryFn: async () => {
-      const rows = await getJson<ReviewFixAttempt[]>(`/api/runs/${runId}/attempts`);
-      return Array.isArray(rows) ? rows : [];
-    },
-    enabled: Boolean(runId),
-  });
-}
-
 export function useGenerateRepositoryCodegraph() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -247,20 +199,6 @@ export function useGenerateRepositoryCodegraph() {
       queryClient.invalidateQueries({ queryKey: ["/api/repositories", repositoryId, "codegraph"] });
       queryClient.invalidateQueries({ queryKey: ["/api/repositories"] });
     },
-  });
-}
-
-export function useReviewRuns(workspaceId: string | null, limit = 50) {
-  return useQuery<ApiReviewRun[]>({
-    queryKey: ["/api/runs", workspaceId ?? "", limit],
-    queryFn: async () => {
-      const rows = await getJson<ApiReviewRun[]>(
-        `/api/runs?limit=${limit}${workspaceId ? `&workspaceId=${workspaceId}` : ""}`,
-      );
-      return Array.isArray(rows) ? rows : [];
-    },
-    enabled: !!workspaceId,
-    refetchInterval: 15_000,
   });
 }
 
@@ -325,24 +263,4 @@ export function useUpdateRepository() {
   });
 }
 
-export function useTriggerRepositoryReview() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: ({
-      repositoryId,
-      pullRequestNumber,
-      instructions,
-    }: {
-      repositoryId: string;
-      pullRequestNumber?: number;
-      instructions?: string;
-    }) =>
-      sendJson<ApiReviewRun>("POST", `/api/repositories/${repositoryId}/runs`, {
-        pullRequestNumber,
-        instructions,
-      }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/runs"] });
-    },
-  });
-}
+

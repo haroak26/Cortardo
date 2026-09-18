@@ -255,7 +255,7 @@ export function TileCard({
       {...props}
       onClick={onClick}
       className={cn(
-        "relative flex h-full flex-col rounded-2xl border bg-background p-4 transition-colors duration-200",
+        "relative flex h-full flex-col rounded-2xl border bg-card p-4 transition-colors duration-200",
         selected ? "border-brand/60 bg-brand/[0.04]" : "border-border",
         onClick && "cursor-pointer hover:border-border-strong hover:bg-surface-hover/40",
         className,

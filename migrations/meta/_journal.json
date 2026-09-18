@@ -120,6 +120,20 @@
       "when": 1789700000000,
       "tag": "0021_bot_memory_exclusions",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1789800000000,
+      "tag": "0022_backfill_workspace_slugs",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1789900000000,
+      "tag": "0023_workspace_support_code",
+      "breakpoints": true
     }
   ]
 }

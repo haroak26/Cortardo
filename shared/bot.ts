@@ -41,7 +41,7 @@ export interface PullRequestReviewSettings {
 }
 
 export const PULL_REQUEST_REVIEW_DEFAULTS: PullRequestReviewSettings = {
-  autoReview: true,
+  autoReview: false,
   reviewDrafts: false,
   reReviewOnPush: true,
   inlineComments: true,

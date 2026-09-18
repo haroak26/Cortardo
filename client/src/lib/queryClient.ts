@@ -304,7 +304,6 @@ export async function prefetchAppData(
   // first navigation after sign-in doesn't pay the parse cost.
   const warm = () => {
     void import("@/pages/HomePage");
-    void import("@/pages/ReviewsPage");
   };
   if (typeof requestIdleCallback === "function") {
     requestIdleCallback(warm, { timeout: 3000 });

@@ -1,13 +1,12 @@
 import { useEffect, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Link, useLocation } from "wouter";
+import { Link } from "wouter";
 import {
   AlertCircle,
   ArrowRight,
   CheckCircle2,
   ChevronRight,
   ExternalLink,
-  GitPullRequest,
   Loader,
   Lock,
   RefreshCw,
@@ -234,7 +233,6 @@ export function GithubIntegrationsPage() {
 export function GithubIntegrationDetailsPage() {
   const { toast } = useToast();
   const { activeWorkspaceId } = useWorkspace();
-  const [, setLocation] = useLocation();
 
   const statusQuery = useGithubStatus(activeWorkspaceId);
   const reposQuery = useRepositories(activeWorkspaceId);
@@ -379,14 +377,13 @@ export function GithubIntegrationDetailsPage() {
         <SettingsSection
           title="Repositories"
           action={
-            <Button
-              design="outline"
-              size="sm"
-              onClick={() => setLocation("/review/repositories")}
+            <Link
+              href="/review/repositories"
+              className="inline-flex shrink-0 items-center gap-1 text-[12px] font-medium text-fg-muted no-underline transition-colors hover:text-foreground"
             >
-              <GitPullRequest size={14} />
               Manage Repositories
-            </Button>
+              <ArrowRight size={12} />
+            </Link>
           }
         >
           <SettingsRow

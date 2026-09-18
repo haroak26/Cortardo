@@ -69,7 +69,7 @@ export function AppLayout({
                 {subNav}
               </div>
             )}
-            <main className="flex-1 min-w-0 min-h-0 md:overflow-hidden flex flex-col page-enter">
+            <main className="flex-1 min-w-0 min-h-0 md:overflow-hidden flex flex-col page-enter bg-page">
               <Suspense fallback={<MainContentFallback />}>
                 {children}
               </Suspense>

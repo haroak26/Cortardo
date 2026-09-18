@@ -83,7 +83,7 @@ export default function Docs() {
 
           <Collapsible title="Connecting a repository">
             <Step num="1">Sign in and go to <strong className="text-foreground">Home</strong>.</Step>
-            <Step num="2">Open the <strong className="text-foreground">Reviews</strong> page to explore findings and walkthroughs.</Step>
+            <Step num="2">Open the <strong className="text-foreground">Repositories</strong> page to explore the codebase map and activity.</Step>
             <Step num="3">Choose a model and reasoning effort (optional).</Step>
             <Step num="4">Track review progress from the dashboard.</Step>
           </Collapsible>
@@ -115,7 +115,7 @@ export default function Docs() {
           </Collapsible>
 
           <Collapsible title="Model selection">
-            <p>Runs are powered by models served through the Merge Gateway. The default is <code className="text-[12px] bg-surface-hover px-1.5 py-0.5 rounded">zai/glm-5.3</code> and can be overridden with the <code className="text-[12px] bg-surface-hover px-1.5 py-0.5 rounded">CORTARDO_MODEL</code> environment variable.</p>
+            <p>Runs are powered by models served through the Merge Gateway. Override the default with the <code className="text-[12px] bg-surface-hover px-1.5 py-0.5 rounded">BETABOT_MODEL</code> environment variable.</p>
           </Collapsible>
         </Section>
 

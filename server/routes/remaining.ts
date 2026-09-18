@@ -10,6 +10,7 @@ import { eq, sql } from "drizzle-orm";
 import { hashPassword, comparePasswords } from "../auth";
 import { sendEmailChangeVerification, sendVerificationEmail, sendPasswordResetEmail, sendAccountDeletionEmail, sendSubscriptionUpdateEmail, sendWorkspaceInviteEmail, sendMemberAcceptedInviteEmail, sendMemberDeclinedInviteEmail, sendMemberLeftWorkspaceEmail, sendMemberRemovedEmail } from "../email";
 import { uploadBlob, deleteBlob } from "../blob-storage";
+import { generateUniqueWorkspaceSlug } from "../lib/workspace-slug";
 import * as creditService from "../lib/credit-service";
 
 import {
@@ -342,7 +343,10 @@ export function registerRemainingRoutes(app: Express): void {
     try {
       const user = req.user as User;
       const input = createWorkspaceSchema.parse(req.body);
-      const workspace = await storage.createWorkspace(user.id, input);
+      const workspace = await storage.createWorkspace(user.id, {
+        ...input,
+        slug: await generateUniqueWorkspaceSlug(input.name),
+      });
       await storage.upsertOnboardingSession(user.id, { currentStep: "finalizing", workspaceStatus: "complete", workspaceId: workspace.id, workspaceName: workspace.name });
       return res.status(201).json({ ...workspace, role: "owner" });
     } catch (err) {

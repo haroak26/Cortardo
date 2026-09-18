@@ -184,23 +184,3 @@ test("unhandled events are ignored", async () => {
   assert.equal(result.handled, false);
 });
 
-test("a failed enqueue is reported so the delivery can be marked as an error", async () => {
-  const { deps } = createFakeDeps();
-  const result = await handleGithubWebhook("pull_request", pullRequestPayload("opened"), {
-    ...deps,
-    triggerReview: async () => ({ runId: null, duplicate: false, error: "database unavailable" }),
-  });
-  assert.equal(result.handled, true);
-  assert.equal(result.enqueueFailed, true);
-  assert.match(result.reason ?? "", /review enqueue failed: database unavailable/);
-});
-
-test("a duplicate enqueue is not an enqueue failure", async () => {
-  const { deps } = createFakeDeps();
-  const result = await handleGithubWebhook("pull_request", pullRequestPayload("opened"), {
-    ...deps,
-    triggerReview: async () => ({ runId: null, duplicate: true }),
-  });
-  assert.equal(result.handled, true);
-  assert.equal(result.enqueueFailed, undefined);
-});

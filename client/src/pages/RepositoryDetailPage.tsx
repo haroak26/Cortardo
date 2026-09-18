@@ -1,7 +1,7 @@
 import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Link, useLocation, useParams } from 'wouter';
-import { AlertCircle, ArrowLeft, ArrowRight, Boxes, CheckCircle2, FolderGit2, Loader2, XCircle } from 'lucide-react';
-import { ReviewPageShell, RunStatusDot, runStatus } from '@/components/review/bits';
+import { useLocation, useParams } from 'wouter';
+import { ArrowLeft, Boxes, FolderGit2 } from 'lucide-react';
+import { ReviewPageShell } from '@/components/review/bits';
 import { SettingsDisplayRow, SettingsRow, SettingsSection } from '@/components/settings-ui';
 import { Button } from '@/components/button';
 import { Badge, ListSkeleton, MetricCard } from '@/components/ds';
@@ -9,7 +9,7 @@ import { TinyToggle } from '@/components/ui/tiny-toggle';
 import { RepositoryCodebaseMap } from '@/components/review/codegraph/RepositoryCodebaseMap';
 import { useToast } from '@/hooks/use-toast';
 import { useWorkspace } from '@/contexts/workspace-context';
-import { useRepositories, useReviewRuns, useUpdateRepository, type ApiReviewRun } from '@/hooks/use-github';
+import { useRepositories, useUpdateRepository } from '@/hooks/use-github';
 import { mockCodebaseMap, timeAgo, type CodeFileStatus, type CodebaseFile } from '@/lib/mock-review-data';
 import { cn } from '@/lib/utils';
 
@@ -27,7 +27,6 @@ export default function RepositoryDetailPage() {
   const { activeWorkspaceId } = useWorkspace();
 
   const reposQuery = useRepositories(activeWorkspaceId);
-  const runsQuery = useReviewRuns(activeWorkspaceId, 100);
   const updateRepository = useUpdateRepository();
 
   const [enabledOverride, setEnabledOverride] = useState<boolean | null>(null);
@@ -36,11 +35,6 @@ export default function RepositoryDetailPage() {
     () => (reposQuery.data ?? []).find((repo) => repo.id === repositoryId) ?? null,
     [reposQuery.data, repositoryId],
   );
-  const runs = useMemo(
-    () => (runsQuery.data ?? []).filter((run) => run.repositoryId === repositoryId),
-    [runsQuery.data, repositoryId],
-  );
-
   const handleToggle = (checked: boolean) => {
     if (!repository) return;
     setEnabledOverride(checked);
@@ -95,50 +89,46 @@ export default function RepositoryDetailPage() {
 
         <CodebaseCard />
 
-        <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
-          <SettingsSection title="Overview" className="flex h-full flex-col" cardClassName="min-h-0 lg:flex-1">
+        <SettingsSection title="Overview">
+          <SettingsRow
+            label="Automatic reviews"
+            description="Review every pull request opened against this repository."
+          >
+            <TinyToggle
+              checked={enabled}
+              onCheckedChange={handleToggle}
+              aria-label={`${enabled ? 'Pause' : 'Resume'} reviews for ${repository.fullName}`}
+            />
+          </SettingsRow>
+          <SettingsDisplayRow
+            label="Provider"
+            value={PROVIDER_LABELS[repository.provider] ?? repository.provider}
+          />
+          <SettingsDisplayRow label="Default branch" value={repository.defaultBranch} mono />
+          <SettingsDisplayRow label="Visibility" value={repository.isPrivate ? 'Private' : 'Public'} />
+          {repository.installation && (
+            <SettingsDisplayRow
+              label="Installation"
+              value={
+                repository.installation.accountLogin
+                  ? `@${repository.installation.accountLogin}`
+                  : (repository.installation.accountType ?? 'GitHub App')
+              }
+            />
+          )}
+          <SettingsDisplayRow
+            label="Last reviewed"
+            value={repository.lastReviewedAt ? timeAgo(repository.lastReviewedAt) : 'Never'}
+          />
+          {suspended && (
             <SettingsRow
-              label="Automatic reviews"
-              description="Review every pull request opened against this repository."
+              label="Installation status"
+              description="Reconnect the GitHub installation to resume reviews."
             >
-              <TinyToggle
-                checked={enabled}
-                onCheckedChange={handleToggle}
-                aria-label={`${enabled ? 'Pause' : 'Resume'} reviews for ${repository.fullName}`}
-              />
+              <Badge tone="warning">Suspended</Badge>
             </SettingsRow>
-            <SettingsDisplayRow
-              label="Provider"
-              value={PROVIDER_LABELS[repository.provider] ?? repository.provider}
-            />
-            <SettingsDisplayRow label="Default branch" value={repository.defaultBranch} mono />
-            <SettingsDisplayRow label="Visibility" value={repository.isPrivate ? 'Private' : 'Public'} />
-            {repository.installation && (
-              <SettingsDisplayRow
-                label="Installation"
-                value={
-                  repository.installation.accountLogin
-                    ? `@${repository.installation.accountLogin}`
-                    : (repository.installation.accountType ?? 'GitHub App')
-                }
-              />
-            )}
-            <SettingsDisplayRow
-              label="Last reviewed"
-              value={repository.lastReviewedAt ? timeAgo(repository.lastReviewedAt) : 'Never'}
-            />
-            {suspended && (
-              <SettingsRow
-                label="Installation status"
-                description="Reconnect the GitHub installation to resume reviews."
-              >
-                <Badge tone="warning">Suspended</Badge>
-              </SettingsRow>
-            )}
-          </SettingsSection>
-
-          <RecentActivity runs={runs} />
-        </div>
+          )}
+        </SettingsSection>
       </div>
     );
   }
@@ -155,92 +145,6 @@ export default function RepositoryDetailPage() {
     >
       {body}
     </ReviewPageShell>
-  );
-}
-
-function RecentActivity({ runs }: { runs: ApiReviewRun[] }) {
-  const recent = runs;
-
-  return (
-    <SettingsSection
-      title="Recent activity"
-      className="flex h-full flex-col"
-      cardClassName="flex min-h-0 flex-col lg:flex-1"
-      action={
-        runs.length > 0 ? (
-          <Link
-            href="/review/reviews"
-            className="inline-flex shrink-0 items-center gap-1 text-[12px] font-medium text-fg-muted no-underline transition-colors hover:text-foreground"
-          >
-            View all
-            <ArrowRight size={12} />
-          </Link>
-        ) : undefined
-      }
-    >
-      {recent.length === 0 ? (
-        <SettingsRow
-          label="No reviews yet"
-          description="The bot reviews every pull request automatically once one is opened."
-        />
-      ) : (
-        <div className="max-h-[286px] min-h-0 overflow-y-auto py-2 lg:max-h-none lg:min-h-[286px] lg:flex-1">
-          <div className="relative">
-            <span
-              aria-hidden="true"
-              className="absolute bottom-4 left-[7px] top-4 w-px -translate-x-1/2 bg-[hsl(var(--surface-hover))]"
-            />
-            <ul className="space-y-0.5">
-              {recent.map((run) => (
-                <li key={run.id}>
-                  <Link
-                    href={`/review/reviews?diagnose=${run.id}`}
-                    className="-mx-2 flex items-start gap-3 rounded-[11px] px-2 py-2 no-underline transition-colors hover:bg-surface-hover/60"
-                  >
-                    <span className="relative z-10 mt-px flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full bg-background">
-                      <RunStatusDot status={run.status} />
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[13px] font-medium leading-snug text-foreground">
-                        {run.title ?? 'Review run'}
-                      </span>
-                      <span className="mt-0.5 block truncate font-mono text-[11px] text-fg-muted">
-                        {run.pullRequestNumber ? `#${run.pullRequestNumber} · ` : ''}
-                        {timeAgo(run.createdAt)}
-                      </span>
-                    </span>
-                    <RunStatusIcon status={run.status} />
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </div>
-        </div>
-      )}
-    </SettingsSection>
-  );
-}
-
-function RunStatusIcon({ status }: { status: string }) {
-  const meta = runStatus(status);
-  const Icon =
-    status === 'done'
-      ? CheckCircle2
-      : status === 'error'
-        ? AlertCircle
-        : status === 'cancelled'
-          ? XCircle
-          : Loader2;
-  const spinning = status !== 'done' && status !== 'error' && status !== 'cancelled';
-  return (
-    <span
-      title={meta.label}
-      aria-label={meta.label}
-      className="mt-px inline-flex shrink-0"
-      style={{ color: meta.color }}
-    >
-      <Icon size={15} className={spinning ? 'animate-spin' : undefined} />
-    </span>
   );
 }
 

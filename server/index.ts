@@ -195,9 +195,6 @@ export async function startServer(app: Express, httpServer: Server) {
   try {
     await db.execute(sql`SELECT 1`);
     log("Database connection verified");
-    const { recoverStaleReviewRuns } = await import("./lib/review/runner");
-    const recovered = await recoverStaleReviewRuns();
-    if (recovered > 0) log(`Recovered ${recovered} stale review run(s)`);
   } catch (e) {
     console.error("[startup] Database unreachable — check DATABASE_URL:", e);
   }

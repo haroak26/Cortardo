@@ -1,13 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'wouter';
-import { ExternalLink, FolderGit2, Plus, Search, SlidersHorizontal, X } from 'lucide-react';
+import { ExternalLink, FolderGit2, Plus } from 'lucide-react';
 import { ReviewPageShell } from '@/components/review/bits';
 import { Badge } from '@/components/ds';
-import { Button, IconButton, brandIconButtonClass } from '@/components/button';
-import { OpenDropdown, OpenDropdownBackdrop, OpenDropdownItem, OpenDropdownMenu } from '@/components/open-dropdown';
+import { Button } from '@/components/button';
+import { OpenDropdownBackdrop, OpenDropdownItem, OpenDropdownMenu } from '@/components/open-dropdown';
 import { SettingsCardSkeleton } from '@/components/skeleton-cards';
 import { SettingsRow, SettingsSection } from '@/components/settings-ui';
-import { TextInput } from '@/components/text-input';
 import { RepositoryCodebaseMapPreview } from '@/components/review/codegraph/RepositoryCodebaseMap';
 import { TinyToggle } from '@/components/ui/tiny-toggle';
 import { useToast } from '@/hooks/use-toast';
@@ -41,7 +40,6 @@ const PROVIDER_LABELS: Record<string, string> = {
 export default function RepositoriesPage() {
   const { toast } = useToast();
   const { activeWorkspaceId } = useWorkspace();
-  const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<FilterId>('all');
   const [filterOpen, setFilterOpen] = useState(false);
   const [overrides, setOverrides] = useState<Record<string, boolean>>({});
@@ -77,11 +75,9 @@ export default function RepositoriesPage() {
     () =>
       repositories.filter((repo) => {
         const enabled = isEnabled(repo);
-        const matchesFilter =
-          filter === 'all' || (filter === 'enabled' ? enabled : !enabled);
-        return matchesFilter && repo.fullName.toLowerCase().includes(query.toLowerCase());
+        return filter === 'all' || (filter === 'enabled' ? enabled : !enabled);
       }),
-    [repositories, query, filter, overrides],
+    [repositories, filter, overrides],
   );
 
   const handleConnect = () => {
@@ -170,14 +166,57 @@ export default function RepositoriesPage() {
             <Plus size={15} />
             Connect GitHub
           </Button>
-        ) : undefined
+        ) : (
+          <>
+            <Button
+              design="pill"
+              icon={Plus}
+              className="hover:!bg-primary active:!bg-primary"
+              onClick={() => setConnectOpen(true)}
+            >
+              Connect More
+            </Button>
+            <div className="relative shrink-0">
+              <Button
+                design="pill-secondary"
+                onClick={() => setFilterOpen((open) => !open)}
+                aria-expanded={filterOpen}
+                aria-label="Filter repositories"
+              >
+                Filter
+                {filter !== 'all' && (
+                  <span aria-hidden="true" className="h-[5px] w-[5px] shrink-0 rounded-full bg-brand" />
+                )}
+              </Button>
+              {filterOpen && (
+                <>
+                  <OpenDropdownBackdrop onClick={() => setFilterOpen(false)} />
+                  <OpenDropdownMenu align="right" className="min-w-[150px]">
+                    {FILTERS.map((option) => (
+                      <OpenDropdownItem
+                        key={option.id}
+                        selected={option.id === filter}
+                        onClick={() => {
+                          setFilter(option.id);
+                          setFilterOpen(false);
+                        }}
+                      >
+                        {option.label}
+                      </OpenDropdownItem>
+                    ))}
+                  </OpenDropdownMenu>
+                </>
+              )}
+            </div>
+          </>
+        )
       }
     >
       {connectMode && installation ? (
         <SettingsSection
           title="Available repositories"
           action={
-            <Button design="ghost" size="sm" onClick={() => setConnectOpen(false)}>
+            <Button design="pill-ghost" size="sm" onClick={() => setConnectOpen(false)}>
               Done
             </Button>
           }
@@ -202,7 +241,7 @@ export default function RepositoriesPage() {
                 description={<span className="font-mono">{repo.defaultBranch}</span>}
               >
                 <Button
-                  design="outline"
+                  design="pill-secondary"
                   size="xs"
                   disabled={updateSelection.isPending}
                   isLoading={connectingId === repo.externalId}
@@ -245,77 +284,6 @@ export default function RepositoriesPage() {
         </div>
       ) : (
         <>
-          <div className="mb-5 flex flex-wrap items-center gap-3">
-            <div className="relative min-w-0 flex-1">
-              <Search size={15} className="pointer-events-none absolute left-3 top-1/2 z-10 -translate-y-1/2 text-fg-faint" />
-              <TextInput
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search repositories..."
-                aria-label="Search repositories"
-                className="pl-9 pr-8"
-              />
-              {query && (
-                <button
-                  type="button"
-                  onClick={() => setQuery('')}
-                  aria-label="Clear search"
-                  className="absolute right-2.5 top-1/2 z-10 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-full border-none bg-transparent p-0 text-fg-faint cursor-pointer transition-colors hover:text-foreground"
-                >
-                  <X size={12} />
-                </button>
-              )}
-            </div>
-            <div className="flex shrink-0 items-center gap-2">
-              <div className="relative shrink-0">
-                <OpenDropdown
-                  open={filterOpen}
-                  onClick={() => setFilterOpen((open) => !open)}
-                  chevron={false}
-                  className={brandIconButtonClass}
-                  aria-label="Filter repositories"
-                >
-                  <SlidersHorizontal size={16} strokeWidth={2} />
-                </OpenDropdown>
-                {filter !== 'all' && (
-                  <span
-                    aria-hidden="true"
-                    className="pointer-events-none absolute right-[8px] top-[8px] h-[5px] w-[5px] rounded-full bg-brand-foreground"
-                  />
-                )}
-                {filterOpen && (
-                  <>
-                    <OpenDropdownBackdrop onClick={() => setFilterOpen(false)} />
-                    <OpenDropdownMenu align="right" className="min-w-[150px]">
-                      {FILTERS.map((option) => (
-                        <OpenDropdownItem
-                          key={option.id}
-                          selected={option.id === filter}
-                          onClick={() => {
-                            setFilter(option.id);
-                            setFilterOpen(false);
-                          }}
-                        >
-                          {option.label}
-                        </OpenDropdownItem>
-                      ))}
-                    </OpenDropdownMenu>
-                  </>
-                )}
-              </div>
-              {hasInstallation && (
-                <IconButton
-                  design="brand"
-                  size="md"
-                  icon={Plus}
-                  title="Connect more repositories"
-                  aria-label="Connect more repositories"
-                  onClick={() => setConnectOpen(true)}
-                />
-              )}
-            </div>
-          </div>
-
           {filtered.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-center">
               <FolderGit2 size={32} className="mb-3 text-fg-faint" strokeWidth={1.5} />
@@ -329,7 +297,7 @@ export default function RepositoriesPage() {
                 return (
                   <div
                     key={repo.id}
-                    className="group relative flex h-full flex-col overflow-hidden rounded-[12px] border border-[hsl(var(--surface-hover))]"
+                    className="group relative flex h-full flex-col overflow-hidden rounded-[12px] border border-[hsl(var(--surface-hover))] bg-card"
                   >
                     <Link
                       href={`/review/repositories/${repo.id}`}

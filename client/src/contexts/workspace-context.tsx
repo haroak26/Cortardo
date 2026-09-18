@@ -5,10 +5,14 @@ import { useUser } from "@/hooks/use-user";
 export type Workspace = {
   id: string;
   name: string;
+  slug?: string;
+  supportCode?: string | null;
   logoUrl?: string | null;
+  creditBudget?: number | null;
   publicKey: string;
   role: string;
   confidenceThreshold: number;
+  createdAt?: string;
 };
 
 type WorkspaceContextType = {

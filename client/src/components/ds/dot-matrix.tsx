@@ -56,7 +56,12 @@ function Dot({ on, dotSize }: { on: boolean; dotSize: number }) {
   return (
     <span
       aria-hidden="true"
-      className={cn("rounded-full", on ? "bg-success" : "bg-[hsl(220_14%_94%)] dark:bg-[hsl(220_10%_20%)]")}
+      className={cn(
+        "rounded-full",
+        on
+          ? "bg-[hsl(152_60%_37%)] dark:bg-[hsl(152_55%_42%)]"
+          : "bg-[hsl(220_14%_96%)] dark:bg-[hsl(220_10%_20%)]",
+      )}
       style={{ width: dotSize, height: dotSize }}
     />
   );

@@ -811,34 +811,44 @@ function SessionsSection() {
       ) : (
         <>
           {currentSession && (
-            <div className="flex items-center justify-between gap-3 py-[12px]">
-              <div className="flex items-center gap-3 min-w-0">
-                <span className="text-[16px] shrink-0">{deviceIcon(currentSession.device)}</span>
-                <div className="min-w-0">
-                  <p className="text-[13.5px] font-medium text-fg-strong leading-tight truncate">
-                    {currentSession.browser ?? "Unknown browser"} — {currentSession.os ?? "Unknown OS"}
-                    <span className="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded-full bg-emerald-500/10 text-[10px] font-semibold text-emerald-600 leading-none">Current</span>
-                  </p>
-                  <p className="text-[12px] font-[450] text-fg-warm mt-0.5 truncate">
-                    {currentSession.location && `${currentSession.location} · `}Active now
-                  </p>
-                </div>
-              </div>
-            </div>
+            <SettingsRow
+              label={
+                <span className="flex items-center gap-3">
+                  <span className="text-[16px] shrink-0">{deviceIcon(currentSession.device)}</span>
+                  <span className="min-w-0">
+                    <span className="flex items-center gap-1.5">
+                      <span className="truncate">
+                        {currentSession.browser ?? "Unknown browser"} — {currentSession.os ?? "Unknown OS"}
+                      </span>
+                      <span className="inline-flex shrink-0 items-center rounded-full bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-emerald-600">
+                        Current
+                      </span>
+                    </span>
+                    <span className="mt-0.5 block truncate text-[12px] font-[450] text-fg-warm">
+                      {currentSession.location && `${currentSession.location} · `}Active now
+                    </span>
+                  </span>
+                </span>
+              }
+            />
           )}
           {otherSessions.map((session: any) => (
-            <div key={session.id} className="flex items-center justify-between gap-3 py-[12px]">
-              <div className="flex items-center gap-3 min-w-0">
-                <span className="text-[16px] shrink-0">{deviceIcon(session.device)}</span>
-                <div className="min-w-0">
-                  <p className="text-[13.5px] font-medium text-fg-strong leading-tight truncate">
-                    {session.browser ?? "Unknown browser"} — {session.os ?? "Unknown OS"}
-                  </p>
-                  <p className="text-[12px] font-[450] text-fg-warm mt-0.5 truncate">
-                    {session.location && `${session.location} · `}{formatTime(session.lastActiveAt)}
-                  </p>
-                </div>
-              </div>
+            <SettingsRow
+              key={session.id}
+              label={
+                <span className="flex items-center gap-3">
+                  <span className="text-[16px] shrink-0">{deviceIcon(session.device)}</span>
+                  <span className="min-w-0">
+                    <span className="block truncate">
+                      {session.browser ?? "Unknown browser"} — {session.os ?? "Unknown OS"}
+                    </span>
+                    <span className="mt-0.5 block truncate text-[12px] font-[450] text-fg-warm">
+                      {session.location && `${session.location} · `}{formatTime(session.lastActiveAt)}
+                    </span>
+                  </span>
+                </span>
+              }
+            >
               <button
                 type="button"
                 onClick={() => revokeMutation.mutate(session.id)}
@@ -847,7 +857,7 @@ function SessionsSection() {
               >
                 Revoke
               </button>
-            </div>
+            </SettingsRow>
           ))}
         </>
       )}
@@ -977,13 +987,11 @@ function BillingPage({ planInfo, checkoutMutation, portalMutation }: any) {
           const convertedPrice = Math.round(tierLimits.prices.monthly / usdPerUnit);
           const isCurrent = key === currentPlan;
           return (
-            <div key={key} className="flex items-center justify-between gap-3 py-[12px]">
-              <div className="min-w-0">
-                <p className="text-[13.5px] font-medium text-fg-strong">{tierLimits.label}</p>
-                <p className="text-[12px] font-[450] text-fg-warm mt-0.5">
-                  {CURRENCIES[currency].symbol}{convertedPrice}/mo
-                </p>
-              </div>
+            <SettingsRow
+              key={key}
+              label={tierLimits.label}
+              description={`${CURRENCIES[currency].symbol}${convertedPrice}/mo`}
+            >
               <Button
                 design={isCurrent ? "pill-secondary" : "pill"}
                 size="xs"
@@ -993,7 +1001,7 @@ function BillingPage({ planInfo, checkoutMutation, portalMutation }: any) {
               >
                 {isCurrent ? "Current plan" : "Select"}
               </Button>
-            </div>
+            </SettingsRow>
           );
         })}
       </SettingsSection>
@@ -1005,16 +1013,12 @@ function BillingPage({ planInfo, checkoutMutation, portalMutation }: any) {
           </div>
         ) : (
           transactions.map((t) => (
-          <div key={t.id} className="flex items-center justify-between py-[10px]">
-            <div>
-              <p className="text-[13.5px] font-medium text-fg-strong">{t.description}</p>
-              <p className="text-[12px] font-[450] text-fg-warm mt-0.5">{t.date}</p>
-            </div>
-            <span className={`text-[13.5px] font-semibold tabular-nums ${t.amount > 0 ? 'text-emerald-600' : 'text-foreground'}`}>
-              {t.amount > 0 ? '+' : ''}{t.amount}
-            </span>
-          </div>
-        )))}
+            <SettingsRow key={t.id} label={t.description} description={t.date}>
+              <span className={`text-[13.5px] font-semibold tabular-nums ${t.amount > 0 ? 'text-emerald-600' : 'text-foreground'}`}>
+                {t.amount > 0 ? '+' : ''}{t.amount}
+              </span>
+            </SettingsRow>
+          )))}
       </SettingsSection>
     </div>
   );
@@ -1356,7 +1360,7 @@ const contentBySection: Record<string, React.ReactNode> = {
 
   return (
     <div className="flex flex-1 min-h-0">
-      <div className="flex-1 min-w-0 bg-background border-b border-[hsl(var(--surface-hover))] overflow-y-auto">
+      <div className="flex-1 min-w-0 bg-page border-b border-[hsl(var(--surface-hover))] overflow-y-auto">
         <div className="mx-auto w-full max-w-[720px] px-4 py-5 sm:px-6 sm:py-6 md:px-8 md:py-8">
           {contentBySection[section] ?? contentBySection["profile"]}
         </div>

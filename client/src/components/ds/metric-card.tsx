@@ -101,7 +101,7 @@ export function MetricCard({
   return (
     <div
       className={cn(
-        "flex h-full flex-col rounded-[12px] border border-[hsl(var(--surface-hover))] bg-background p-3",
+        "flex h-full flex-col rounded-[12px] border border-[hsl(var(--surface-hover))] bg-card p-3",
         className,
       )}
     >

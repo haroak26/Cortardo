@@ -11,10 +11,7 @@ import {
 import { storage } from "../storage";
 import { db } from "../db";
 import { desc, eq } from "drizzle-orm";
-import { botSettings, reviewFindings, reviewRuns } from "@shared/schema";
-import { normalizeBotSettings } from "@shared/bot";
-import { DEFAULT_MODELS, DEFAULT_REASONING, MODEL_CATALOG, type ModelRole, type ReasoningEffort } from "@shared/models";
-import { enqueueReview, listReviewRuns } from "../lib/review/runner";
+import { reviewFindings } from "@shared/schema";
 import { apiRateLimiter, audit, requireAuth } from "./helpers";
 import { getGithubAppConfig } from "../lib/github/app";
 import * as githubApi from "../lib/github/api";
@@ -674,112 +671,6 @@ export function registerGithubRoutes(app: Express): void {
     },
   );
 
-  // ── Cortado review runs ───────────────────────────────────────────────
-  app.get("/api/runs", requireAuth, async (req: Request, res: Response) => {
-    try {
-      const workspaceId = await resolveWorkspaceAccess(req, res, req.query.workspaceId as string | undefined);
-      if (!workspaceId) return;
-      const limit = Number(req.query.limit ?? 40);
-      const runs = await listReviewRuns(workspaceId, Number.isFinite(limit) ? limit : 40);
-      return res.json(
-        runs.map((run) => ({
-          ...run,
-          pullRequestNumber: (run.stats as Record<string, unknown> | null)?.pullRequestNumber ?? null,
-          repositoryFullName: null,
-          pullRequestAuthor: null,
-        })),
-      );
-    } catch (error: any) {
-      console.error("[runs] list error:", error?.message || error);
-      return res.status(500).json({ message: "Failed to list review runs" });
-    }
-  });
-
-  app.get("/api/runs/:id/attempts", requireAuth, async (req: Request, res: Response) => {
-    try {
-      const [run] = await db.select().from(reviewRuns).where(eq(reviewRuns.id, String(req.params.id))).limit(1);
-      if (!run) return res.status(404).json({ message: "Review run not found" });
-      if (run.workspaceId) {
-        const access = await storage.canAccessWorkspace(currentUser(req).id, run.workspaceId);
-        if (!access.allowed) return res.status(403).json({ message: "Access denied" });
-      }
-      const findings = await db.select().from(reviewFindings).where(eq(reviewFindings.runId, run.id));
-      const attempts = findings.flatMap((finding) => {
-        const fix = (finding.fix ?? {}) as Record<string, unknown>;
-        const count = Number(fix.attempts ?? 0) || 0;
-        return Array.from({ length: count }, (_, index) => ({
-          id: `${finding.id}:${index + 1}`,
-          runId: run.id,
-          findingKey: finding.findingKey,
-          attempt: index + 1,
-          status: String(fix.status ?? "UNRESOLVED"),
-          path: finding.path,
-          line: finding.line,
-          title: finding.title,
-          patch: fix.patch ?? null,
-          reproPath: null,
-          verdict: { verified: Boolean(fix.verified), reason: fix.reason ?? null },
-          logs: fix.reason ?? null,
-          durationMs: 0,
-          createdAt: finding.createdAt,
-        }));
-      });
-      return res.json(attempts);
-    } catch (error: any) {
-      console.error("[runs] attempts error:", error?.message || error);
-      return res.status(500).json({ message: "Failed to list repair attempts" });
-    }
-  });
-
-  /** Model catalog for the review UI (3.5 roles). */
-  app.get("/api/models", requireAuth, (_req: Request, res: Response) => {
-    return res.json({
-      defaults: DEFAULT_MODELS,
-      reasoning: DEFAULT_REASONING,
-      models: MODEL_CATALOG,
-      roles: ["investigator", "engineer", "reviewer"] satisfies ModelRole[],
-    });
-  });
-
-  app.post("/api/repositories/:id/runs", requireAuth, apiRateLimiter, async (req: Request, res: Response) => {
-    try {
-      const repository = await loadRepository(req, res, String(req.params.id));
-      if (!repository) return;
-      const number = Number(req.body?.pullRequestNumber);
-      if (!Number.isInteger(number) || number <= 0) {
-        return res.status(400).json({ message: "pullRequestNumber is required" });
-      }
-      const models =
-        req.body?.models && typeof req.body.models === "object"
-          ? (req.body.models as Partial<Record<ModelRole, string>>)
-          : undefined;
-      const reasoning =
-        req.body?.reasoning && typeof req.body.reasoning === "object"
-          ? (req.body.reasoning as Partial<Record<ModelRole, ReasoningEffort>>)
-          : undefined;
-      const enqueued = await enqueueReview({
-        repositoryId: repository.id,
-        pullRequestNumber: number,
-        trigger: "manual",
-        instructions: typeof req.body?.instructions === "string" ? req.body.instructions : undefined,
-        models,
-        reasoning,
-        workspaceId: repository.workspaceId,
-        userId: currentUser(req).id,
-      });
-      if (!enqueued.runId) {
-        if (enqueued.error) return res.status(500).json({ message: "Failed to start review" });
-        return res.status(409).json({ message: "A review for this revision is already queued or running" });
-      }
-      const [run] = await db.select().from(reviewRuns).where(eq(reviewRuns.id, enqueued.runId)).limit(1);
-      await audit(req, "cortado.review.enqueue", `repository=${repository.fullName} pr=${number}`);
-      return res.status(202).json(run);
-    } catch (error: any) {
-      console.error("[runs] trigger error:", error?.message || error);
-      return res.status(500).json({ message: "Failed to start review" });
-    }
-  });
-
   app.get("/api/repositories/:id/findings", requireAuth, async (req: Request, res: Response) => {
     try {
       const repository = await loadRepository(req, res, String(req.params.id));
@@ -904,22 +795,8 @@ export function registerGithubRoutes(app: Express): void {
           const result = await handleGithubWebhook(event, req.body ?? {}, {
             storage,
             syncInstallationRepositories,
-            triggerReview: (payload) => enqueueReview(payload),
-            canReview: async (gate) => {
-              const [row] = await db
-                .select()
-                .from(botSettings)
-                .where(eq(botSettings.workspaceId, gate.workspaceId))
-                .limit(1);
-              const config = normalizeBotSettings(row).settings.pullRequests;
-              if (!config.autoReview) return false;
-              if (gate.action === "synchronize" && !config.reReviewOnPush) return false;
-              if (gate.draft && !config.reviewDrafts) return false;
-              if (config.skipBotsAndForks && (gate.authorIsBot || gate.isFork)) return false;
-              return true;
-            },
           });
-          await storage.markWebhookDelivery(delivery.id, result.enqueueFailed ? "error" : "processed", result.reason ?? null);
+          await storage.markWebhookDelivery(delivery.id, "processed", result.reason ?? null);
         } catch (error: any) {
           console.error("[github] webhook handler error:", error?.message || error);
           await storage.markWebhookDelivery(

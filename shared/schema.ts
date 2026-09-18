@@ -117,6 +117,7 @@ export const workspaces = pgTable("workspaces", {
   ownerId: uuid("owner_id").notNull(),
   name: text("name").notNull(),
   slug: text("slug").notNull().unique(),
+  supportCode: text("support_code").unique(),
   logoUrl: text("logo_url"),
   creditBudget: integer("credit_budget"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -147,7 +148,6 @@ export type WorkspaceMember = typeof workspaceMembers.$inferSelect;
 
 export const createWorkspaceSchema = z.object({
   name: z.string().min(2, "Workspace name is required").max(80),
-  slug: z.string().min(2).max(80).regex(/^[a-z0-9-]+$/, "Only lowercase letters, numbers, and hyphens"),
   logoUrl: z.string().url("Logo must be a valid URL").max(1000).optional(),
   creditBudget: z.number().int().positive("Credit budget must be a positive number").optional(),
 });
@@ -155,7 +155,6 @@ export const createWorkspaceSchema = z.object({
 export const updateWorkspaceSchema = z.object({
   name: z.string().min(2).max(80).optional(),
   logoUrl: z.string().url().max(1000).optional(),
-  slug: z.string().min(2).max(80).regex(/^[a-z0-9-]+$/).optional(),
   creditBudget: z.number().int().positive("Credit budget must be a positive number").nullable().optional(),
 });
 
@@ -1092,8 +1091,8 @@ export type ReviewFinding = typeof reviewFindings.$inferSelect;
 export type NewReviewFinding = typeof reviewFindings.$inferInsert;
 
 /**
- * CortardoBot 3.1 cache. Every key embeds engine/prompt/tool/model versions and
- * content hashes, so deploys and model changes invalidate entries implicitly.
+ * Review cache. Every key embeds engine/prompt/tool/model versions and content
+ * hashes, so deploys and model changes invalidate entries implicitly.
  */
 export const reviewCacheEntries = pgTable("review_cache_entries", {
   id: uuid("id").primaryKey().defaultRandom(),

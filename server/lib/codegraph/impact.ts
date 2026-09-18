@@ -62,7 +62,7 @@ function collect(
   return out.slice(0, limit);
 }
 
-function testCandidates(filePath: string): string[] {
+export function testCandidates(filePath: string): string[] {
   const ext = filePath.match(/\.[^./]+$/)?.[0] ?? "";
   const base = ext ? filePath.slice(0, -ext.length) : filePath;
   const name = base.split("/").pop() ?? base;

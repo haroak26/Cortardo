@@ -566,6 +566,94 @@ export async function getFileContent(
   }
 }
 
+export interface GithubCodeMatch {
+  path: string;
+  /** Matching fragments are provided by GitHub's text-match media type. */
+  fragments: string[];
+}
+
+/**
+ * Repository-wide code search for a literal query. Returns file paths and text
+ * fragments; the caller reads the file when it needs line numbers. Throws on
+ * failure (rate limit, search unavailable for the installation), so callers can
+ * degrade to a bounded local search.
+ */
+export async function searchCode(
+  installationId: string | number,
+  fullName: string,
+  query: string,
+  maxResults = 10,
+): Promise<GithubCodeMatch[]> {
+  const { owner, repo } = splitFullName(fullName);
+  const octokit = getInstallationOctokit(installationId);
+  const { data } = await octokit.rest.search.code({
+    q: `${query} repo:${owner}/${repo}`,
+    per_page: Math.min(30, Math.max(1, maxResults)),
+    headers: { accept: "application/vnd.github.text-match+json" },
+  });
+  return (data.items ?? []).slice(0, maxResults).map((item) => {
+    const matches = (item as { text_matches?: Array<{ fragment?: string }> }).text_matches ?? [];
+    return {
+      path: item.path,
+      fragments: matches
+        .map((match) => (typeof match.fragment === "string" ? match.fragment.trim() : ""))
+        .filter(Boolean)
+        .slice(0, 2),
+    };
+  });
+}
+
+export interface GithubReviewComment {
+  id: number;
+  body: string;
+  path: string;
+  line: number | null;
+  userLogin: string | null;
+  reviewId: number | null;
+}
+
+/** Review comments on a PR (both sides), used to replace prior suggestions. */
+export async function listPullRequestReviewComments(
+  installationId: string | number,
+  fullName: string,
+  number: number,
+): Promise<GithubReviewComment[]> {
+  const { owner, repo } = splitFullName(fullName);
+  const octokit = getInstallationOctokit(installationId);
+  const comments: GithubReviewComment[] = [];
+  for (let page = 1; page <= 10; page += 1) {
+    const { data } = await octokit.rest.pulls.listReviewComments({
+      owner,
+      repo,
+      pull_number: number,
+      per_page: 100,
+      page,
+    });
+    for (const comment of asArray(data)) {
+      comments.push({
+        id: comment.id,
+        body: comment.body ?? "",
+        path: comment.path,
+        line: comment.line ?? null,
+        userLogin: comment.user?.login ?? null,
+        reviewId: comment.pull_request_review_id ?? null,
+      });
+    }
+    if (asArray(data).length < 100) break;
+  }
+  return comments;
+}
+
+export async function deletePullRequestReviewComment(
+  installationId: string | number,
+  fullName: string,
+  commentId: number,
+): Promise<void> {
+  const { owner, repo } = splitFullName(fullName);
+  const octokit = getInstallationOctokit(installationId);
+  await octokit.rest.pulls.deleteReviewComment({ owner, repo, comment_id: commentId });
+}
+
 export async function createPullRequestReview(
   installationId: string | number,
   fullName: string,

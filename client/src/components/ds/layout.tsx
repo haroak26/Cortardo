@@ -25,7 +25,7 @@ export function AppPage({ className, ...props }: DivProps) {
   return (
     <div
       {...props}
-      className={cn("flex h-full min-h-0 flex-col bg-background page-enter", className)}
+      className={cn("flex h-full min-h-0 flex-col bg-page page-enter", className)}
     />
   );
 }

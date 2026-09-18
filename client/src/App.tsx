@@ -39,7 +39,6 @@ import LoadingVerificationPage from "@/pages/LoadingVerification";
 const Onboarding = lazy(() => import("@/pages/Onboarding"));
 const HomePage = lazy(() => import("@/pages/HomePage"));
 const AnalyticsPage = lazy(() => import("@/pages/AnalyticsPage"));
-const ReviewsPage = lazy(() => import("@/pages/ReviewsPage"));
 const SecurityPage = lazy(() => import("@/pages/SecurityPage"));
 const RepositoriesPage = lazy(() => import("@/pages/RepositoriesPage"));
 const RepositoryDetailPage = lazy(() => import("@/pages/RepositoryDetailPage"));
@@ -51,6 +50,7 @@ const BotExclusionsPage = lazy(() => import("@/pages/BotExclusionsPage"));
 const AdminLogin = lazy(() => import("@/pages/AdminLogin"));
 const AdminPage = lazy(() => import("@/pages/Admin"));
 const Account = lazy(() => import("@/pages/Account"));
+const WorkspaceSettingsPage = lazy(() => import("@/pages/WorkspaceSettingsPage"));
 const WorkspacePage = lazy(() => import("@/pages/TeamPage"));
 const TeamPage = lazy(() => import("@/pages/TeamPage"));
 const InviteAccept = lazy(() => import("@/pages/InviteAccept"));
@@ -115,7 +115,7 @@ function Router() {
       {/* Dashboard */}
       <Route path="/workspace/home">{() => <ProtectedRoute component={() => <DesignAppLayout><HomePage /></DesignAppLayout>} />}</Route>
       <Route path="/workspace/analytics">{() => <ProtectedRoute component={() => <DesignAppLayout><AnalyticsPage /></DesignAppLayout>} />}</Route>
-      <Route path="/review/reviews">{() => <ProtectedRoute component={() => <DesignAppLayout><ReviewsPage /></DesignAppLayout>} />}</Route>
+      <Route path="/workspace/settings">{() => <ProtectedRoute component={() => <DesignAppLayout><WorkspaceSettingsPage /></DesignAppLayout>} />}</Route>
       <Route path="/review/security">{() => <ProtectedRoute component={() => <DesignAppLayout><SecurityPage /></DesignAppLayout>} />}</Route>
       <Route path="/review/repositories">{() => <ProtectedRoute component={() => <DesignAppLayout><RepositoriesPage /></DesignAppLayout>} />}</Route>
       <Route path="/review/repositories/:id">{() => <ProtectedRoute component={() => <DesignAppLayout><RepositoryDetailPage /></DesignAppLayout>} />}</Route>

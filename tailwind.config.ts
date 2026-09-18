@@ -26,6 +26,7 @@ export default {
           hover: "hsl(var(--blue-hover) / <alpha-value>)",
         },
         background: "hsl(var(--background) / <alpha-value>)",
+        page: "hsl(var(--page-bg) / <alpha-value>)",
         foreground: "hsl(var(--foreground) / <alpha-value>)",
         border: "hsl(var(--border) / <alpha-value>)",
         input: "hsl(var(--input) / <alpha-value>)",

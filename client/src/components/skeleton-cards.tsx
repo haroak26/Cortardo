@@ -5,7 +5,7 @@ export function MetricCardSkeleton({ className }: { className?: string }) {
   return (
     <div
       className={cn(
-        "flex flex-col rounded-[12px] border border-[hsl(var(--surface-hover))] bg-background p-3 animate-pulse",
+        "flex flex-col rounded-[12px] border border-[hsl(var(--surface-hover))] bg-card p-3 animate-pulse",
         className,
       )}
     >
@@ -41,7 +41,7 @@ export function TileCardSkeleton({ className }: { className?: string }) {
 
 export function SettingsCardSkeleton({ className }: { className?: string }) {
   return (
-    <div className={cn("flex h-full flex-col overflow-hidden rounded-[12px] border border-[hsl(var(--surface-hover))] px-[12px] animate-pulse", className)}>
+    <div className={cn("flex h-full flex-col overflow-hidden rounded-[12px] border border-[hsl(var(--surface-hover))] bg-card px-[12px] animate-pulse", className)}>
       <div className="py-[12px]">
         <div className="h-[140px] w-full rounded-[8px] bg-surface-hover" />
       </div>

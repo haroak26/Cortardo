@@ -24,6 +24,18 @@
   --background: 0 0% 100%;
   --foreground: 0 0% 12%;
 
+  /* ── CONCEPT: grey in-app pages ──────────────────────────────────────────
+     In-app pages use a lighter tint of the sidebar/card-outline grey
+     (--surface-hover), while cards stay white. TO REVERT: set --page-bg to
+     0 0% 100% (or delete this block and the --page-bg override in .dark),
+     or drop bg-page from AppLayout's <main>. Cards then sit flush with the
+     old white page. */
+  --page-bg: 220 14% 98%;
+  --card: 0 0% 100%;
+  --card-foreground: 0 0% 12%;
+  --card-border: 220 14% 88%;
+  /* ─────────────────────────────────────────────────────────────────────── */
+
   --surface: 0 0% 100%;
   --surface-muted: 0 0% 98%;
   --surface-subtle: 220 20% 97%;
@@ -108,6 +120,13 @@
   --header-border: 220 10% 20%;
   --background: 0 0% 7%;
   --foreground: 0 0% 93%;
+
+  /* ── CONCEPT: grey in-app pages (see :root) ── */
+  --page-bg: 220 10% 14%;
+  --card: 0 0% 10%;
+  --card-foreground: 0 0% 93%;
+  --card-border: 220 10% 20%;
+  /* ───────────────────────────────────────────── */
 
   --surface: 0 0% 10%;
   --surface-muted: 0 0% 9%;

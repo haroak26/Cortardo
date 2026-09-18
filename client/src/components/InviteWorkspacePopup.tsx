@@ -203,7 +203,7 @@ export function InviteWorkspacePopup({ open, onClose, workspaceId }: InviteWorks
     onRoleChange: (role: Role) => void;
     onRemove: () => void;
   }) => (
-    <div key={id} className="flex items-center gap-2 py-1.5">
+    <div key={id} className="flex items-center gap-2 py-1">
       <span className="flex-1 min-w-0 flex items-center gap-1.5">
         <span className="min-w-0 truncate text-[12.5px] font-medium text-foreground">{email}</span>
         <StatusIcon status={status} />
@@ -223,7 +223,7 @@ export function InviteWorkspacePopup({ open, onClose, workspaceId }: InviteWorks
         {roleMenuOpen === id && (
           <>
             <div className="fixed inset-0 z-10" onClick={() => setRoleMenuOpen(null)} />
-            <div className="absolute right-0 top-full mt-1 z-20 min-w-[130px] bg-background border border-border rounded-[14px] p-1 flex flex-col gap-1 shadow-md">
+            <div className="absolute right-0 top-full mt-1 z-20 min-w-[130px] bg-background border border-[hsl(var(--surface-hover))] rounded-[12px] p-1 flex flex-col gap-1 shadow-md">
               {ROLE_OPTIONS.map((opt) => (
                 <button
                   key={opt.value}
@@ -259,7 +259,7 @@ export function InviteWorkspacePopup({ open, onClose, workspaceId }: InviteWorks
       <form
         onSubmit={handleInvite}
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-[340px] bg-background border border-border rounded-[20px] shadow-xl p-5 flex flex-col gap-4 animate-in zoom-in-95 fade-in-0 duration-150"
+        className="w-full max-w-[340px] bg-background border border-[hsl(var(--surface-hover))] rounded-[12px] shadow-xl p-3 flex flex-col gap-3 animate-in zoom-in-95 fade-in-0 duration-150"
       >
         <div>
           <label className="block text-[12px] font-medium text-foreground mb-1.5">Email address</label>

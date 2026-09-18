@@ -270,9 +270,17 @@ export function SidebarContent({ location: _location, onNavigate, collapsed, mob
             wsOpen && !isSubNav ? 'bg-surface-hover' : 'bg-transparent hover:bg-surface-hover active:bg-surface-hover'
           }`}
         >
-          <span className="flex items-center justify-center w-8 h-8 rounded-[8px] bg-brand text-white text-[12px] font-bold shrink-0">
-            {initials(activeWorkspace?.name)}
-          </span>
+          {activeWorkspace?.logoUrl ? (
+            <img
+              src={activeWorkspace.logoUrl}
+              alt={activeWorkspace.name}
+              className="w-8 h-8 rounded-[8px] object-cover shrink-0"
+            />
+          ) : (
+            <span className="flex items-center justify-center w-8 h-8 rounded-[8px] bg-brand text-white text-[12px] font-bold shrink-0">
+              {initials(activeWorkspace?.name)}
+            </span>
+          )}
           <span className="h-6 w-px shrink-0 self-center bg-[hsl(var(--border-strong))]" />
           <span className="flex-1 min-w-0">
             <span className="block text-[13px] font-semibold text-foreground truncate">
@@ -352,6 +360,17 @@ export function SidebarContent({ location: _location, onNavigate, collapsed, mob
               <button
                 onClick={() => {
                   setWsOpen(false);
+                  setWsFlyoutOpen(false);
+                  onNavigate?.();
+                  navigate('/workspace/settings');
+                }}
+                className="flex w-full items-center gap-2 px-2 py-1.5 rounded-[8px] text-[12.5px] font-medium text-fg-soft hover:bg-surface-hover transition-colors border-none bg-transparent cursor-pointer text-left"
+              >
+                Edit Workspace
+              </button>
+              <button
+                onClick={() => {
+                  setWsOpen(false);
                   onNavigate?.();
                   onInviteToWorkspace?.();
                 }}
@@ -413,6 +432,12 @@ export function SidebarContent({ location: _location, onNavigate, collapsed, mob
                   <div className="group flex w-full items-center gap-2.5 rounded-[10px] px-2.5 py-2 cursor-pointer select-none transition-colors duration-100 hover:bg-surface-hover active:bg-surface-hover">
                     {userLoading ? (
                       <span className="w-8 h-8 rounded-full bg-surface-hover shrink-0 animate-pulse" />
+                    ) : user?.avatarUrl ? (
+                      <img
+                        src={user.avatarUrl}
+                        alt={user.displayName || user.username || 'Account'}
+                        className="w-8 h-8 rounded-full object-cover shrink-0"
+                      />
                     ) : (
                       <span className="flex items-center justify-center w-8 h-8 rounded-full bg-brand text-white text-[12px] font-bold shrink-0">
                         {initials(user?.displayName || user?.email)}

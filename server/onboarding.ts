@@ -1,7 +1,7 @@
-import { randomBytes } from "crypto";
 import { and, eq, sql } from "drizzle-orm";
 import { db } from "./db";
 import { sendWelcomeEmail } from "./email";
+import { generateUniqueSupportCode, generateUniqueWorkspaceSlug } from "./lib/workspace-slug";
 import {
   onboardingSessions,
   users,
@@ -112,7 +112,7 @@ export async function saveProfileName(userId: string, displayName: string): Prom
   });
 }
 
-export async function createOrUpdateWorkspace(userId: string, workspaceName: string, logoUrl?: string, slug?: string): Promise<Workspace> {
+export async function createOrUpdateWorkspace(userId: string, workspaceName: string, logoUrl?: string): Promise<Workspace> {
   let sendWelcome = false;
   let userEmail = "";
   let userDisplayName = "";
@@ -120,8 +120,7 @@ export async function createOrUpdateWorkspace(userId: string, workspaceName: str
     await lockOnboardingForUser(userId, tx);
     const user = await requireUser(userId, tx);
     const existingSession = await getSession(userId, tx);
-    const resolvedSlug = slug || workspaceName.trim().toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/--+/g, "-").replace(/^-|-$/g, "") || `ws-${randomBytes(4).toString("hex")}`;
-    const values = { name: workspaceName.trim(), slug: resolvedSlug, logoUrl: logoUrl ?? null };
+    const values = { name: workspaceName.trim(), logoUrl: logoUrl ?? null };
     let workspace: Workspace;
 
     if (existingSession?.workspaceId) {
@@ -130,11 +129,11 @@ export async function createOrUpdateWorkspace(userId: string, workspaceName: str
         const [updated] = await (tx).update(workspaces).set(values).where(eq(workspaces.id, existingWorkspace.id)).returning();
         workspace = updated;
       } else {
-        const [created] = await (tx).insert(workspaces).values({ ownerId: userId, ...values }).returning();
+        const [created] = await (tx).insert(workspaces).values({ ownerId: userId, ...values, slug: await generateUniqueWorkspaceSlug(values.name, undefined, tx), supportCode: await generateUniqueSupportCode(tx) }).returning();
         workspace = created;
       }
     } else {
-      const [created] = await (tx).insert(workspaces).values({ ownerId: userId, ...values }).returning();
+      const [created] = await (tx).insert(workspaces).values({ ownerId: userId, ...values, slug: await generateUniqueWorkspaceSlug(values.name, undefined, tx), supportCode: await generateUniqueSupportCode(tx) }).returning();
       workspace = created;
     }
 

@@ -15,6 +15,7 @@ import { registerRemainingRoutes } from "./routes/remaining";
 import { registerGithubRoutes } from "./routes/github";
 import { registerBotRoutes } from "./routes/bot";
 import { buildOnboardingSession } from "./onboarding-session";
+import { generateUniqueWorkspaceSlug } from "./lib/workspace-slug";
 import { createHash, randomBytes, randomInt, timingSafeEqual } from "crypto";
 import {
   signupSchema,
@@ -345,9 +346,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
       if (!workspaceId) {
         const defaultName = (user.displayName || user.username || "My").trim().split(/\s+/)[0] || "My";
+        const wsName = `${defaultName}'s Workspace`;
         const ws = await storage.createWorkspace(userId, {
-          name: `${defaultName}'s Workspace`,
-          slug: `ws-${randomBytes(6).toString("hex")}`,
+          name: wsName,
+          slug: await generateUniqueWorkspaceSlug(wsName),
         });
         workspaceId = ws.id;
         await storage.updateUser(userId, { lastWorkspaceId: ws.id });

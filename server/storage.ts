@@ -1,5 +1,6 @@
 import { and, asc, count, desc, eq, gte, inArray, isNotNull, isNull, ilike, like, lte, not, or, sql } from "drizzle-orm";
 import { db } from "./db";
+import { generateUniqueSupportCode } from "./lib/workspace-slug";
 import { createHash, randomUUID, randomBytes } from "crypto";
 import {
   usage,
@@ -45,8 +46,11 @@ import {
   type NewPullRequest,
   type WebhookDelivery,
   repositoryCodegraphs,
+  repositoryLearnings,
   type RepositoryCodegraph,
   type NewRepositoryCodegraph,
+  type RepositoryLearning,
+  type NewRepositoryLearning,
   repositoryCodeFiles,
   type RepositoryCodeFile,
   type NewRepositoryCodeFile,
@@ -157,6 +161,10 @@ export interface IStorage {
   updateRepository(id: string, data: Partial<NewRepository>): Promise<Repository>;
   deleteRepository(id: string): Promise<void>;
   deleteRepositoriesByInstallation(installationId: string): Promise<void>;
+
+  listRepositoryLearnings(workspaceId: string, repositoryId: string): Promise<RepositoryLearning[]>;
+  createRepositoryLearning(data: NewRepositoryLearning): Promise<RepositoryLearning>;
+  deactivateRepositoryLearning(id: string): Promise<void>;
 
   getRepositoryCodegraph(repositoryId: string): Promise<RepositoryCodegraph | undefined>;
   listRepositoryCodegraphs(repositoryIds: string[]): Promise<RepositoryCodegraph[]>;
@@ -314,17 +322,36 @@ class DatabaseStorage implements IStorage {
 
   // ── Workspaces ────────────────────────────────────────────────────────────
   async createWorkspace(ownerId: string, data: { name: string; slug: string; logoUrl?: string; creditBudget?: number | null }): Promise<Workspace> {
-    const [workspace] = await db.insert(workspaces).values({ ownerId, ...data }).returning();
+    const [workspace] = await db.insert(workspaces).values({
+      ownerId,
+      ...data,
+      supportCode: await generateUniqueSupportCode(),
+    }).returning();
     return workspace;
   }
 
-  async updateWorkspace(workspaceId: string, data: { name?: string; logoUrl?: string; slug?: string; creditBudget?: number | null }): Promise<Workspace> {
+  async updateWorkspace(workspaceId: string, data: { name?: string; logoUrl?: string; slug?: string; supportCode?: string; creditBudget?: number | null }): Promise<Workspace> {
     const [workspace] = await db.update(workspaces).set(data).where(eq(workspaces.id, workspaceId)).returning();
     return workspace;
   }
 
   async deleteWorkspace(workspaceId: string): Promise<void> {
     await db.delete(workspaces).where(eq(workspaces.id, workspaceId));
+  }
+
+  /** Assigns a support code to any workspace that is missing one (lazy migration backfill). */
+  private async ensureSupportCodes(rows: Workspace[]): Promise<Workspace[]> {
+    const missing = rows.filter(w => !w.supportCode);
+    if (missing.length === 0) return rows;
+    const patched = await Promise.all(missing.map(async (w) => {
+      try {
+        return await this.updateWorkspace(w.id, { supportCode: await generateUniqueSupportCode() });
+      } catch {
+        return w;
+      }
+    }));
+    const byId = new Map(patched.map(w => [w.id, w]));
+    return rows.map(w => (w.supportCode ? w : byId.get(w.id) ?? w));
   }
 
   async listWorkspaces(userId: string): Promise<(Workspace & { role: string })[]> {
@@ -341,12 +368,15 @@ class DatabaseStorage implements IStorage {
         rows.push({ ...mr.workspace, role: mr.role });
       }
     }
-    return rows;
+    const withCodes = await this.ensureSupportCodes(rows.map(r => r as Workspace));
+    const byId = new Map(withCodes.map(w => [w.id, w]));
+    return rows.map(r => ({ ...r, supportCode: byId.get(r.id)?.supportCode ?? r.supportCode }));
   }
 
   async getWorkspaceById(id: string): Promise<Workspace | undefined> {
     const [workspace] = await db.select().from(workspaces).where(eq(workspaces.id, id));
-    return workspace;
+    if (!workspace || workspace.supportCode) return workspace;
+    return this.ensureSupportCodes([workspace]).then(rows => rows[0]);
   }
 
   async canAccessWorkspace(userId: string, workspaceId: string): Promise<{ allowed: boolean; role: string | null }> {
@@ -875,6 +905,33 @@ class DatabaseStorage implements IStorage {
 
   async deleteRepositoriesByInstallation(installationId: string): Promise<void> {
     await db.delete(repositories).where(eq(repositories.installationId, installationId));
+  }
+
+  /** Active learnings for a repository, including workspace-wide ones. */
+  async listRepositoryLearnings(workspaceId: string, repositoryId: string): Promise<RepositoryLearning[]> {
+    return db
+      .select()
+      .from(repositoryLearnings)
+      .where(
+        and(
+          eq(repositoryLearnings.workspaceId, workspaceId),
+          eq(repositoryLearnings.active, true),
+          or(eq(repositoryLearnings.repositoryId, repositoryId), isNull(repositoryLearnings.repositoryId)),
+        ),
+      )
+      .orderBy(desc(repositoryLearnings.createdAt));
+  }
+
+  async createRepositoryLearning(data: NewRepositoryLearning): Promise<RepositoryLearning> {
+    const [row] = await db.insert(repositoryLearnings).values(data).returning();
+    return row;
+  }
+
+  async deactivateRepositoryLearning(id: string): Promise<void> {
+    await db
+      .update(repositoryLearnings)
+      .set({ active: false, updatedAt: new Date() })
+      .where(eq(repositoryLearnings.id, id));
   }
 
   async getRepositoryCodegraph(repositoryId: string): Promise<RepositoryCodegraph | undefined> {

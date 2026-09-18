@@ -10,17 +10,6 @@ interface CreateWorkspacePopupProps {
   onClose: () => void;
 }
 
-function slugify(name: string): string {
-  const base = name
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 60);
-  if (base) return base;
-  return `workspace-${Math.random().toString(36).slice(2, 6)}`;
-}
-
 export function CreateWorkspacePopup({ open, onClose }: CreateWorkspacePopupProps) {
   const { setActiveWorkspaceId } = useWorkspace();
   const queryClient = useQueryClient();
@@ -70,7 +59,6 @@ export function CreateWorkspacePopup({ open, onClose }: CreateWorkspacePopupProp
         credentials: "include",
         body: JSON.stringify({
           name: name.trim(),
-          slug: slugify(name),
           creditBudget: parsedBudget ?? null,
         }),
       });
