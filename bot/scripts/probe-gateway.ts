@@ -7,11 +7,11 @@
  * Run: node --import tsx bot/scripts/probe-gateway.ts
  * Output: a markdown report on stdout. Costs a few cents at most.
  */
-import { resolveCortardoBotModelConfig } from "../src/model.ts";
+import { resolveCodeBotModelConfig } from "../src/model.ts";
 
-const config = resolveCortardoBotModelConfig();
+const config = resolveCodeBotModelConfig();
 if (!config.apiKey) {
-  console.error("[probe] no gateway key configured (CORTARDO_BOT_API_KEY / CORTADO_AI_API_KEY / MERGE_GATEWAY_API_KEY)");
+  console.error("[probe] no gateway key configured (CODEBOT_API_KEY / CORTADO_AI_API_KEY / MERGE_GATEWAY_API_KEY)");
   process.exit(1);
 }
 
@@ -105,7 +105,7 @@ async function probeModel(model: string, deep: boolean): Promise<VariantRun[]> {
       ? [
           {
             variant: "prompt_cache_key",
-            extra: { prompt_cache_key: `cortardo-bot-probe-${model}` },
+            extra: { prompt_cache_key: `codebot-probe-${model}` },
             content: (user: string) => user,
           },
           {

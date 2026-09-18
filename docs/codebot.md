@@ -1,13 +1,13 @@
-# Cortardo Bot — architecture, reliability, and roadmap
+# CodeBot — architecture, reliability, and roadmap
 
 Engine version `0.4.0`. Related: [`../bot/README.md`](../bot/README.md).
 
 ---
 
-## 1. What Cortardo Bot is
+## 1. What CodeBot is
 
-Cortardo Bot is the staged code-review agent that replaces the all-or-nothing CortardoBot
-pipeline. The legacy engine and its server integration have been removed. Every stage
+CodeBot is the staged code-review agent that replaces the legacy all-or-nothing
+review pipeline. The legacy engine and its server integration have been removed. Every stage
 is read-only on the repository, and a run publishes **exactly one review comment** plus
 one native GitHub suggestion per verified fix.
 
@@ -18,21 +18,21 @@ one native GitHub suggestion per verified fix.
 | 3. fixes | shipped | Coordinator fix plans + codegen drafts (priority severities only); drafts stay off GitHub until verification |
 | 4. verify | shipped | The autmpus loop: terra plans a sandbox test, the draft is cloned/applied/run in E2B, failures are diagnosed and repaired, verified edits become the inline suggestions |
 
-The published review (`<!-- cortardo-bot -->` + `<!-- cortardo-bot:review -->`) carries the findings,
+The published review (`<!-- codebot -->` + `<!-- codebot:review -->`) carries the findings,
 the fix and verification status of each, the verified patches outside the diff, and a
 collapsed verification log. Because every legacy per-stage comment also carries
-`<!-- cortardo-bot -->`, the first upgraded run replaces all of them at once.
+`<!-- codebot -->`, the first upgraded run replaces all of them at once.
 
-Final live validation of the single-comment pipeline (`CORTARDO_BOT_PROMPT_CACHE=0`):
+Final live validation of the single-comment pipeline (`CODEBOT_PROMPT_CACHE=0`):
 
 | PR | Review | Verified | Evidence | Suggestions | Cost |
 | --- | --- | --- | --- | ---: | ---: |
-| #6 `cortardo-bot-25ce8bec` | `5719139423` | 2/3 (the third unverified, no suggestion) | compile | 3 | $0.4319 |
-| #7 `cortardo-bot-79fc7451` | `5719252190` | 3/3 | 2 compile · 1 source check | 4 | $0.4230 |
+| #6 `codebot-25ce8bec` | `5719139423` | 2/3 (the third unverified, no suggestion) | compile | 3 | $0.4319 |
+| #7 `codebot-79fc7451` | `5719252190` | 3/3 | 2 compile · 1 source check | 4 | $0.4230 |
 
 The review publishes first, the suggestion review second, and evidence is graded honestly
 ("0 ran the changed code" on both runs). The earlier per-stage run is documented in
-[`cortardo-bot-0.4-verify-e2e.md`](./cortardo-bot-0.4-verify-e2e.md).
+[`codebot-0.4-verify-e2e.md`](./codebot-0.4-verify-e2e.md).
 
 ---
 
@@ -45,7 +45,7 @@ GitHub App
 run-inputs.ts ──► loadPullRequestContext / loadChangedFiles / analyseChangedFiles (tree-sitter)
    │  storage.getRepositoryCodegraph · storage.listRepositoryLearnings
    ▼
-runCortardo Bot() ─► stage 1 codegraph        buildCodegraphReport (internal, never published)
+runCodeBot() ─► stage 1 codegraph        buildCodegraphReport (internal, never published)
              ─► stage 2 hypotheses       scanHypotheses (9 rules, no model)
                                          runAssignmentPlanner (terra)      call 1
                                          runSwarm (luna, read tools)       ≤6 agents
@@ -74,7 +74,7 @@ still publishes its own marker comment, and rebuilding a skipped upstream report
 
 `buildCodegraphReport()` composes per changed file: fresh symbols, imports, imported-by,
 callers/callees and likely tests from the stored index, with warnings for stale indexes and
-unanalyzable files. Marker: `<!-- cortardo-bot:stage=codegraph -->`.
+unanalyzable files. Marker: `<!-- codebot:stage=codegraph -->`.
 
 ---
 
@@ -113,7 +113,7 @@ advisory prints `priority #n` plus its dismissal id (`s_…`). Dismissals from
 
 ### 5.1 Plan (terra, one call)
 Every **priority** hypothesis — severity `critical` or `high` by default
-(`CORTARDO_BOT_FIX_SEVERITIES`) — becomes either a concrete plan
+(`CODEBOT_FIX_SEVERITIES`) — becomes either a concrete plan
 (`summary`, `steps`, `files`, `risks`, `testIdea`) or an explicit `not_fixable` reason;
 medium/low advisories are counted and skipped. `maxFixes=0` means every priority hypothesis.
 
@@ -130,9 +130,9 @@ failed | failed_transport | skipped`, and skips state the reason (budget/deadlin
 - **Inside the pipeline publishing is deferred**: stage 3 keeps both its suggestions and its
   comment off GitHub when stage 4 will run. The verified set is what readers see.
 - **Standalone runs** publish as before: in-diff edits become one GitHub review (event
-  `COMMENT`) with ```` ```suggestion ```` blocks tagged `<!-- cortardo-bot:fix <id> -->`, and a
+  `COMMENT`) with ```` ```suggestion ```` blocks tagged `<!-- codebot:fix <id> -->`, and a
   stage summary comment carries the plan, outcome, out-of-diff patches, confidence, attempts
-  and usage. Re-runs list and delete previous Cortardo Bot suggestions first, so one live set
+  and usage. Re-runs list and delete previous CodeBot suggestions first, so one live set
   exists per PR.
 - If the review API fails, the stage falls back to summary-only patches and says so.
 
@@ -141,11 +141,11 @@ Nothing is compiled, applied or pushed. That is stage 4.
 ### 5.4 Cost and caching
 - Models: coordinator `openai/gpt-5.6-terra`, swarm `openai/gpt-5.6-luna`, codegen
   `openai/gpt-5.6-sol`.
-- Codegen runs with **minimal reasoning** (`CORTARDO_BOT_REASONING_CODEGEN`, default `minimal`),
+- Codegen runs with **minimal reasoning** (`CODEBOT_REASONING_CODEGEN`, default `minimal`),
   `codegenTurns=3`, a shared cacheable context prefix (same system prompt + repo/PR + full
   diff for every fix) and a per-run content cache for tool reads.
 - The footer reports codegen calls, tokens, **cached tokens** and total cost against
-  `CORTARDO_BOT_MAX_COST_USD` (default $0.50).
+  `CODEBOT_MAX_COST_USD` (default $0.50).
 
 ---
 
@@ -155,7 +155,7 @@ Stage 4 is the only stage that executes code. It never writes to the repository;
 the PR head into an ephemeral E2B sandbox and proves the priority drafts there.
 
 ### 6.1 Selection
-Only generated fixes whose hypothesis severity is in `CORTARDO_BOT_FIX_SEVERITIES`
+Only generated fixes whose hypothesis severity is in `CODEBOT_FIX_SEVERITIES`
 (`critical,high` by default) reach the sandbox. Medium/low advisories stay as advisories.
 
 ### 6.2 Plan (terra, one call per fix)
@@ -167,7 +167,7 @@ and duplicate commands. When terra is unavailable, the deterministic fallback us
 repository's own `test` / `check` / `build` scripts or detected test files.
 
 ### 6.3 Sandbox
-A single E2B sandbox per run (`CORTARDO_BOT_E2B_TEMPLATE`, default `cortardo-review-v1`). Clone is
+A single E2B sandbox per run (`CODEBOT_E2B_TEMPLATE`, default `cortardo-review-v1`). Clone is
 depth-1 `refs/pull/N/head` with the GitHub App installation token, SHA-verified, and the
 token is scrubbed from the remote before any other command runs. Install is detected from
 the lockfile (`npm ci`, `pnpm`, `yarn`, `bun`). Logs are redacted and tailed.
@@ -188,7 +188,7 @@ Commands that already fail on the unfixed head are reported as pre-existing and 
 as fix failures. The harness probe contents are published in the collapsed verification log.
 
 ### 6.5 Outcome
-Verified edits become the inline suggestions (each tagged `<!-- cortardo-bot:fix <id> -->` with a
+Verified edits become the inline suggestions (each tagged `<!-- codebot:fix <id> -->` with a
 severity/evidence/attempt header) and the single review comment carries the findings, the
 verified set, the out-of-diff patches and a collapsed verification log with commands, exit
 codes, durations, attempt history, diagnoses and evidence class. Unverified fixes leave no
@@ -196,7 +196,7 @@ suggestion. No `E2B_API_KEY`, a failed clone or a failed install posts the draft
 and states the reason.
 
 The pipeline publishes exactly one comment per run: the review. It carries the generic
-`<!-- cortardo-bot -->` marker, so publishing it also deletes every legacy per-stage comment
+`<!-- codebot -->` marker, so publishing it also deletes every legacy per-stage comment
 (`codegraph`, `hypotheses`, `fixes`, `verify`) from earlier runs. Publish order is review
 comment first, then the suggestion review, so the conversation leads with the findings; if
 posting the suggestions fails, the review is republished once with the failure in its notes.
@@ -207,26 +207,26 @@ posting the suggestions fails, the review is republished once with the failure i
 
 | Env | Default | Purpose |
 | --- | --- | --- |
-| `CORTARDO_BOT_API_KEY` | — | explicit gateway key override (checked first) |
-| `CORTARDO_BOT_MODEL` / `CORTARDO_BOT_SWARM_MODEL` / `CORTARDO_BOT_CODEGEN_MODEL` | terra / luna / sol | role models |
-| `CORTARDO_BOT_REASONING` / `CORTARDO_BOT_REASONING_CODEGEN` | medium / minimal | reasoning effort |
-| `CORTARDO_BOT_SWARM_AGENTS` / `_CONCURRENCY` / `_TURNS` / `_TOOLS` / `_SEARCH` | 6 / 3 / 4 / 3 / on | swarm |
-| `CORTARDO_BOT_MAX_FIXES` | 0 (all priority) | codegen cap |
-| `CORTARDO_BOT_FIX_SEVERITIES` | critical,high | severities that are fixed and verified |
-| `CORTARDO_BOT_CODEGEN_CONCURRENCY` / `_TURNS` | 2 / 3 | codegen pool |
-| `CORTARDO_BOT_MAX_COST_USD` | 0.50 | shared soft ceiling for stages 2-4 |
-| `CORTARDO_BOT_TARGET_COST_USD` | 0.40 | soft goal |
-| `CORTARDO_BOT_STAGE2_BUDGET` | 0.22 | stage 2 cap |
-| `CORTARDO_BOT_STAGE4_RESERVE_USD` | 0.15 | slice only the verify stage may spend |
-| `CORTARDO_BOT_HYPOTHESES_MS` | 300000 | stage 2 wall clock |
-| `CORTARDO_BOT_LEARNINGS` | on | dismissal suppression |
-| `CORTARDO_BOT_VERIFY` | on | 0 disables stage 4 |
-| `CORTARDO_BOT_VERIFY_ATTEMPTS` | 4 | 1 initial + repairs |
-| `CORTARDO_BOT_VERIFY_MS` / `_COMMAND_TIMEOUT_MS` | 900000 / 300000 | stage and command clocks |
-| `CORTARDO_BOT_VERIFY_COMMANDS` | — | newline-separated overrides (skips terra) |
-| `CORTARDO_BOT_E2B_TEMPLATE` / `_TIMEOUT_MS` | cortardo-review-v1 / 900000 | sandbox |
+| `CODEBOT_API_KEY` | — | explicit gateway key override (checked first) |
+| `CODEBOT_MODEL` / `CODEBOT_SWARM_MODEL` / `CODEBOT_CODEGEN_MODEL` | terra / luna / sol | role models |
+| `CODEBOT_REASONING` / `CODEBOT_REASONING_CODEGEN` | medium / minimal | reasoning effort |
+| `CODEBOT_SWARM_AGENTS` / `_CONCURRENCY` / `_TURNS` / `_TOOLS` / `_SEARCH` | 6 / 3 / 4 / 3 / on | swarm |
+| `CODEBOT_MAX_FIXES` | 0 (all priority) | codegen cap |
+| `CODEBOT_FIX_SEVERITIES` | critical,high | severities that are fixed and verified |
+| `CODEBOT_CODEGEN_CONCURRENCY` / `_TURNS` | 2 / 3 | codegen pool |
+| `CODEBOT_MAX_COST_USD` | 0.50 | shared soft ceiling for stages 2-4 |
+| `CODEBOT_TARGET_COST_USD` | 0.40 | soft goal |
+| `CODEBOT_STAGE2_BUDGET` | 0.22 | stage 2 cap |
+| `CODEBOT_STAGE4_RESERVE_USD` | 0.15 | slice only the verify stage may spend |
+| `CODEBOT_HYPOTHESES_MS` | 300000 | stage 2 wall clock |
+| `CODEBOT_LEARNINGS` | on | dismissal suppression |
+| `CODEBOT_VERIFY` | on | 0 disables stage 4 |
+| `CODEBOT_VERIFY_ATTEMPTS` | 4 | 1 initial + repairs |
+| `CODEBOT_VERIFY_MS` / `_COMMAND_TIMEOUT_MS` | 900000 / 300000 | stage and command clocks |
+| `CODEBOT_VERIFY_COMMANDS` | — | newline-separated overrides (skips terra) |
+| `CODEBOT_E2B_TEMPLATE` / `_TIMEOUT_MS` | cortardo-review-v1 / 900000 | sandbox |
 | `E2B_API_KEY` | — | required for stage 4 |
-| `CORTARDO_BOT_NO_MODEL` | — | deterministic-only |
+| `CODEBOT_NO_MODEL` | — | deterministic-only |
 
 The gateway client retries transient statuses, and capability fallbacks (json mode, token
 caps, reasoning, temperature) are decided **per request**, so concurrent agents cannot race
@@ -251,7 +251,7 @@ each other's recovery.
   (findings, drafts, no codegraph comment) and of the suggestion set.
 - `npm run bot:e2e:verify` — live stage 2-4 e2e: removes old bot artifacts, clones the PR
   head in E2B, verifies the priority fixes, asserts one review comment + tagged verified
-  suggestions and the budget. See [`cortardo-bot-0.4-verify-e2e.md`](./cortardo-bot-0.4-verify-e2e.md)
+  suggestions and the budget. See [`codebot-0.4-verify-e2e.md`](./codebot-0.4-verify-e2e.md)
   (pre-single-comment run).
 
 ---
@@ -270,7 +270,7 @@ loop (E2B clone/install/verify/repair, graded evidence, verified-only suggestion
 ### Phase 2 — reliability core
 1. **GitHub resilience**: retries with jitter around Octokit (plain clients today),
    rate-limit awareness, and 403/secondary-limit handling.
-2. **Run persistence**: a `cortardo_bot_runs` table (repo, PR, head, stage, status, usage,
+2. **Run persistence**: a `codebot_runs` table (repo, PR, head, stage, status, usage,
    comment ids) plus a per-repo advisory lock and head-SHA dedupe so concurrent webhook
    deliveries cannot double-post or race comment replacement.
 3. **Shared inputs**: load PR files/analyses/index once per run and pass them to all stages.

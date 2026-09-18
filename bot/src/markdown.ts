@@ -15,17 +15,17 @@ import type {
 } from "./types.ts";
 import { renderFixDiff } from "./patch.ts";
 
-export const CORTARDO_BOT_MARKER = "<!-- cortardo-bot -->";
-export const CODEGRAPH_MARKER = `${CORTARDO_BOT_MARKER}\n<!-- cortardo-bot:stage=codegraph -->`;
-export const HYPOTHESES_MARKER = `${CORTARDO_BOT_MARKER}\n<!-- cortardo-bot:stage=hypotheses -->`;
-export const FIXES_MARKER = `${CORTARDO_BOT_MARKER}\n<!-- cortardo-bot:stage=fixes -->`;
-export const VERIFY_MARKER = `${CORTARDO_BOT_MARKER}\n<!-- cortardo-bot:stage=verify -->`;
+export const CODEBOT_MARKER = "<!-- codebot -->";
+export const CODEGRAPH_MARKER = `${CODEBOT_MARKER}\n<!-- codebot:stage=codegraph -->`;
+export const HYPOTHESES_MARKER = `${CODEBOT_MARKER}\n<!-- codebot:stage=hypotheses -->`;
+export const FIXES_MARKER = `${CODEBOT_MARKER}\n<!-- codebot:stage=fixes -->`;
+export const VERIFY_MARKER = `${CODEBOT_MARKER}\n<!-- codebot:stage=verify -->`;
 
 /**
  * The product comment: one review per run. It carries the generic marker so
  * publishing it replaces every legacy per-stage comment in one pass.
  */
-export const REVIEW_MARKER = `${CORTARDO_BOT_MARKER}\n<!-- cortardo-bot:review -->`;
+export const REVIEW_MARKER = `${CODEBOT_MARKER}\n<!-- codebot:review -->`;
 
 function short(value: string, max = 200): string {
   return value.length <= max ? value : `${value.slice(0, max - 1)}…`;
@@ -126,7 +126,7 @@ export function buildCodegraphComment(input: BuildCodegraphCommentInput): string
   const lines: string[] = [];
 
   lines.push(CODEGRAPH_MARKER);
-  lines.push("## Cortardo Bot · Stage 1: codegraph");
+  lines.push("## CodeBot · Stage 1: codegraph");
   lines.push("");
   lines.push(
     `\`${report.repository}\` · PR #${report.pullRequestNumber} · head \`${head}\` · code index ${index}`,
@@ -177,7 +177,7 @@ export function buildCodegraphComment(input: BuildCodegraphCommentInput): string
   }
 
   lines.push("---");
-  lines.push(`_Run \`${input.runId}\` · Cortardo Bot ${input.version} · stage 1 of the Cortardo Bot pipeline (codegraph only)._`);
+  lines.push(`_Run \`${input.runId}\` · CodeBot ${input.version} · stage 1 of the CodeBot pipeline (codegraph only)._`);
   return lines.join("\n");
 }
 
@@ -241,7 +241,7 @@ export function buildHypothesesComment(input: BuildHypothesesCommentInput): stri
 
   const lines: string[] = [];
   lines.push(HYPOTHESES_MARKER);
-  lines.push("## Cortardo Bot · Stage 2: hypotheses");
+  lines.push("## CodeBot · Stage 2: hypotheses");
   lines.push("");
   lines.push(`\`${report.repository}\` · PR #${report.pullRequestNumber} · head \`${head}\` · code index ${index}`);
   lines.push("");
@@ -275,8 +275,8 @@ export function buildHypothesesComment(input: BuildHypothesesCommentInput): stri
 
   lines.push("---");
   lines.push(...usageLines);
-  lines.push(`_${report.totals.hypotheses} advisory(ies) · stage 2 of the Cortardo Bot pipeline (hypotheses)._`);
-  lines.push(`_Run \`${input.runId}\` · Cortardo Bot ${input.version}._`);
+  lines.push(`_${report.totals.hypotheses} advisory(ies) · stage 2 of the CodeBot pipeline (hypotheses)._`);
+  lines.push(`_Run \`${input.runId}\` · CodeBot ${input.version}._`);
   return lines.join("\n");
 }
 
@@ -346,7 +346,7 @@ export function buildFixesComment(input: BuildFixesCommentInput): string {
   const usage = report.usage;
   const lines: string[] = [];
   lines.push(FIXES_MARKER);
-  lines.push("## Cortardo Bot · Stage 3: fixes");
+  lines.push("## CodeBot · Stage 3: fixes");
   lines.push("");
   lines.push(`\`${report.repository}\` · PR #${report.pullRequestNumber} · head \`${head}\``);
   lines.push("");
@@ -395,9 +395,9 @@ export function buildFixesComment(input: BuildFixesCommentInput): string {
   lines.push(`_Codegen: ${usageLine("Codegen", usage.codegen)}_`);
   lines.push(
     `_Total $${usage.totalCostUsd.toFixed(4)} of $${usage.maxCostUsd.toFixed(2)} budget · ` +
-      `${report.totals.generated} draft patch(es) · stage 3 of the Cortardo Bot pipeline (fixes)._`,
+      `${report.totals.generated} draft patch(es) · stage 3 of the CodeBot pipeline (fixes)._`,
   );
-  lines.push(`_Run \`${input.runId}\` · Cortardo Bot ${input.version}._`);
+  lines.push(`_Run \`${input.runId}\` · CodeBot ${input.version}._`);
   return lines.join("\n");
 }
 
@@ -523,7 +523,7 @@ export function buildVerifyComment(input: BuildVerifyCommentInput): string {
   const totals = report.totals;
   const lines: string[] = [];
   lines.push(VERIFY_MARKER);
-  lines.push("## Cortardo Bot · Stage 4: verify (autmpus loop)");
+  lines.push("## CodeBot · Stage 4: verify (autmpus loop)");
   lines.push("");
   lines.push(`\`${report.repository}\` · PR #${report.pullRequestNumber} · head \`${head}\``);
   lines.push("");
@@ -575,9 +575,9 @@ export function buildVerifyComment(input: BuildVerifyCommentInput): string {
   lines.push(`_Repairs (sol): ${usageLine("Codegen", usage.codegen)}_`);
   lines.push(
     `_Total $${usage.totalCostUsd.toFixed(4)} of $${usage.maxCostUsd.toFixed(2)} budget · ` +
-      `stage 4 of the Cortardo Bot pipeline (verify)._`,
+      `stage 4 of the CodeBot pipeline (verify)._`,
   );
-  lines.push(`_Run \`${input.runId}\` · Cortardo Bot ${input.version}._`);
+  lines.push(`_Run \`${input.runId}\` · CodeBot ${input.version}._`);
   return lines.join("\n");
 }
 
@@ -728,7 +728,7 @@ export function buildReviewComment(input: BuildReviewCommentInput): string {
 
   const lines: string[] = [];
   lines.push(REVIEW_MARKER);
-  lines.push("## Cortardo Bot review");
+  lines.push("## CodeBot review");
   lines.push("");
   lines.push(
     `\`${repository}\` · PR #${pullRequestNumber}` +
@@ -804,6 +804,6 @@ export function buildReviewComment(input: BuildReviewCommentInput): string {
         `${totalCalls} model call(s)._`,
     );
   }
-  lines.push(`_Run \`${input.runId}\` · Cortardo Bot ${input.version}._`);
+  lines.push(`_Run \`${input.runId}\` · CodeBot ${input.version}._`);
   return lines.join("\n");
 }

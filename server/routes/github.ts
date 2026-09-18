@@ -248,9 +248,6 @@ export function registerGithubRoutes(app: Express): void {
   };
 
   app.get("/api/github/setup", handleGithubSetup);
-  // Legacy path kept so GitHub Apps created before the route rename (their
-  // configured Setup URL still points here) keep working.
-  app.get("/api/cortardo-bot/github/setup", handleGithubSetup);
 
   app.post("/api/github/installations/claim", requireAuth, apiRateLimiter, async (req: Request, res: Response) => {
     try {

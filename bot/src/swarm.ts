@@ -11,7 +11,7 @@ import { executeReadTool, READ_TOOL_NAMES, type ReadToolContext } from "./tools.
 import { matchLead, parseModelHypotheses, renderGraphEvidence, toHypothesis } from "./master.ts";
 import { renderChangedPatches, type ParsedPatch } from "./patch.ts";
 import { swarmSystem, swarmUser } from "./prompts.ts";
-import { CortardoBotUsageCollectingClient, type CortardoBotModelClient, type CortardoBotSwarmConfig } from "./model.ts";
+import { CodeBotUsageCollectingClient, type CodeBotModelClient, type CodeBotSwarmConfig } from "./model.ts";
 import type {
   CodegraphChangedFile,
   CodegraphReport,
@@ -195,8 +195,8 @@ export interface SwarmRunInput {
   leads: Hypothesis[];
   dismissals: HypothesisDismissal[];
   assignments: SwarmAssignment[];
-  client: CortardoBotModelClient;
-  config: CortardoBotSwarmConfig;
+  client: CodeBotModelClient;
+  config: CodeBotSwarmConfig;
   deadline: number;
   budgetExhausted?: () => boolean;
   signal?: AbortSignal;
@@ -270,7 +270,7 @@ export async function runSwarm(input: SwarmRunInput): Promise<SwarmAgentReport[]
           const patch = input.patches.get(path);
           return patch !== undefined && patch.added.size > 0;
         }) ?? assignment.files[0];
-      const agentClient = new CortardoBotUsageCollectingClient(input.client);
+      const agentClient = new CodeBotUsageCollectingClient(input.client);
       const result = await runAgent({
         system: swarmSystem(),
         user: swarmUser({

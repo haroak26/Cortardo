@@ -2,7 +2,7 @@ import { sql } from "drizzle-orm";
 import { db } from "../../db";
 
 /**
- * Idempotent runtime schema guard for the Cortardo Bot memory tables
+ * Idempotent runtime schema guard for the CodeBot memory tables
  * (rules, learnings, workspace settings, exclusions). `drizzle-kit
  * push`/`migrate` also applies these, but envs with drifted schemas still
  * work because every statement is IF NOT EXISTS.

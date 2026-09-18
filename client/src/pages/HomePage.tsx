@@ -2,7 +2,8 @@ import { useLocation } from 'wouter';
 import { useUser } from '@/hooks/use-user';
 import { Button } from '@/components/button';
 import { MetricCard } from '@/components/ds';
-import { dashboardMetrics } from '@/lib/mock-review-data';
+import { ActiveReviewsCard, FixQueueCard } from '@/components/review/queue-cards';
+import { dashboardMetrics, recentReviews } from '@/lib/mock-review-data';
 import { AlertTriangle, FolderGit2, GitPullRequest, ShieldAlert } from 'lucide-react';
 
 const METRIC_ICONS = {
@@ -19,6 +20,11 @@ export default function HomePage() {
   const hour = new Date().getHours();
   const timeGreeting = hour < 12 ? 'Good Morning' : hour < 18 ? 'Good Afternoon' : 'Good Evening';
   const firstName = (user?.displayName?.trim() || user?.email?.split('@')[0] || 'there').split(/\s+/)[0];
+  const activeReviews = recentReviews.filter((r) => !['done', 'error', 'cancelled'].includes(r.status));
+  const fixQueue = recentReviews
+    .filter((r) => r.status === 'done' && r.severity.critical + r.severity.high > 0)
+    .sort((a, b) => b.severity.critical - a.severity.critical || b.severity.high - a.severity.high);
+  const openReviews = () => setLocation('/review/activity');
 
   return (
     <div className="h-full flex flex-col overflow-y-auto">
@@ -33,7 +39,14 @@ export default function HomePage() {
             </p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
-            <Button design="pill-secondary" onClick={() => setLocation('/bot/rules')}>
+            <Button
+              design="pill"
+              className="hover:!bg-primary active:!bg-primary"
+              onClick={() => setLocation('/review/activity')}
+            >
+              Diagnose Error
+            </Button>
+            <Button design="pill-secondary" onClick={() => setLocation('/bot/home')}>
               Bot
             </Button>
           </div>
@@ -54,6 +67,12 @@ export default function HomePage() {
               />
             );
           })}
+        </div>
+
+        {/* Pull request queues */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+          <FixQueueCard reviews={fixQueue} onOpen={openReviews} />
+          <ActiveReviewsCard reviews={activeReviews} onOpen={openReviews} />
         </div>
       </div>
     </div>

@@ -22,12 +22,12 @@ import {
   swarmUser,
 } from "../src/prompts.ts";
 import {
-  resolveCortardoBotModelConfig,
-  resolveCortardoBotSwarmConfig,
+  resolveCodeBotModelConfig,
+  resolveCodeBotSwarmConfig,
   swarmModelConfig,
-  type CortardoBotCompleteInput,
-  type CortardoBotModelClient,
-  type CortardoBotModelCompletion,
+  type CodeBotCompleteInput,
+  type CodeBotModelClient,
+  type CodeBotModelCompletion,
 } from "../src/model.ts";
 import type { CodegraphChangedFile, CodegraphReport, Hypothesis, SwarmAgentReport } from "../src/types.ts";
 
@@ -112,11 +112,11 @@ test("returns nothing for an unparseable answer", () => {
   assert.equal(result.dropped, 0);
 });
 
-class ScriptedClient implements CortardoBotModelClient {
+class ScriptedClient implements CodeBotModelClient {
   readonly id = "scripted:master";
-  readonly calls: CortardoBotCompleteInput[] = [];
+  readonly calls: CodeBotCompleteInput[] = [];
   constructor(private readonly responses: string[]) {}
-  async complete(input: CortardoBotCompleteInput): Promise<CortardoBotModelCompletion> {
+  async complete(input: CodeBotCompleteInput): Promise<CodeBotModelCompletion> {
     this.calls.push(input);
     const text = this.responses[Math.min(this.calls.length - 1, this.responses.length - 1)] ?? "";
     return { text, model: this.id, tokensIn: 10, tokensOut: 20, costUsd: 0.001, durationMs: 3 };
@@ -302,16 +302,16 @@ test("runSynthesis validates the synthesis and reports drops", async () => {
 });
 
 test("resolves the coordinator and swarm models with env overrides", () => {
-  const defaults = resolveCortardoBotModelConfig({});
+  const defaults = resolveCodeBotModelConfig({});
   assert.equal(defaults.model, "openai/gpt-5.6-terra");
   assert.equal(defaults.swarmModel, "openai/gpt-5.6-luna");
   assert.equal(defaults.reasoning, "medium");
 
-  const overridden = resolveCortardoBotModelConfig({
-    CORTARDO_BOT_MODEL: "openai/custom-coordinator",
-    CORTARDO_BOT_SWARM_MODEL: "openai/custom-swarm",
+  const overridden = resolveCodeBotModelConfig({
+    CODEBOT_MODEL: "openai/custom-coordinator",
+    CODEBOT_SWARM_MODEL: "openai/custom-swarm",
     CORTADO_AI_API_KEY: "secret",
-    CORTARDO_BOT_REASONING: "high",
+    CODEBOT_REASONING: "high",
   });
   assert.equal(overridden.model, "openai/custom-coordinator");
   assert.equal(overridden.swarmModel, "openai/custom-swarm");
@@ -322,12 +322,12 @@ test("resolves the coordinator and swarm models with env overrides", () => {
   assert.equal(swarmClient.model, "openai/custom-swarm");
   assert.equal(swarmClient.swarmModel, "openai/custom-swarm");
 
-  const explicit = resolveCortardoBotModelConfig({ CORTARDO_BOT_API_KEY: "override", CORTADO_AI_API_KEY: "shared" });
-  assert.equal(explicit.apiKey, "override", "CORTARDO_BOT_API_KEY wins so an exhausted key can be swapped");
+  const explicit = resolveCodeBotModelConfig({ CODEBOT_API_KEY: "override", CORTADO_AI_API_KEY: "shared" });
+  assert.equal(explicit.apiKey, "override", "CODEBOT_API_KEY wins so an exhausted key can be swapped");
 });
 
 test("resolves swarm and budget settings with env overrides", () => {
-  const defaults = resolveCortardoBotSwarmConfig({});
+  const defaults = resolveCodeBotSwarmConfig({});
   assert.equal(defaults.maxAgents, 6);
   assert.equal(defaults.concurrency, 3);
   assert.equal(defaults.maxCostUsd, 0.5);
@@ -342,14 +342,14 @@ test("resolves swarm and budget settings with env overrides", () => {
   assert.equal(defaults.verifyAttempts, 4);
   assert.equal(defaults.e2bTemplate, "cortardo-review-v1");
 
-  const overridden = resolveCortardoBotSwarmConfig({
-    CORTARDO_BOT_SWARM_AGENTS: "4",
-    CORTARDO_BOT_SWARM_CONCURRENCY: "2",
-    CORTARDO_BOT_MAX_COST_USD: "0.15",
-    CORTARDO_BOT_SWARM_TURNS: "5",
-    CORTARDO_BOT_SWARM_TOOLS: "2",
-    CORTARDO_BOT_SWARM_SEARCH: "0",
-    CORTARDO_BOT_LEARNINGS: "0",
+  const overridden = resolveCodeBotSwarmConfig({
+    CODEBOT_SWARM_AGENTS: "4",
+    CODEBOT_SWARM_CONCURRENCY: "2",
+    CODEBOT_MAX_COST_USD: "0.15",
+    CODEBOT_SWARM_TURNS: "5",
+    CODEBOT_SWARM_TOOLS: "2",
+    CODEBOT_SWARM_SEARCH: "0",
+    CODEBOT_LEARNINGS: "0",
   });
   assert.equal(overridden.maxAgents, 4);
   assert.equal(overridden.concurrency, 2);

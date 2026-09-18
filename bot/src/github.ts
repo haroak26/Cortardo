@@ -1,7 +1,7 @@
 import { getInstallationOctokit } from "../../server/lib/github/app.ts";
 import { splitFullName } from "../../server/lib/github/api.ts";
 
-export interface CortardoBotCommentInput {
+export interface CodeBotCommentInput {
   installationId: string | number;
   fullName: string;
   pullRequestNumber: number;
@@ -9,13 +9,13 @@ export interface CortardoBotCommentInput {
   body: string;
 }
 
-export interface CortardoBotCommentResult {
+export interface CodeBotCommentResult {
   id: number;
   url: string | null;
   replaced: number;
 }
 
-export interface CortardoBotCommentSummary {
+export interface CodeBotCommentSummary {
   id: number;
   body: string;
   url: string | null;
@@ -29,9 +29,9 @@ function hasMarker(body: string | null | undefined, marker: string): boolean {
 /**
  * Comments published by the Agent always carry a stage marker. Re-runs delete
  * the previous marker comment (same stage) and post a fresh one, so the PR
- * conversation keeps exactly one live Cortardo Bot comment per stage.
+ * conversation keeps exactly one live CodeBot comment per stage.
  */
-export async function publishCortardoBotComment(input: CortardoBotCommentInput): Promise<CortardoBotCommentResult> {
+export async function publishCodeBotComment(input: CodeBotCommentInput): Promise<CodeBotCommentResult> {
   const { owner, repo } = splitFullName(input.fullName);
   const octokit = getInstallationOctokit(input.installationId);
 
@@ -58,12 +58,12 @@ export async function publishCortardoBotComment(input: CortardoBotCommentInput):
   return { id: data.id, url: data.html_url ?? null, replaced };
 }
 
-export async function listCortardoBotComments(input: {
+export async function listCodeBotComments(input: {
   installationId: string | number;
   fullName: string;
   pullRequestNumber: number;
   marker: string;
-}): Promise<CortardoBotCommentSummary[]> {
+}): Promise<CodeBotCommentSummary[]> {
   const { owner, repo } = splitFullName(input.fullName);
   const octokit = getInstallationOctokit(input.installationId);
   const { data: comments } = await octokit.rest.issues.listComments({

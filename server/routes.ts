@@ -14,6 +14,7 @@ import { registerAuthRoutes } from "./routes/auth";
 import { registerRemainingRoutes } from "./routes/remaining";
 import { registerGithubRoutes } from "./routes/github";
 import { registerBotRoutes } from "./routes/bot";
+import { registerSupportRoutes } from "./routes/support";
 import { buildOnboardingSession } from "./onboarding-session";
 import { generateUniqueWorkspaceSlug } from "./lib/workspace-slug";
 import { createHash, randomBytes, randomInt, timingSafeEqual } from "crypto";
@@ -309,6 +310,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   registerRemainingRoutes(app);
   registerGithubRoutes(app);
   registerBotRoutes(app);
+  registerSupportRoutes(app);
   // ── Projects ──────────────────────────────────────────────────────────
   const PROJECT_NAME_ADJECTIVES = [
     "Healthy", "Brave", "Calm", "Clever", "Cosmic", "Crimson", "Curious", "Daring",

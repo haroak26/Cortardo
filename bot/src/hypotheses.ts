@@ -10,7 +10,7 @@ import type { Repository } from "@shared/schema";
 import type { FileAnalysis } from "../../server/lib/codegraph/analyze.ts";
 import { storage } from "../../server/storage.ts";
 import { buildCodegraphReport } from "./codegraph.ts";
-import { publishCortardoBotComment } from "./github.ts";
+import { publishCodeBotComment } from "./github.ts";
 import { applyDismissals, dismissalOf } from "./learnings.ts";
 import { buildHypothesesComment, HYPOTHESES_MARKER } from "./markdown.ts";
 import {
@@ -24,16 +24,16 @@ import {
 } from "./master.ts";
 import {
   BudgetedModelClient,
-  cortardoBotCacheKey,
-  createCortardoBotModelClient,
-  createCortardoBotUsageTracker,
-  resolveCortardoBotModelConfig,
-  resolveCortardoBotSwarmConfig,
+  codeBotCacheKey,
+  createCodeBotModelClient,
+  createCodeBotUsageTracker,
+  resolveCodeBotModelConfig,
+  resolveCodeBotSwarmConfig,
   swarmModelConfig,
-  type CortardoBotModelClient,
-  type CortardoBotModelConfig,
-  type CortardoBotSwarmConfig,
-  type CortardoBotUsageTracker,
+  type CodeBotModelClient,
+  type CodeBotModelConfig,
+  type CodeBotSwarmConfig,
+  type CodeBotUsageTracker,
 } from "./model.ts";
 import { scanHypotheses } from "./rules.ts";
 import { analyseChangedFiles, loadChangedFiles, loadPullRequestContext, loadRepoGraphIndex } from "./run-inputs.ts";
@@ -50,7 +50,7 @@ import type {
   SwarmAgentReport,
   SwarmAssignment,
 } from "./types.ts";
-import { CORTARDO_BOT_VERSION } from "./version.ts";
+import { CODEBOT_VERSION } from "./version.ts";
 
 export const MAX_HYPOTHESES = 8;
 
@@ -66,11 +66,11 @@ export interface BuildHypothesisReportInput {
   maxFiles?: number;
   maxHypotheses?: number;
   /** Coordinator client; `null` forces deterministic-only. */
-  modelClient?: CortardoBotModelClient | null;
+  modelClient?: CodeBotModelClient | null;
   /** Swarm client; `null` disables the swarm tier. */
-  swarmClient?: CortardoBotModelClient | null;
-  modelConfig?: CortardoBotModelConfig;
-  swarmConfig?: CortardoBotSwarmConfig;
+  swarmClient?: CodeBotModelClient | null;
+  modelConfig?: CodeBotModelConfig;
+  swarmConfig?: CodeBotSwarmConfig;
   dismissals?: HypothesisDismissal[];
   /** GitHub coordinates for the swarm read tools; defaults to the repository name. */
   installationId?: string | number;
@@ -79,7 +79,7 @@ export interface BuildHypothesisReportInput {
   readFile?: (path: string) => Promise<string | undefined>;
   searchCode?: (query: string) => Promise<Array<{ path: string; fragments: string[] }>>;
   /** Run-level budget shared with stage 3; created when absent. */
-  usageTracker?: CortardoBotUsageTracker;
+  usageTracker?: CodeBotUsageTracker;
   onLog?: (message: string) => void;
   signal?: AbortSignal;
 }
@@ -95,7 +95,7 @@ function countSeverities(hypotheses: Hypothesis[]): HypothesisReport["totals"] {
   };
 }
 
-function deterministicUsage(configured: CortardoBotModelConfig, reason: string): ModelUsage {
+function deterministicUsage(configured: CodeBotModelConfig, reason: string): ModelUsage {
   return {
     coordinator: { id: configured.model, calls: 0, tokensIn: 0, tokensOut: 0, cachedTokensIn: 0, costUsd: 0, failedCalls: 0 },
     swarm: { id: configured.swarmModel, calls: 0, tokensIn: 0, tokensOut: 0, cachedTokensIn: 0, costUsd: 0, failedCalls: 0 },
@@ -109,8 +109,8 @@ function deterministicUsage(configured: CortardoBotModelConfig, reason: string):
 
 export async function buildHypothesisReport(input: BuildHypothesisReportInput): Promise<HypothesisReport> {
   const maxHypotheses = input.maxHypotheses ?? MAX_HYPOTHESES;
-  const configured = input.modelConfig ?? resolveCortardoBotModelConfig();
-  const swarmConfig = input.swarmConfig ?? resolveCortardoBotSwarmConfig();
+  const configured = input.modelConfig ?? resolveCodeBotModelConfig();
+  const swarmConfig = input.swarmConfig ?? resolveCodeBotSwarmConfig();
   const report = buildCodegraphReport({
     repository: input.repository,
     pullRequestNumber: input.pullRequestNumber,
@@ -133,21 +133,21 @@ export async function buildHypothesisReport(input: BuildHypothesisReportInput): 
   let usage: ModelUsage;
 
   const behavioral = sweepableFiles(input.files).filter((file) => hasBehavioralAddedLines(file.patch));
-  const coordinatorCacheKey = cortardoBotCacheKey("coordinator", input);
-  const swarmCacheKey = cortardoBotCacheKey("swarm", input);
+  const coordinatorCacheKey = codeBotCacheKey("coordinator", input);
+  const swarmCacheKey = codeBotCacheKey("swarm", input);
 
   if (input.modelClient === null) {
-    usage = deterministicUsage(configured, "model disabled for this run (CORTARDO_BOT_NO_MODEL)");
+    usage = deterministicUsage(configured, "model disabled for this run (CODEBOT_NO_MODEL)");
   } else if (!input.modelClient && !configured.apiKey) {
     usage = deterministicUsage(configured, "no gateway key configured; deterministic leads only");
   } else if (scan.hypotheses.length === 0 && behavioral.length === 0) {
     usage = deterministicUsage(configured, "no leads or behavioral files to investigate; model tiers skipped");
     warnings.push("no leads or behavioral files to investigate; the model tiers were skipped");
   } else {
-    const tracker = input.usageTracker ?? createCortardoBotUsageTracker(swarmConfig);
+    const tracker = input.usageTracker ?? createCodeBotUsageTracker(swarmConfig);
     tracker.beginStage("hypotheses", swarmConfig.stage2BudgetUsd);
     const coordinator = new BudgetedModelClient(
-      input.modelClient ?? createCortardoBotModelClient(configured),
+      input.modelClient ?? createCodeBotModelClient(configured),
       tracker,
       "coordinator",
       { modelId: configured.model, maxOutputTokens: configured.maxTokens },
@@ -155,7 +155,7 @@ export async function buildHypothesisReport(input: BuildHypothesisReportInput): 
     const swarmEnabled = input.swarmClient !== null;
     const swarm = swarmEnabled
       ? new BudgetedModelClient(
-          input.swarmClient ?? createCortardoBotModelClient(swarmModelConfig(configured)),
+          input.swarmClient ?? createCodeBotModelClient(swarmModelConfig(configured)),
           tracker,
           "swarm",
           { modelId: configured.swarmModel, maxOutputTokens: configured.swarmMaxTokens ?? configured.maxTokens },
@@ -323,12 +323,12 @@ export interface HypothesisStageInput {
   maxFiles?: number;
   maxHypotheses?: number;
   /** Injectable for tests; omit to build from the environment, `null` to skip. */
-  modelClient?: CortardoBotModelClient | null;
-  swarmClient?: CortardoBotModelClient | null;
-  modelConfig?: CortardoBotModelConfig;
-  swarmConfig?: CortardoBotSwarmConfig;
+  modelClient?: CodeBotModelClient | null;
+  swarmClient?: CodeBotModelClient | null;
+  modelConfig?: CodeBotModelConfig;
+  swarmConfig?: CodeBotSwarmConfig;
   /** Run-level budget shared with stage 3; created when absent. */
-  usageTracker?: CortardoBotUsageTracker;
+  usageTracker?: CodeBotUsageTracker;
   onLog?: (message: string) => void;
   signal?: AbortSignal;
 }
@@ -343,7 +343,7 @@ async function loadDismissals(repository: Repository): Promise<HypothesisDismiss
 export async function runHypothesisStage(input: HypothesisStageInput): Promise<HypothesisStageResult> {
   const started = Date.now();
   const repository = input.repository;
-  const swarmConfig = input.swarmConfig ?? resolveCortardoBotSwarmConfig();
+  const swarmConfig = input.swarmConfig ?? resolveCodeBotSwarmConfig();
   const context = await loadPullRequestContext(repository, input.pullRequestNumber);
   const files = await loadChangedFiles({
     installationId: context.installationId,
@@ -360,7 +360,7 @@ export async function runHypothesisStage(input: HypothesisStageInput): Promise<H
   const index = await loadRepoGraphIndex(repository.id).catch(() => null);
   const dismissals = swarmConfig.learningsEnabled ? await loadDismissals(repository) : [];
 
-  const noModel = process.env.CORTARDO_BOT_NO_MODEL === "1";
+  const noModel = process.env.CODEBOT_NO_MODEL === "1";
   const modelClient = input.modelClient === undefined ? (noModel ? null : undefined) : input.modelClient;
   const swarmClient = input.swarmClient === undefined ? (noModel ? null : undefined) : input.swarmClient;
   const report = await buildHypothesisReport({
@@ -386,13 +386,13 @@ export async function runHypothesisStage(input: HypothesisStageInput): Promise<H
     signal: input.signal,
   });
 
-  const body = buildHypothesesComment({ report, runId: input.runId, version: CORTARDO_BOT_VERSION });
+  const body = buildHypothesesComment({ report, runId: input.runId, version: CODEBOT_VERSION });
 
   let commentId: number | null = null;
   let commentUrl: string | null = null;
   let replacedComments = 0;
   if (!input.dryRun && input.publish !== false) {
-    const published = await publishCortardoBotComment({
+    const published = await publishCodeBotComment({
       installationId: context.installationId,
       fullName: context.fullName,
       pullRequestNumber: input.pullRequestNumber,
@@ -412,7 +412,7 @@ export async function runHypothesisStage(input: HypothesisStageInput): Promise<H
 
   return {
     stage: "hypotheses",
-    version: CORTARDO_BOT_VERSION,
+    version: CODEBOT_VERSION,
     durationMs: Date.now() - started,
     headSha: context.headSha,
     summary,

@@ -456,6 +456,7 @@ export function registerBotRoutes(app: Express): void {
       const commitReviews = { ...current.commitReviews, ...(parsed.data.commitReviews ?? {}) };
       const settings = {
         instructions: parsed.data.settings?.instructions ?? current.settings.instructions,
+        autonomy: parsed.data.settings?.autonomy ?? current.settings.autonomy,
         pullRequests: {
           ...current.settings.pullRequests,
           ...(parsed.data.settings?.pullRequests ?? {}),

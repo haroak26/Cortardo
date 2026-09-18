@@ -1,8 +1,8 @@
 /**
- * Canonical model catalog for the Cortardo Bot review pipeline.
+ * Canonical model catalog for the CodeBot review pipeline.
  *
  * Three plain roles only: `investigator` finds and reproduces defects,
- * `engineer` writes fixes, `reviewer` verifies independently. Cortardo Bot reads
+ * `engineer` writes fixes, `reviewer` verifies independently. CodeBot reads
  * pricing and capability metadata from here so a run can never silently use a
  * different model than the one selected.
  */

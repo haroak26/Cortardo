@@ -8,6 +8,7 @@ import { ErrorPage } from "@/pages/error-page";
 import { OfflinePage } from "@/pages/offline";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { WorkspaceProvider } from "@/contexts/workspace-context";
+import { ServiceBotProvider } from "@/contexts/servicebot-context";
 import { ThemeController } from "@/hooks/use-theme-controller";
 import { Component, Suspense, lazy, type ReactNode } from "react";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
@@ -43,9 +44,12 @@ const SecurityPage = lazy(() => import("@/pages/SecurityPage"));
 const RepositoriesPage = lazy(() => import("@/pages/RepositoriesPage"));
 const RepositoryDetailPage = lazy(() => import("@/pages/RepositoryDetailPage"));
 const ActivityPage = lazy(() => import("@/pages/ActivityPage"));
+const BotHomePage = lazy(() => import("@/pages/BotHomePage"));
+const BotAnalyticsPage = lazy(() => import("@/pages/BotAnalyticsPage"));
 const BotRulesPage = lazy(() => import("@/pages/BotRulesPage"));
 const BotLearningsPage = lazy(() => import("@/pages/BotLearningsPage"));
 const BotConfigurationPage = lazy(() => import("@/pages/BotConfigurationPage"));
+const BotAdvancedPage = lazy(() => import("@/pages/BotAdvancedPage"));
 const BotExclusionsPage = lazy(() => import("@/pages/BotExclusionsPage"));
 const AdminLogin = lazy(() => import("@/pages/AdminLogin"));
 const AdminPage = lazy(() => import("@/pages/Admin"));
@@ -85,7 +89,7 @@ function DesignAppLayout({ children }: { children: ReactNode }) {
 /* ── Router ── */
 function Router() {
   return (
-    <>
+    <ServiceBotProvider>
       <ThemeController />
       {/* Lazy page chunks: app-shell pages are caught by the Suspense
           inside AppLayout; full-screen pages (canvas, admin) fall back
@@ -120,13 +124,16 @@ function Router() {
       <Route path="/review/repositories">{() => <ProtectedRoute component={() => <DesignAppLayout><RepositoriesPage /></DesignAppLayout>} />}</Route>
       <Route path="/review/repositories/:id">{() => <ProtectedRoute component={() => <DesignAppLayout><RepositoryDetailPage /></DesignAppLayout>} />}</Route>
       <Route path="/review/activity">{() => <ProtectedRoute component={() => <DesignAppLayout><ActivityPage /></DesignAppLayout>} />}</Route>
+      <Route path="/bot/home">{() => <ProtectedRoute component={() => <DesignAppLayout><BotHomePage /></DesignAppLayout>} />}</Route>
+      <Route path="/bot/analytics">{() => <ProtectedRoute component={() => <DesignAppLayout><BotAnalyticsPage /></DesignAppLayout>} />}</Route>
       <Route path="/bot/rules">{() => <ProtectedRoute component={() => <DesignAppLayout><BotRulesPage /></DesignAppLayout>} />}</Route>
       <Route path="/bot/learnings">{() => <ProtectedRoute component={() => <DesignAppLayout><BotLearningsPage /></DesignAppLayout>} />}</Route>
       <Route path="/bot/configuration">{() => <ProtectedRoute component={() => <DesignAppLayout><BotConfigurationPage /></DesignAppLayout>} />}</Route>
+      <Route path="/bot/advanced">{() => <ProtectedRoute component={() => <DesignAppLayout><BotAdvancedPage /></DesignAppLayout>} />}</Route>
       <Route path="/bot/exclusions">{() => <ProtectedRoute component={() => <DesignAppLayout><BotExclusionsPage /></DesignAppLayout>} />}</Route>
       <Route path="/bot/pull-requests">{() => <Redirect to="/bot/configuration" />}</Route>
       <Route path="/bot/commits">{() => <Redirect to="/bot/configuration" />}</Route>
-      <Route path="/bot">{() => <Redirect to="/bot/rules" />}</Route>
+      <Route path="/bot">{() => <Redirect to="/bot/home" />}</Route>
 
       <Route path="/account">{() => <Redirect to="/account/profile" />}</Route>
       <Route path="/account/*?">{() => <ProtectedRoute component={() => <AppLayout><Account /></AppLayout>} />}</Route>
@@ -143,7 +150,7 @@ function Router() {
       <Route component={NotFound} />
     </Switch>
     </Suspense>
-    </>
+    </ServiceBotProvider>
   );
 }
 

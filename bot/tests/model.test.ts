@@ -1,13 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  HttpCortardoBotModelClient,
+  HttpCodeBotModelClient,
   codegenModelConfig,
-  resolveCortardoBotModelConfig,
-  type CortardoBotModelConfig,
+  resolveCodeBotModelConfig,
+  type CodeBotModelConfig,
 } from "../src/model.ts";
 
-const CONFIG: CortardoBotModelConfig = {
+const CONFIG: CodeBotModelConfig = {
   model: "openai/gpt-5.6-terra",
   swarmModel: "openai/gpt-5.6-luna",
   codegenModel: "openai/gpt-5.6-sol",
@@ -43,7 +43,7 @@ test("concurrent capability rejections each recover on their own request", async
     });
   }) as typeof fetch;
 
-  const client = new HttpCortardoBotModelClient(CONFIG, fetchImpl);
+  const client = new HttpCodeBotModelClient(CONFIG, fetchImpl);
   const [first, second] = await Promise.all([
     client.complete({ system: "s", user: "first" }),
     client.complete({ system: "s", user: "second" }),
@@ -67,7 +67,7 @@ test("a capability fallback still works when another call already disabled the f
     return jsonResponse(200, { choices: [{ message: { content: '{"ok":true}' } }], usage: { prompt_tokens: 2, completion_tokens: 1 } });
   }) as typeof fetch;
 
-  const client = new HttpCortardoBotModelClient(CONFIG, fetchImpl);
+  const client = new HttpCodeBotModelClient(CONFIG, fetchImpl);
   await client.complete({ system: "s", user: "warm" });
   const afterFlag = await client.complete({ system: "s", user: "clean" });
   assert.equal(afterFlag.text, '{"ok":true}');
@@ -86,14 +86,14 @@ test("max_tokens rejections walk down to omitting the cap", async () => {
     return jsonResponse(200, { choices: [{ message: { content: '{"ok":true}' } }], usage: { prompt_tokens: 2, completion_tokens: 1 } });
   }) as typeof fetch;
 
-  const client = new HttpCortardoBotModelClient(CONFIG, fetchImpl);
+  const client = new HttpCodeBotModelClient(CONFIG, fetchImpl);
   const completion = await client.complete({ system: "s", user: "u" });
   assert.equal(completion.text, '{"ok":true}');
   assert.deepEqual(params, ["max_tokens", "max_completion_tokens", undefined]);
 });
 
 test("codegen model config uses minimal reasoning and the sol default", () => {
-  const config = resolveCortardoBotModelConfig({});
+  const config = resolveCodeBotModelConfig({});
   assert.equal(config.codegenModel, "openai/gpt-5.6-sol");
   assert.equal(config.codegenReasoning, "minimal");
   const codegen = codegenModelConfig(config);
@@ -101,7 +101,7 @@ test("codegen model config uses minimal reasoning and the sol default", () => {
   assert.equal(codegen.reasoning, "minimal");
   assert.equal(codegen.maxTokens, config.codegenMaxTokens, "codegen gets its own output ceiling");
 
-  const overridden = resolveCortardoBotModelConfig({ CORTARDO_BOT_REASONING_CODEGEN: "high" });
+  const overridden = resolveCodeBotModelConfig({ CODEBOT_REASONING_CODEGEN: "high" });
   assert.equal(overridden.codegenReasoning, "high");
   assert.equal(codegenModelConfig(overridden).reasoning, "high");
 });
@@ -112,7 +112,7 @@ test("cached prompt tokens are billed at the cached rate", async () => {
       choices: [{ message: { content: '{"ok":true}' } }],
       usage: { prompt_tokens: 1_000_000, completion_tokens: 0, prompt_tokens_details: { cached_tokens: 1_000_000 } },
     })) as typeof fetch;
-  const client = new HttpCortardoBotModelClient({ ...CONFIG, model: "openai/gpt-5.6-luna" }, fetchImpl);
+  const client = new HttpCodeBotModelClient({ ...CONFIG, model: "openai/gpt-5.6-luna" }, fetchImpl);
   const completion = await client.complete({ system: "s", user: "u" });
   assert.equal(completion.cachedTokensIn, 1_000_000);
   assert.equal(completion.costUsd, 0.05, "cached luna input bills at 10% of the input rate");
@@ -124,7 +124,7 @@ test("unknown models are priced conservatively instead of free", async () => {
       choices: [{ message: { content: '{"ok":true}' } }],
       usage: { prompt_tokens: 1_000_000, completion_tokens: 0 },
     })) as typeof fetch;
-  const client = new HttpCortardoBotModelClient({ ...CONFIG, model: "openai/custom-mystery" }, fetchImpl);
+  const client = new HttpCodeBotModelClient({ ...CONFIG, model: "openai/custom-mystery" }, fetchImpl);
   const completion = await client.complete({ system: "s", user: "u" });
   assert.equal(completion.costUsd, 7.5, "an uncatalogued model bills at the priciest known input rate");
 });
@@ -140,10 +140,10 @@ test("prompt_cache_key is sent and disabled per request when the gateway rejects
     return jsonResponse(200, { choices: [{ message: { content: '{"ok":true}' } }], usage: { prompt_tokens: 2, completion_tokens: 1 } });
   }) as typeof fetch;
 
-  const client = new HttpCortardoBotModelClient(CONFIG, fetchImpl);
-  const completion = await client.complete({ system: "s", user: "u", cacheKey: "cortardo-bot:swarm:acme/app:7:abcdef" });
+  const client = new HttpCodeBotModelClient(CONFIG, fetchImpl);
+  const completion = await client.complete({ system: "s", user: "u", cacheKey: "codebot:swarm:acme/app:7:abcdef" });
   assert.equal(completion.text, '{"ok":true}');
   assert.equal(bodies.length, 2, "the rejected request retried without the cache key");
-  assert.equal(bodies[0].prompt_cache_key, "cortardo-bot:swarm:acme/app:7:abcdef");
+  assert.equal(bodies[0].prompt_cache_key, "codebot:swarm:acme/app:7:abcdef");
   assert.ok(!("prompt_cache_key" in bodies[1]));
 });

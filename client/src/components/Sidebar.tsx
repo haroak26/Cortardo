@@ -1,11 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Link, useLocation } from 'wouter';
+import { useLocation } from 'wouter';
 import { cn } from '@/lib/utils';
 import {
   Home09Icon, Analytics01Icon, AiContentGenerator01Icon, Shield01Icon,
   SourceCodeIcon, Activity01Icon, Book02Icon, GraduationCapIcon,
-  Settings02Icon, EyeOffIcon,
+  Settings02Icon, CaptionsOffIcon, Rocket02Icon,
   UserGroupIcon, UserAdd01Icon, UserIcon, SmartPhone01Icon,
   CreditCardIcon, DashboardSpeed01Icon, Key01Icon, UnplugIcon,
   Alert02Icon,
@@ -14,6 +14,7 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useWorkspace } from '@/contexts/workspace-context';
 import { usePlan, useUser } from '@/hooks/use-user';
+import { InfoChipHover } from '@/components/info-chip';
 
 function initials(name: string | null | undefined): string {
   const str = (name || '?').trim();
@@ -32,7 +33,7 @@ type Tab = {
 const WORKSPACE_TABS: Tab[] = [
   { id: 'home',         label: 'Home',         icon: Home09Icon,            href: '/workspace/home' },
   { id: 'analytics',    label: 'Analytics',    icon: Analytics01Icon,       href: '/workspace/analytics' },
-  { id: 'bot',          label: 'Cortardo Bot',  icon: AiContentGenerator01Icon,  href: '/bot/rules' },
+  { id: 'bot',          label: 'CodeBot',  icon: AiContentGenerator01Icon,  href: '/bot/home' },
 ];
 
 const REVIEW_TABS: Tab[] = [
@@ -42,17 +43,25 @@ const REVIEW_TABS: Tab[] = [
 
 const BOT_NAV: { label: string; tabs: Tab[] }[] = [
   {
+    label: 'Home',
+    tabs: [
+      { id: 'bot-home',          label: 'Home',          icon: Home09Icon,        href: '/bot/home' },
+      { id: 'bot-analytics',     label: 'Analytics',     icon: Analytics01Icon,   href: '/bot/analytics' },
+      { id: 'bot-configuration', label: 'Configuration', icon: Settings02Icon,    href: '/bot/configuration' },
+    ],
+  },
+  {
     label: 'Behaviour',
     tabs: [
       { id: 'bot-rules',      label: 'Rules',          icon: Book02Icon,        href: '/bot/rules' },
+      { id: 'bot-exclusions', label: 'Exclusions',     icon: CaptionsOffIcon,   href: '/bot/exclusions' },
       { id: 'bot-learnings',  label: 'Learnings',      icon: GraduationCapIcon, href: '/bot/learnings' },
     ],
   },
   {
-    label: 'Configuration',
+    label: 'Advanced',
     tabs: [
-      { id: 'bot-configuration', label: 'Configuration', icon: Settings02Icon, href: '/bot/configuration' },
-      { id: 'bot-exclusions',    label: 'Exclusions',    icon: EyeOffIcon,     href: '/bot/exclusions' },
+      { id: 'bot-advanced',   label: 'Advanced',       icon: Rocket02Icon,      href: '/bot/advanced' },
     ],
   },
 ];
@@ -99,11 +108,14 @@ function useActiveTab(): string {
   if (location.startsWith('/workspace/analytics')) return 'analytics';
   if (location.startsWith('/review/repositories')) return 'repositories';
   if (location.startsWith('/review/activity')) return 'activity';
+  if (location.startsWith('/bot/home')) return 'bot-home';
+  if (location.startsWith('/bot/analytics')) return 'bot-analytics';
   if (location.startsWith('/bot/rules')) return 'bot-rules';
   if (location.startsWith('/bot/learnings')) return 'bot-learnings';
   if (location.startsWith('/bot/configuration')) return 'bot-configuration';
   if (location.startsWith('/bot/exclusions')) return 'bot-exclusions';
-  if (location.startsWith('/bot')) return 'bot-rules';
+  if (location.startsWith('/bot/advanced')) return 'bot-advanced';
+  if (location.startsWith('/bot')) return 'bot-home';
   if (location.startsWith('/team')) return 'manage';
   if (location.startsWith('/workspace')) return 'home';
   if (location.startsWith('/account/profile')) return 'account-profile';
@@ -131,6 +143,7 @@ function NavGroup({ first, children }: { first?: boolean; children: React.ReactN
 }
 
 function TabRow({ tabs, activeTab, onNavigate, onAction }: { tabs: Tab[]; activeTab: string; onNavigate?: () => void; onAction?: (tabId: string) => void }) {
+  const [, navigate] = useLocation();
   return (
     <div className="flex flex-col space-y-1">
       {tabs.map((tab) => {
@@ -165,26 +178,80 @@ function TabRow({ tabs, activeTab, onNavigate, onAction }: { tabs: Tab[]; active
           'group flex items-center gap-2 h-[32px] px-2.5 rounded-[10px] text-[13px] cursor-pointer select-none transition-colors duration-100',
           isActive ? 'bg-surface-hover' : 'hover:bg-surface-hover'
         );
-        if (!tab.href) {
-          return (
+        return (
+          <InfoChipHover key={tab.id} label={tab.label} className="flex w-full">
             <button
-              key={tab.id}
               type="button"
-              onClick={() => { onNavigate?.(); onAction?.(tab.id); }}
-              className={cn(classes, 'w-full text-left bg-transparent border-none')}
+              onClick={() => {
+                onNavigate?.();
+                if (tab.href) navigate(tab.href);
+                else onAction?.(tab.id);
+              }}
+              aria-current={isActive ? 'page' : undefined}
+              className={cn(classes, 'w-full text-left border-none')}
             >
               {content}
             </button>
-          );
-        }
-        return (
-          <Link key={tab.id} href={tab.href} onClick={onNavigate}>
-            <div className={classes}>
-              {content}
-            </div>
-          </Link>
+          </InfoChipHover>
         );
       })}
+    </div>
+  );
+}
+
+function AccountFooter({
+  user,
+  userLoading,
+  planLabel,
+  onNavigate,
+}: {
+  user?: {
+    displayName?: string | null;
+    username?: string | null;
+    email?: string | null;
+    avatarUrl?: string | null;
+  } | null;
+  userLoading?: boolean;
+  planLabel: string;
+  onNavigate?: () => void;
+}) {
+  const [, navigate] = useLocation();
+  return (
+    <div>
+      <div className="h-px bg-[hsl(var(--surface-hover))] -mx-2" />
+      <div className="pt-2">
+        <button
+          type="button"
+          onClick={() => {
+            onNavigate?.();
+            navigate('/account/profile');
+          }}
+          className="group flex w-full items-center gap-2.5 rounded-[10px] px-2.5 py-2 cursor-pointer select-none transition-colors duration-100 hover:bg-surface-hover active:bg-surface-hover border-none bg-transparent text-left"
+        >
+          {userLoading ? (
+            <span className="w-8 h-8 rounded-full bg-surface-hover shrink-0 animate-pulse" />
+          ) : user?.avatarUrl ? (
+            <img
+              src={user.avatarUrl}
+              alt={user.displayName || user.username || 'Account'}
+              className="w-8 h-8 rounded-full object-cover shrink-0"
+            />
+          ) : (
+            <span className="flex items-center justify-center w-8 h-8 rounded-full bg-brand text-white text-[12px] font-bold shrink-0">
+              {initials(user?.displayName || user?.email)}
+            </span>
+          )}
+          <span className="h-6 w-px shrink-0 self-center bg-[hsl(var(--border-strong))]" />
+          <span className="flex-1 min-w-0">
+            <span className="block font-sans text-[13px] font-semibold text-foreground truncate">
+              {user?.displayName || user?.username || 'Account'}
+            </span>
+            <span className="block font-sans text-[11px] font-medium text-fg-muted truncate">
+              {planLabel} plan
+            </span>
+          </span>
+        </button>
+      </div>
     </div>
   );
 }
@@ -398,21 +465,27 @@ export function SidebarContent({ location: _location, onNavigate, collapsed, mob
       {/* Navigation tabs */}
       <div className="flex-1 min-h-0 overflow-y-auto scrollbar-none px-2 pb-2 flex flex-col">
         {isAccountPage ? (
-          <div className={cn("flex flex-col", !mobile && "flex-1")}>
-            {ACCOUNT_NAV.map((group, i) => (
-              <NavGroup key={group.label} first={i === 0}>
-                <TabRow tabs={group.tabs} activeTab={activeTab} onNavigate={onNavigate} />
-              </NavGroup>
-            ))}
-          </div>
+          <>
+            <div className={cn("flex flex-col", !mobile && "flex-1")}>
+              {ACCOUNT_NAV.map((group, i) => (
+                <NavGroup key={group.label} first={i === 0}>
+                  <TabRow tabs={group.tabs} activeTab={activeTab} onNavigate={onNavigate} />
+                </NavGroup>
+              ))}
+            </div>
+            <AccountFooter user={user} userLoading={userLoading} planLabel={planInfo?.limits.label ?? 'Free'} onNavigate={onNavigate} />
+          </>
         ) : isBotPage ? (
-          <div className={cn("flex flex-col", !mobile && "flex-1")}>
-            {BOT_NAV.map((group, i) => (
-              <NavGroup key={group.label} first={i === 0}>
-                <TabRow tabs={group.tabs} activeTab={activeTab} onNavigate={onNavigate} />
-              </NavGroup>
-            ))}
-          </div>
+          <>
+            <div className={cn("flex flex-col", !mobile && "flex-1")}>
+              {BOT_NAV.map((group, i) => (
+                <NavGroup key={group.label} first={i === 0}>
+                  <TabRow tabs={group.tabs} activeTab={activeTab} onNavigate={onNavigate} />
+                </NavGroup>
+              ))}
+            </div>
+            <AccountFooter user={user} userLoading={userLoading} planLabel={planInfo?.limits.label ?? 'Free'} onNavigate={onNavigate} />
+          </>
         ) : (
           <div className={cn("flex flex-col", !mobile && "flex-1")}>
             <NavGroup first>
@@ -425,37 +498,7 @@ export function SidebarContent({ location: _location, onNavigate, collapsed, mob
               <TabRow tabs={TEAM_TABS} activeTab={activeTab} onNavigate={onNavigate} onAction={() => onInviteToWorkspace?.()} />
             </NavGroup>
             {!mobile && <div className="flex-1" />}
-            <div>
-              <div className="h-px bg-[hsl(var(--surface-hover))] -mx-2" />
-              <div className="pt-2">
-                <Link href="/account/profile" onClick={onNavigate} className="block">
-                  <div className="group flex w-full items-center gap-2.5 rounded-[10px] px-2.5 py-2 cursor-pointer select-none transition-colors duration-100 hover:bg-surface-hover active:bg-surface-hover">
-                    {userLoading ? (
-                      <span className="w-8 h-8 rounded-full bg-surface-hover shrink-0 animate-pulse" />
-                    ) : user?.avatarUrl ? (
-                      <img
-                        src={user.avatarUrl}
-                        alt={user.displayName || user.username || 'Account'}
-                        className="w-8 h-8 rounded-full object-cover shrink-0"
-                      />
-                    ) : (
-                      <span className="flex items-center justify-center w-8 h-8 rounded-full bg-brand text-white text-[12px] font-bold shrink-0">
-                        {initials(user?.displayName || user?.email)}
-                      </span>
-                    )}
-                    <span className="h-6 w-px shrink-0 self-center bg-[hsl(var(--border-strong))]" />
-                    <span className="flex-1 min-w-0">
-                      <span className="block font-sans text-[13px] font-semibold text-foreground truncate">
-                        {user?.displayName || user?.username || 'Account'}
-                      </span>
-                      <span className="block font-sans text-[11px] font-medium text-fg-muted truncate">
-                        {planInfo?.limits.label ?? 'Free'} plan
-                      </span>
-                    </span>
-                  </div>
-                </Link>
-              </div>
-            </div>
+            <AccountFooter user={user} userLoading={userLoading} planLabel={planInfo?.limits.label ?? 'Free'} onNavigate={onNavigate} />
           </div>
         )}
       </div>

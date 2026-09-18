@@ -1,6 +1,6 @@
 /* Mock codegraph data for the "Diagnose Error" experience.
    Every repository is modelled as one block per file plus import edges, so the
-   UI can be exercised end-to-end before the real codegraph and Cortardo Bot
+   UI can be exercised end-to-end before the real codegraph and CodeBot
    endpoints are wired. Swap `buildMockCodeGraph` / `getDiagnosisScenario` for
    the live hooks when the graph API lands. */
 

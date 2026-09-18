@@ -1,6 +1,6 @@
-# Cortardo Bot
+# CodeBot
 
-Cortardo Bot is the staged review agent that replaces the all-or-nothing CortardoBot pipeline.
+CodeBot is the staged review agent that replaces the legacy all-or-nothing review pipeline.
 Each stage ships, is tested, and is verified end-to-end on a live pull request before the
 next stage is added. **A run publishes exactly one PR comment** — the review — plus one
 native GitHub suggestion per verified fix. The review is published first and the suggestion
@@ -9,7 +9,7 @@ Re-runs replace the previous review and the previous suggestions instead of spam
 conversation.
 
 Architecture, current behavior and the prioritized improvement plan:
-[`../docs/cortardo-bot.md`](../docs/cortardo-bot.md).
+[`../docs/codebot.md`](../docs/codebot.md).
 
 ## Stages
 
@@ -20,8 +20,8 @@ Architecture, current behavior and the prioritized improvement plan:
 | 3. fixes | shipped | Coordinator fix plans + codegen drafts for the priority severities, kept off GitHub until verification |
 | 4. verify | shipped | The autmpus loop: terra designs a sandbox test, the fix runs on a fresh clone of the PR head, and failures are diagnosed and repaired (up to 4 attempts) |
 
-The pipeline (`runCortardo Bot`) runs stages 2-4 with publishing deferred, then publishes the
-single review comment (`<!-- cortardo-bot -->` + `<!-- cortardo-bot:review -->`) and the verified
+The pipeline (`runCodeBot`) runs stages 2-4 with publishing deferred, then publishes the
+single review comment (`<!-- codebot -->` + `<!-- codebot:review -->`) and the verified
 suggestions. The marker matches every legacy per-stage comment, so the first run after an
 upgrade replaces all of them.
 
@@ -76,10 +76,10 @@ Stage 3 turns each priority hypothesis into a draft patch:
   ```` ```suggestion ```` blocks. Nothing is compiled, applied or pushed.
 - **Cost**: minimal reasoning for codegen, a shared cacheable prompt prefix, `codegenTurns=3`
   and per-run content caching; the footer shows tokens, cached tokens and cost against
-  `CORTARDO_BOT_MAX_COST_USD`.
+  `CODEBOT_MAX_COST_USD`.
 
 Only the priority fixes are drafted: hypotheses whose severity is in
-`CORTARDO_BOT_FIX_SEVERITIES` (default `critical,high`). Everything else is listed as skipped.
+`CODEBOT_FIX_SEVERITIES` (default `critical,high`). Everything else is listed as skipped.
 
 ## Verify stage — the autmpus loop
 
@@ -100,7 +100,7 @@ Stage 4 proves the priority drafts in a sandbox instead of trusting them:
    the repair prompt says so, so a fix that would need a new module is declared not fixable
    instead of burning attempts.
 4. **Publish**: only verified edits are posted as native suggestions (each tagged
-   `<!-- cortardo-bot:fix <id> -->` with a one-line context header), and the single review comment
+   `<!-- codebot:fix <id> -->` with a one-line context header), and the single review comment
    carries the findings, the verified set and a collapsed verification log with commands,
    exit codes, durations, attempt history, diagnoses and the harness probe contents.
    Evidence is graded honestly: `reproduction`/`probe test`/`tests` mean the changed code was
@@ -130,7 +130,7 @@ Nothing is pushed: the PR branch is never written to. The stage degrades honestl
 - `src/hypotheses.ts` — `runHypothesisStage()` and the pure report builder
 - `src/markdown.ts` — stage comment rendering and markers
 - `src/github.ts` — comment publishing (replaces the prior stage comment)
-- `src/index.ts` — `runCortardo Bot()` pipeline, stage dispatch and shared loaders
+- `src/index.ts` — `runCodeBot()` pipeline, stage dispatch and shared loaders
 - `tests/` — unit tests for the graph, rules, agent loop, tools, master, fixes, sandbox loop and comment builders
 - `scripts/e2e-*.ts` — live e2e per stage (verify clones and tests in E2B) · `scripts/eval.ts` — fixture recall harness
 - `scripts/learnings.ts` — dismiss/list repository noise
@@ -151,61 +151,61 @@ npm run bot:learnings -- --repository owner/repo --list
 npm run bot:learnings -- --repository owner/repo --dismiss s_ab12cd34ef --reason "intentional"
 ```
 
-The eval harness is for Cortardo Bot itself: it runs stage 2 against `haroak26/Artificial-Gateway`
+The eval harness is for CodeBot itself: it runs stage 2 against `haroak26/Artificial-Gateway`
 PRs 6 and 7 and scores whether each planted defect is named. `--deterministic` scores only the
 defects the rules are expected to catch.
 
 The e2e scripts accept overrides:
 
 ```bash
-CORTARDO_BOT_REPOSITORY=owner/repo CORTARDO_BOT_PR=123 npm run bot:e2e
-CORTARDO_BOT_REPOSITORY_ID=<uuid> CORTARDO_BOT_DRY_RUN=1 npm run bot:e2e:hypotheses
-CORTARDO_BOT_DRY_RUN=1 CORTARDO_BOT_NO_MODEL=1 npm run bot:e2e:hypotheses
+CODEBOT_REPOSITORY=owner/repo CODEBOT_PR=123 npm run bot:e2e
+CODEBOT_REPOSITORY_ID=<uuid> CODEBOT_DRY_RUN=1 npm run bot:e2e:hypotheses
+CODEBOT_DRY_RUN=1 CODEBOT_NO_MODEL=1 npm run bot:e2e:hypotheses
 ```
 
-`CORTARDO_BOT_DRY_RUN=1` builds the report and comment without posting anything.
-`CORTARDO_BOT_NO_MODEL=1` skips the master-agent call and exercises the deterministic rules only.
+`CODEBOT_DRY_RUN=1` builds the report and comment without posting anything.
+`CODEBOT_NO_MODEL=1` skips the master-agent call and exercises the deterministic rules only.
 
 Stage 2 model settings (base URL comes from `CORTADO_AI_BASE_URL`; the key resolves
-`CORTARDO_BOT_API_KEY` → `CORTADO_AI_API_KEY` → legacy names):
+`CODEBOT_API_KEY` → `CORTADO_AI_API_KEY` → legacy names):
 
 ```bash
-CORTARDO_BOT_API_KEY=...                       # optional: swap an exhausted gateway key
-CORTARDO_BOT_MODEL=openai/gpt-5.6-terra        # coordinator: plan + synthesis (default)
-CORTARDO_BOT_SWARM_MODEL=openai/gpt-5.6-luna   # swarm investigators (default)
-CORTARDO_BOT_CODEGEN_MODEL=openai/gpt-5.6-sol  # codegen engineer (default)
-CORTARDO_BOT_SWARM_AGENTS=6                    # max assignments
-CORTARDO_BOT_SWARM_CONCURRENCY=3               # agents in flight at once
-CORTARDO_BOT_SWARM_TURNS=4                     # model turns per agent
-CORTARDO_BOT_SWARM_TOOLS=3                     # tool calls per turn
-CORTARDO_BOT_SWARM_SEARCH=0                    # disable gateway code search
-CORTARDO_BOT_LEARNINGS=0                       # ignore stored dismissals
-CORTARDO_BOT_MAX_FIXES=0                       # 0 = attempt every priority hypothesis
-CORTARDO_BOT_FIX_SEVERITIES=critical,high      # only these severities are fixed and verified
-CORTARDO_BOT_CODEGEN_CONCURRENCY=2             # codegen agents in flight
-CORTARDO_BOT_CODEGEN_TURNS=3                   # codegen turns per fix
-CORTARDO_BOT_MAX_COST_USD=0.50                 # shared soft cost ceiling (stages 2-4)
-CORTARDO_BOT_TARGET_COST_USD=0.40
-CORTARDO_BOT_STAGE2_BUDGET=0.22
-CORTARDO_BOT_STAGE4_RESERVE_USD=0.15           # only the verify stage may spend this
-CORTARDO_BOT_HYPOTHESES_MS=300000              # stage wall-clock budget
-CORTARDO_BOT_MODEL_TIMEOUT_MS=60000
-CORTARDO_BOT_REASONING=medium                  # coordinator/swarm reasoning
-CORTARDO_BOT_REASONING_CODEGEN=minimal         # codegen reasoning
-CORTARDO_BOT_VERIFY=1                          # 0 disables the sandbox stage
-CORTARDO_BOT_VERIFY_ATTEMPTS=4                 # 1 initial + repairs
-CORTARDO_BOT_VERIFY_MS=900000                  # stage 4 wall clock
-CORTARDO_BOT_VERIFY_COMMAND_TIMEOUT_MS=300000
-CORTARDO_BOT_VERIFY_COMMANDS=                  # newline-separated overrides (skips terra)
-CORTARDO_BOT_E2B_TEMPLATE=cortardo-review-v1
-CORTARDO_BOT_E2B_TIMEOUT_MS=900000
+CODEBOT_API_KEY=...                       # optional: swap an exhausted gateway key
+CODEBOT_MODEL=openai/gpt-5.6-terra        # coordinator: plan + synthesis (default)
+CODEBOT_SWARM_MODEL=openai/gpt-5.6-luna   # swarm investigators (default)
+CODEBOT_CODEGEN_MODEL=openai/gpt-5.6-sol  # codegen engineer (default)
+CODEBOT_SWARM_AGENTS=6                    # max assignments
+CODEBOT_SWARM_CONCURRENCY=3               # agents in flight at once
+CODEBOT_SWARM_TURNS=4                     # model turns per agent
+CODEBOT_SWARM_TOOLS=3                     # tool calls per turn
+CODEBOT_SWARM_SEARCH=0                    # disable gateway code search
+CODEBOT_LEARNINGS=0                       # ignore stored dismissals
+CODEBOT_MAX_FIXES=0                       # 0 = attempt every priority hypothesis
+CODEBOT_FIX_SEVERITIES=critical,high      # only these severities are fixed and verified
+CODEBOT_CODEGEN_CONCURRENCY=2             # codegen agents in flight
+CODEBOT_CODEGEN_TURNS=3                   # codegen turns per fix
+CODEBOT_MAX_COST_USD=0.50                 # shared soft cost ceiling (stages 2-4)
+CODEBOT_TARGET_COST_USD=0.40
+CODEBOT_STAGE2_BUDGET=0.22
+CODEBOT_STAGE4_RESERVE_USD=0.15           # only the verify stage may spend this
+CODEBOT_HYPOTHESES_MS=300000              # stage wall-clock budget
+CODEBOT_MODEL_TIMEOUT_MS=60000
+CODEBOT_REASONING=medium                  # coordinator/swarm reasoning
+CODEBOT_REASONING_CODEGEN=minimal         # codegen reasoning
+CODEBOT_VERIFY=1                          # 0 disables the sandbox stage
+CODEBOT_VERIFY_ATTEMPTS=4                 # 1 initial + repairs
+CODEBOT_VERIFY_MS=900000                  # stage 4 wall clock
+CODEBOT_VERIFY_COMMAND_TIMEOUT_MS=300000
+CODEBOT_VERIFY_COMMANDS=                  # newline-separated overrides (skips terra)
+CODEBOT_E2B_TEMPLATE=cortardo-review-v1
+CODEBOT_E2B_TIMEOUT_MS=900000
 E2B_API_KEY=...                           # sandbox stage
 ```
 
 The comment footer reports per-role calls, tokens and cost against the budget.
 
-## Relationship to CortardoBot
+## Relationship to the legacy engine
 
-The legacy Cortardo Bot engine and its `server/lib/review/` integration have been removed;
-engine 3.4 and earlier remain in git history (`cortardo-3.4-baseline` tag). Cortardo Bot is the
+The legacy review engine and its `server/lib/review/` integration have been removed;
+engine 3.4 and earlier remain in git history (`cortardo-3.4-baseline` tag). CodeBot is the
 only review pipeline and does not import any legacy engine code.

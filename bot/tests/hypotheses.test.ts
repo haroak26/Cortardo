@@ -6,17 +6,17 @@ import { buildCodegraphReport } from "../src/codegraph.ts";
 import { hypothesisId, scanHypotheses } from "../src/rules.ts";
 import { buildHypothesisReport } from "../src/hypotheses.ts";
 import { buildHypothesesComment, HYPOTHESES_MARKER } from "../src/markdown.ts";
-import { createCortardoBotUsageTracker } from "../src/model.ts";
+import { createCodeBotUsageTracker } from "../src/model.ts";
 import type {
-  CortardoBotCompleteInput,
-  CortardoBotModelClient,
-  CortardoBotModelCompletion,
-  CortardoBotModelConfig,
-  CortardoBotSwarmConfig,
+  CodeBotCompleteInput,
+  CodeBotModelClient,
+  CodeBotModelCompletion,
+  CodeBotModelConfig,
+  CodeBotSwarmConfig,
 } from "../src/model.ts";
 import type { CodegraphChangedFile, RepoGraphIndex, HypothesisDismissal } from "../src/types.ts";
 
-const MODEL_CONFIG: CortardoBotModelConfig = {
+const MODEL_CONFIG: CodeBotModelConfig = {
   model: "openai/gpt-5.6-terra",
   swarmModel: "openai/gpt-5.6-luna",
   codegenModel: "openai/gpt-5.6-sol",
@@ -28,7 +28,7 @@ const MODEL_CONFIG: CortardoBotModelConfig = {
   reasoning: "medium",
 };
 
-const SWARM_CONFIG: CortardoBotSwarmConfig = {
+const SWARM_CONFIG: CodeBotSwarmConfig = {
   maxAgents: 6,
   concurrency: 2,
   maxTurns: 3,
@@ -322,16 +322,16 @@ test("files without a patch, removed files and lockfiles produce nothing", () =>
   assert.deepEqual(result.hypotheses, []);
 });
 
-class ScriptedClient implements CortardoBotModelClient {
+class ScriptedClient implements CodeBotModelClient {
   readonly id: string;
-  readonly calls: CortardoBotCompleteInput[] = [];
+  readonly calls: CodeBotCompleteInput[] = [];
   constructor(
     id: string,
-    private readonly handler: (call: number, input: CortardoBotCompleteInput) => string | Error,
+    private readonly handler: (call: number, input: CodeBotCompleteInput) => string | Error,
   ) {
     this.id = id;
   }
-  async complete(input: CortardoBotCompleteInput): Promise<CortardoBotModelCompletion> {
+  async complete(input: CodeBotCompleteInput): Promise<CodeBotModelCompletion> {
     this.calls.push(input);
     const result = this.handler(this.calls.length, input);
     if (result instanceof Error) throw result;
@@ -431,16 +431,16 @@ test("full swarm run uses both tiers and publishes per-role usage", async () => 
 
   assert.deepEqual(
     [...new Set(coordinator.calls.map((call) => call.cacheKey))],
-    ["cortardo-bot:coordinator:acme/app:6:a9a43b844bc4"],
+    ["codebot:coordinator:acme/app:6:a9a43b844bc4"],
     "every terra call shares one prompt cache key",
   );
   assert.deepEqual(
     [...new Set(luna.calls.map((call) => call.cacheKey))],
-    ["cortardo-bot:swarm:acme/app:6:a9a43b844bc4"],
+    ["codebot:swarm:acme/app:6:a9a43b844bc4"],
     "every luna call shares one prompt cache key",
   );
 
-  const body = buildHypothesesComment({ report, runId: "cortardo-bot-test", version: "0.2.0" });
+  const body = buildHypothesesComment({ report, runId: "codebot-test", version: "0.2.0" });
   assert.ok(body.includes(HYPOTHESES_MARKER));
   assert.ok(body.includes("Coordinator: `scripted:terra` ×2"));
   assert.ok(body.includes("Swarm: `scripted:luna` ×2"));
@@ -498,7 +498,7 @@ test("the cost budget blocks new model calls and says so", async () => {
   const coordinator = new ScriptedClient("scripted:terra", (call) => (call === 1 ? PLAN_JSON : SYNTHESIS_JSON));
   const luna = swarmClient();
   const swarmConfig = { ...SWARM_CONFIG, maxCostUsd: 0.002 };
-  const tracker = createCortardoBotUsageTracker(swarmConfig);
+  const tracker = createCodeBotUsageTracker(swarmConfig);
   tracker.record("coordinator", { text: "", model: "seed", tokensIn: 0, tokensOut: 0, costUsd: 0.002, durationMs: 0 });
   const report = await buildHypothesisReport({
     ...buildInput({ swarmConfig, usageTracker: tracker }),
@@ -519,9 +519,9 @@ test("deterministic-only mode publishes leads without model usage", async () => 
     swarmClient: null,
   });
   assert.equal(report.usage.used, false);
-  assert.match(report.usage.reason ?? "", /CORTARDO_BOT_NO_MODEL/);
+  assert.match(report.usage.reason ?? "", /CODEBOT_NO_MODEL/);
   assert.equal(report.totals.hypotheses, 1);
-  const body = buildHypothesesComment({ report, runId: "cortardo-bot-test", version: "0.2.0" });
+  const body = buildHypothesesComment({ report, runId: "codebot-test", version: "0.2.0" });
   assert.ok(body.includes("Model tiers skipped"));
 });
 
@@ -553,7 +553,7 @@ test("dismissed fingerprints are suppressed and counted", async () => {
   assert.equal(report.totals.hypotheses, 0);
   assert.equal(report.dismissed, 1);
   assert.ok(report.warnings.some((warning) => warning.includes("noise filter")));
-  const body = buildHypothesesComment({ report, runId: "cortardo-bot-test", version: "0.2.0" });
+  const body = buildHypothesesComment({ report, runId: "codebot-test", version: "0.2.0" });
   assert.ok(body.includes("1 dismissed hypothesis(es) suppressed"));
 });
 
@@ -586,7 +586,7 @@ test("renders an empty hypotheses comment without throwing", async () => {
     modelClient: null,
     swarmClient: null,
   });
-  const body = buildHypothesesComment({ report, runId: "cortardo-bot-empty", version: "0.2.0" });
+  const body = buildHypothesesComment({ report, runId: "codebot-empty", version: "0.2.0" });
 
   assert.equal(report.totals.hypotheses, 0);
   assert.ok(body.includes("No suspicious changes found in this diff."));

@@ -1,7 +1,7 @@
 /**
  * Fixture eval: runs stage 2 against the planted-bug PRs and scores whether the
  * hypotheses we publish actually name the expected files and defects. This is a
- * harness for Cortardo Bot, not for the code under review — it proves recall and
+ * harness for CodeBot, not for the code under review — it proves recall and
  * measures noise before anything is wired into the product.
  *
  * Usage:
@@ -14,9 +14,9 @@ import { storage } from "../../server/storage.ts";
 import { buildHypothesisReport } from "../src/hypotheses.ts";
 import { analyseChangedFiles, loadChangedFiles, loadPullRequestContext, loadRepoGraphIndex } from "../src/run-inputs.ts";
 import {
-  createCortardoBotModelClient,
-  resolveCortardoBotModelConfig,
-  resolveCortardoBotSwarmConfig,
+  createCodeBotModelClient,
+  resolveCodeBotModelConfig,
+  resolveCodeBotSwarmConfig,
   swarmModelConfig,
 } from "../src/model.ts";
 
@@ -66,8 +66,8 @@ const deterministic = process.argv.includes("--deterministic");
 const repositoryOverride = arg("repository");
 
 async function resolveRepositoryId(fullName: string): Promise<string> {
-  if (process.env.CORTARDO_BOT_REPOSITORY_ID && (!onlyPr || onlyPr === FIXTURES[0].pullRequestNumber)) {
-    return process.env.CORTARDO_BOT_REPOSITORY_ID;
+  if (process.env.CODEBOT_REPOSITORY_ID && (!onlyPr || onlyPr === FIXTURES[0].pullRequestNumber)) {
+    return process.env.CODEBOT_REPOSITORY_ID;
   }
   const client = new pg.Client({ connectionString: process.env.DATABASE_URL });
   await client.connect();
@@ -80,8 +80,8 @@ async function resolveRepositoryId(fullName: string): Promise<string> {
   }
 }
 
-const modelConfig = resolveCortardoBotModelConfig();
-const swarmConfig = resolveCortardoBotSwarmConfig();
+const modelConfig = resolveCodeBotModelConfig();
+const swarmConfig = resolveCodeBotSwarmConfig();
 let failed = false;
 
 for (const fixture of FIXTURES) {
@@ -114,8 +114,8 @@ for (const fixture of FIXTURES) {
     files,
     analyses,
     index,
-    modelClient: useModel ? createCortardoBotModelClient(modelConfig) : null,
-    swarmClient: useModel ? createCortardoBotModelClient(swarmModelConfig(modelConfig)) : null,
+    modelClient: useModel ? createCodeBotModelClient(modelConfig) : null,
+    swarmClient: useModel ? createCodeBotModelClient(swarmModelConfig(modelConfig)) : null,
     modelConfig,
     swarmConfig,
     installationId: context.installationId,
@@ -149,7 +149,7 @@ for (const fixture of FIXTURES) {
 }
 
 if (failed) {
-  console.error("\n[cortardo-bot:eval] FAIL: expected findings were missed");
+  console.error("\n[codebot:eval] FAIL: expected findings were missed");
   process.exit(1);
 }
-console.log("\n[cortardo-bot:eval] PASS");
+console.log("\n[codebot:eval] PASS");

@@ -3,17 +3,17 @@ import pg from "pg";
 import { getInstallationOctokit } from "../../server/lib/github/app.ts";
 import { listPullRequestReviewComments, splitFullName } from "../../server/lib/github/api.ts";
 import { storage } from "../../server/storage.ts";
-import { runCortardoBot } from "../src/index.ts";
-import { listCortardoBotComments } from "../src/github.ts";
+import { runCodeBot } from "../src/index.ts";
+import { listCodeBotComments } from "../src/github.ts";
 import { REVIEW_MARKER } from "../src/markdown.ts";
 import type { FixStageResult, VerifyStageResult } from "../src/types.ts";
 
-const repositoryFullName = process.env.CORTARDO_BOT_REPOSITORY ?? "haroak26/Artificial-Gateway";
-const pullRequestNumber = Number(process.env.CORTARDO_BOT_PR ?? 7);
-const dryRun = process.env.CORTARDO_BOT_DRY_RUN === "1";
+const repositoryFullName = process.env.CODEBOT_REPOSITORY ?? "haroak26/Artificial-Gateway";
+const pullRequestNumber = Number(process.env.CODEBOT_PR ?? 7);
+const dryRun = process.env.CODEBOT_DRY_RUN === "1";
 
 async function resolveRepositoryId(): Promise<string> {
-  if (process.env.CORTARDO_BOT_REPOSITORY_ID) return process.env.CORTARDO_BOT_REPOSITORY_ID;
+  if (process.env.CODEBOT_REPOSITORY_ID) return process.env.CODEBOT_REPOSITORY_ID;
   const client = new pg.Client({ connectionString: process.env.DATABASE_URL });
   await client.connect();
   try {
@@ -27,7 +27,7 @@ async function resolveRepositoryId(): Promise<string> {
   }
 }
 
-const SUGGESTION_MARKER = "<!-- cortardo-bot:fix";
+const SUGGESTION_MARKER = "<!-- codebot:fix";
 
 async function cleanBotConversation(installationId: string | number): Promise<number> {
   const { owner, repo } = splitFullName(repositoryFullName);
@@ -43,7 +43,7 @@ async function cleanBotConversation(installationId: string | number): Promise<nu
     if (comment.user?.type !== "Bot") continue;
     await octokit.rest.issues.deleteComment({ owner, repo, comment_id: comment.id });
     deleted += 1;
-    console.log(`[cortardo-bot:e2e:verify] removed old comment #${comment.id} by ${comment.user?.login}`);
+    console.log(`[codebot:e2e:verify] removed old comment #${comment.id} by ${comment.user?.login}`);
   }
   const { data: reviews } = await octokit.rest.pulls.listReviewComments({
     owner,
@@ -55,7 +55,7 @@ async function cleanBotConversation(installationId: string | number): Promise<nu
     if (comment.user?.type !== "Bot") continue;
     await octokit.rest.pulls.deleteReviewComment({ owner, repo, comment_id: comment.id });
     deleted += 1;
-    console.log(`[cortardo-bot:e2e:verify] removed old review comment #${comment.id} by ${comment.user?.login}`);
+    console.log(`[codebot:e2e:verify] removed old review comment #${comment.id} by ${comment.user?.login}`);
   }
   return deleted;
 }
@@ -65,17 +65,17 @@ const repository = await storage.getRepositoryById(repositoryId);
 assert.ok(repository?.installationId, "repository has no GitHub installation");
 
 console.log(
-  `[cortardo-bot:e2e:verify] repository=${repositoryFullName} (${repositoryId}) pr=#${pullRequestNumber} ` +
-    `dryRun=${dryRun} verifyAttempts=${process.env.CORTARDO_BOT_VERIFY_ATTEMPTS ?? "4"} ` +
-    `maxCost=$${process.env.CORTARDO_BOT_MAX_COST_USD ?? "0.50"}`,
+  `[codebot:e2e:verify] repository=${repositoryFullName} (${repositoryId}) pr=#${pullRequestNumber} ` +
+    `dryRun=${dryRun} verifyAttempts=${process.env.CODEBOT_VERIFY_ATTEMPTS ?? "4"} ` +
+    `maxCost=$${process.env.CODEBOT_MAX_COST_USD ?? "0.50"}`,
 );
 
 if (!dryRun) {
   const removed = await cleanBotConversation(repository.installationId);
-  console.log(`[cortardo-bot:e2e:verify] conversation is clean (${removed} old bot artifact(s) removed)`);
+  console.log(`[codebot:e2e:verify] conversation is clean (${removed} old bot artifact(s) removed)`);
 }
 
-const result = await runCortardoBot({
+const result = await runCodeBot({
   repositoryId,
   pullRequestNumber,
   stages: ["hypotheses", "fixes", "verify"],
@@ -90,20 +90,20 @@ assert.ok(verifyStage, "verify stage did not run");
 const fixReport = fixesStage.report;
 const verifyReport = verifyStage.report;
 console.log(
-  `[cortardo-bot:e2e:verify] run=${result.runId} head=${result.headSha.slice(0, 8)} published=${result.published}`,
+  `[codebot:e2e:verify] run=${result.runId} head=${result.headSha.slice(0, 8)} published=${result.published}`,
 );
 console.log(
-  `[cortardo-bot:e2e:verify] fixes: ${fixReport.totals.generated} generated · ${fixReport.totals.filtered ?? 0} filtered by severity · ` +
+  `[codebot:e2e:verify] fixes: ${fixReport.totals.generated} generated · ${fixReport.totals.filtered ?? 0} filtered by severity · ` +
     `$${fixReport.usage.totalCostUsd.toFixed(4)}`,
 );
 console.log(
-  `[cortardo-bot:e2e:verify] verify: ${verifyReport.totals.verified}/${verifyReport.totals.eligible} verified · ` +
+  `[codebot:e2e:verify] verify: ${verifyReport.totals.verified}/${verifyReport.totals.eligible} verified · ` +
     `${verifyReport.totals.attempts} attempt(s) · sandbox=${verifyReport.sandbox.id ?? "none"} · ` +
     `$${verifyReport.usage.totalCostUsd.toFixed(4)} of $${verifyReport.usage.maxCostUsd.toFixed(2)}`,
 );
 for (const fix of verifyReport.fixes) {
   console.log(
-    `[cortardo-bot:e2e:verify]   ${fix.status.toUpperCase()} ${fix.hypothesisId} (${fix.evidence}) attempts=${fix.attemptsUsed}` +
+    `[codebot:e2e:verify]   ${fix.status.toUpperCase()} ${fix.hypothesisId} (${fix.evidence}) attempts=${fix.attemptsUsed}` +
       (fix.reason ? ` — ${fix.reason}` : ""),
   );
 }
@@ -112,7 +112,7 @@ assert.ok(fixReport.totals.generated >= 1, "no priority fix was generated");
 assert.ok(verifyReport.totals.eligible >= 1, "no priority fix was handed to verification");
 assert.ok(verifyReport.totals.verified >= 1, "no fix passed sandbox verification");
 assert.ok(verifyReport.sandbox.id, "verify stage did not use a sandbox");
-assert.ok(result.body.includes("## Cortardo Bot review"), "the published body is not the single review comment");
+assert.ok(result.body.includes("## CodeBot review"), "the published body is not the single review comment");
 assert.ok(result.body.includes("### Verified fixes"), "the review omits the verified fixes section");
 assert.ok(!result.body.includes("codegraph"), "the review must not mention codegraph");
 assert.ok(
@@ -136,7 +136,7 @@ if (!dryRun) {
   assert.equal(botComments.length, 1, `the run must leave exactly 1 bot comment, found ${botComments.length}`);
   assert.equal(botComments[0].id, result.commentId, "the surviving bot comment is not the run's review");
 
-  const review = await listCortardoBotComments({
+  const review = await listCodeBotComments({
     installationId: repository.installationId,
     fullName: repository.fullName,
     pullRequestNumber,
@@ -151,8 +151,8 @@ if (!dryRun) {
     pullRequestNumber,
   );
   for (const comment of reviewComments) {
-    assert.ok(comment.body.includes(SUGGESTION_MARKER), `review comment #${comment.id} is not a Cortardo Bot suggestion`);
-    assert.ok(comment.body.includes("Cortardo Bot verified fix"), `suggestion #${comment.id} is not marked verified`);
+    assert.ok(comment.body.includes(SUGGESTION_MARKER), `review comment #${comment.id} is not a CodeBot suggestion`);
+    assert.ok(comment.body.includes("CodeBot verified fix"), `suggestion #${comment.id} is not marked verified`);
   }
   assert.equal(
     reviewComments.length,
@@ -177,11 +177,11 @@ if (!dryRun) {
   }
 
   console.log(
-    `[cortardo-bot:e2e:verify] conversation verified: review=${review[0].id} published before ${reviewComments.length} suggestion(s)`,
+    `[codebot:e2e:verify] conversation verified: review=${review[0].id} published before ${reviewComments.length} suggestion(s)`,
   );
   console.log("");
   console.log(review[0].body.split("\n").slice(0, 45).join("\n"));
   console.log("...");
 }
 
-console.log("[cortardo-bot:e2e:verify] PASS");
+console.log("[codebot:e2e:verify] PASS");

@@ -115,7 +115,7 @@ export default function Docs() {
           </Collapsible>
 
           <Collapsible title="Model selection">
-            <p>Runs are powered by models served through the Merge Gateway. Override the default with the <code className="text-[12px] bg-surface-hover px-1.5 py-0.5 rounded">CORTARDO_BOT_MODEL</code> environment variable.</p>
+            <p>Runs are powered by models served through the Merge Gateway. Override the default with the <code className="text-[12px] bg-surface-hover px-1.5 py-0.5 rounded">CODEBOT_MODEL</code> environment variable.</p>
           </Collapsible>
         </Section>
 

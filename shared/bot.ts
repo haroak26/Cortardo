@@ -1,5 +1,5 @@
 /**
- * Shared types + defaults for the Cortardo Bot workspace configuration.
+ * Shared types + defaults for the CodeBot workspace configuration.
  * Persisted in `bot_settings` (workspace level). Keep in sync with the
  * zod schemas in shared/schema.ts and the runner that consumes them.
  */
@@ -52,14 +52,20 @@ export const PULL_REQUEST_REVIEW_DEFAULTS: PullRequestReviewSettings = {
   commentLimit: 20,
 };
 
+export const BOT_AUTONOMY_LEVELS = ["manual", "assisted", "autonomous"] as const;
+export type BotAutonomyLevel = (typeof BOT_AUTONOMY_LEVELS)[number];
+
 export interface BotWorkspaceConfig {
   /** Freeform instructions injected into every review prompt. */
   instructions: string;
+  /** How much the bot may change and re-review without being asked. */
+  autonomy: BotAutonomyLevel;
   pullRequests: PullRequestReviewSettings;
 }
 
 export const BOT_WORKSPACE_DEFAULTS: BotWorkspaceConfig = {
   instructions: "",
+  autonomy: "manual",
   pullRequests: { ...PULL_REQUEST_REVIEW_DEFAULTS },
 };
 
@@ -72,6 +78,7 @@ export const BOT_SETTINGS_DEFAULTS: BotSettingsPayload = {
   commitReviews: { ...COMMIT_REVIEW_DEFAULTS },
   settings: {
     instructions: BOT_WORKSPACE_DEFAULTS.instructions,
+    autonomy: BOT_WORKSPACE_DEFAULTS.autonomy,
     pullRequests: { ...BOT_WORKSPACE_DEFAULTS.pullRequests },
   },
 };
@@ -82,6 +89,7 @@ export function normalizeBotSettings(raw: unknown): BotSettingsPayload {
     commitReviews?: Partial<CommitReviewSettings>;
     settings?: Partial<BotWorkspaceConfig> & { pullRequests?: Partial<PullRequestReviewSettings> };
   };
+  const storedAutonomy = source.settings?.autonomy;
   return {
     commitReviews: { ...COMMIT_REVIEW_DEFAULTS, ...(source.commitReviews ?? {}) },
     settings: {
@@ -89,6 +97,11 @@ export function normalizeBotSettings(raw: unknown): BotSettingsPayload {
         typeof source.settings?.instructions === "string"
           ? source.settings.instructions
           : BOT_WORKSPACE_DEFAULTS.instructions,
+      autonomy:
+        typeof storedAutonomy === "string" &&
+        (BOT_AUTONOMY_LEVELS as readonly string[]).includes(storedAutonomy)
+          ? (storedAutonomy as BotAutonomyLevel)
+          : BOT_WORKSPACE_DEFAULTS.autonomy,
       pullRequests: { ...PULL_REQUEST_REVIEW_DEFAULTS, ...(source.settings?.pullRequests ?? {}) },
     },
   };

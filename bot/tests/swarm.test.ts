@@ -4,7 +4,7 @@ import { executeReadTool, READ_TOOL_NAMES, type ReadToolContext } from "../src/t
 import { runAgent } from "../src/agent.ts";
 import { fallbackAssignments, runSwarm, withCoverage } from "../src/swarm.ts";
 import { parsePatches } from "../src/patch.ts";
-import type { CortardoBotCompleteInput, CortardoBotModelClient, CortardoBotModelCompletion, CortardoBotSwarmConfig } from "../src/model.ts";
+import type { CodeBotCompleteInput, CodeBotModelClient, CodeBotModelCompletion, CodeBotSwarmConfig } from "../src/model.ts";
 import type {
   CodegraphChangedFile,
   CodegraphReport,
@@ -72,7 +72,7 @@ const REPORT: CodegraphReport = {
   totals: { files: 1, indexed: 1, symbols: 0, callers: 0, tests: 0 },
 };
 
-const CONFIG: CortardoBotSwarmConfig = {
+const CONFIG: CodeBotSwarmConfig = {
   maxAgents: 6,
   concurrency: 2,
   maxTurns: 3,
@@ -149,11 +149,11 @@ test("withCoverage respects the agent cap", () => {
   assert.equal(covered.length, 1);
 });
 
-class ToolThenFinalClient implements CortardoBotModelClient {
+class ToolThenFinalClient implements CodeBotModelClient {
   readonly id = "scripted:swarm";
-  readonly calls: CortardoBotCompleteInput[] = [];
+  readonly calls: CodeBotCompleteInput[] = [];
   constructor(private readonly plan: Array<Record<string, unknown>>) {}
-  async complete(input: CortardoBotCompleteInput): Promise<CortardoBotModelCompletion> {
+  async complete(input: CodeBotCompleteInput): Promise<CodeBotModelCompletion> {
     this.calls.push(input);
     const response = this.plan[Math.min(this.calls.length - 1, this.plan.length - 1)] ?? {};
     return { text: JSON.stringify(response), model: this.id, tokensIn: 30, tokensOut: 15, costUsd: 0.0005, durationMs: 2 };
@@ -210,9 +210,9 @@ test("runSwarm reads with tools and maps the agent's final hypotheses", async ()
 
 test("runSwarm isolates a failing agent and keeps the others", async () => {
   let calls = 0;
-  const client: CortardoBotModelClient = {
+  const client: CodeBotModelClient = {
     id: "scripted:failing",
-    async complete(): Promise<CortardoBotModelCompletion> {
+    async complete(): Promise<CodeBotModelCompletion> {
       calls += 1;
       if (calls === 1) throw new Error("502 upstream");
       return {

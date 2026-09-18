@@ -17,6 +17,7 @@ import { sql } from "drizzle-orm";
 import { z } from "zod";
 import type { CodeGraphConnection, CodeGraphFile, CodeGraphSymbol, CodeGraphSymbolEdge } from "./codegraph";
 import {
+  BOT_AUTONOMY_LEVELS,
   BOT_WORKSPACE_DEFAULTS,
   COMMIT_REVIEW_DEFAULTS,
   type BotWorkspaceConfig,
@@ -1136,7 +1137,7 @@ export const webhookDeliveries = pgTable("webhook_deliveries", {
 
 export type WebhookDelivery = typeof webhookDeliveries.$inferSelect;
 
-// ── Cortardo Bot memory ──────────────────────────────────────────────────────
+// ── CodeBot memory ──────────────────────────────────────────────────────
 // Workspace-scoped review rules, learnings from feedback, path exclusions and
 // the workspace configuration consumed by the review runner.
 
@@ -1291,6 +1292,7 @@ export const updateBotSettingsSchema = z.object({
   settings: z
     .object({
       instructions: z.string().max(4000),
+      autonomy: z.enum(BOT_AUTONOMY_LEVELS),
       pullRequests: pullRequestReviewPatchSchema,
     })
     .partial()

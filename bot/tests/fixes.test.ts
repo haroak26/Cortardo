@@ -14,15 +14,15 @@ import { renderFixDiff } from "../src/patch.ts";
 import { buildFixesComment, FIXES_MARKER } from "../src/markdown.ts";
 import { parsePatches } from "../src/patch.ts";
 import type {
-  CortardoBotCompleteInput,
-  CortardoBotModelClient,
-  CortardoBotModelCompletion,
-  CortardoBotModelConfig,
-  CortardoBotSwarmConfig,
+  CodeBotCompleteInput,
+  CodeBotModelClient,
+  CodeBotModelCompletion,
+  CodeBotModelConfig,
+  CodeBotSwarmConfig,
 } from "../src/model.ts";
 import type { CodegraphChangedFile, CodegraphReport, GeneratedFix, Hypothesis, RepoGraphIndex } from "../src/types.ts";
 
-const MODEL_CONFIG: CortardoBotModelConfig = {
+const MODEL_CONFIG: CodeBotModelConfig = {
   model: "scripted:terra",
   swarmModel: "scripted:luna",
   codegenModel: "scripted:sol",
@@ -34,7 +34,7 @@ const MODEL_CONFIG: CortardoBotModelConfig = {
   reasoning: "medium",
 };
 
-const SWARM_CONFIG: CortardoBotSwarmConfig = {
+const SWARM_CONFIG: CodeBotSwarmConfig = {
   maxAgents: 6,
   concurrency: 2,
   maxTurns: 3,
@@ -193,16 +193,16 @@ test("parseRawEdits ignores malformed entries", () => {
   assert.equal(edits.length, 1);
 });
 
-class ScriptedClient implements CortardoBotModelClient {
+class ScriptedClient implements CodeBotModelClient {
   readonly id: string;
-  readonly calls: CortardoBotCompleteInput[] = [];
+  readonly calls: CodeBotCompleteInput[] = [];
   constructor(
     id: string,
     private readonly handler: (call: number) => string | Error,
   ) {
     this.id = id;
   }
-  async complete(input: CortardoBotCompleteInput): Promise<CortardoBotModelCompletion> {
+  async complete(input: CodeBotCompleteInput): Promise<CodeBotModelCompletion> {
     this.calls.push(input);
     const result = this.handler(this.calls.length);
     if (result instanceof Error) throw result;
@@ -210,7 +210,7 @@ class ScriptedClient implements CortardoBotModelClient {
   }
 }
 
-function codegenInput(client: CortardoBotModelClient, readFile?: (path: string) => Promise<string | undefined>) {
+function codegenInput(client: CodeBotModelClient, readFile?: (path: string) => Promise<string | undefined>) {
   return {
     repository: "acme/app",
     pullRequestNumber: 7,
@@ -321,18 +321,18 @@ test("buildFixReport plans and generates a validated draft", async () => {
   assert.equal(report.usage.coordinator.calls, 1);
   assert.deepEqual(
     [...new Set(coordinator.calls.map((call) => call.cacheKey))],
-    ["cortardo-bot:coordinator:acme/app:7:74c5449d"],
+    ["codebot:coordinator:acme/app:7:74c5449d"],
     "the terra planner sends one prompt cache key",
   );
   assert.deepEqual(
     [...new Set(codegen.calls.map((call) => call.cacheKey))],
-    ["cortardo-bot:codegen:acme/app:7:74c5449d"],
+    ["codebot:codegen:acme/app:7:74c5449d"],
     "every codegen turn shares one prompt cache key",
   );
 
-  const body = buildFixesComment({ report, runId: "cortardo-bot-test", version: "0.2.0" });
+  const body = buildFixesComment({ report, runId: "codebot-test", version: "0.2.0" });
   assert.ok(body.includes(FIXES_MARKER));
-  assert.ok(body.includes("## Cortardo Bot · Stage 3: fixes"));
+  assert.ok(body.includes("## CodeBot · Stage 3: fixes"));
   assert.ok(body.includes("unverified draft"));
   assert.ok(body.includes("```diff"));
   assert.ok(body.includes("--- a/src/db.ts"));
@@ -406,7 +406,7 @@ test("buildFixReport is deterministic-only without model clients", async () => {
   const report = await buildFixReport({ ...fixReportInput(), coordinatorClient: null, codegenClient: null });
   assert.equal(report.totals.skipped, 1);
   assert.equal(report.usage.used, false);
-  const body = buildFixesComment({ report, runId: "cortardo-bot-test", version: "0.2.0" });
+  const body = buildFixesComment({ report, runId: "codebot-test", version: "0.2.0" });
   assert.ok(body.includes("No hypotheses were available to fix.") === false);
   assert.ok(body.includes("`skipped`"));
 });
@@ -457,7 +457,7 @@ test("collectSuggestions only plans in-diff edits and keeps out-of-diff ones out
   assert.equal(suggestions.length, 1);
   assert.equal(suggestions[0].path, "src/db.ts");
   assert.equal(skipped, 1);
-  assert.ok(suggestions[0].body.includes("<!-- cortardo-bot:fix s_a -->"));
+  assert.ok(suggestions[0].body.includes("<!-- codebot:fix s_a -->"));
   assert.ok(suggestions[0].body.includes("```suggestion"));
 });
 
@@ -496,7 +496,7 @@ test("buildFixesComment announces inline suggestions and cache stats", async () 
   const report = await buildFixReport({ ...fixReportInput(), coordinatorClient: coordinator, codegenClient: codegen });
   report.suggestions = { posted: 1, skipped: 0 };
   report.usage.codegen.cachedTokensIn = 4096;
-  const body = buildFixesComment({ report, runId: "cortardo-bot-test", version: "0.2.0" });
+  const body = buildFixesComment({ report, runId: "codebot-test", version: "0.2.0" });
   assert.ok(body.includes("1 inline suggestion(s)"));
   assert.ok(body.includes("4096 cached"));
 });

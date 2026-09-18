@@ -70,6 +70,11 @@
   --brand-soft: 204 42% 40%;
   --brand-soft-hover: 204 42% 33%;
 
+  /* Info chip — brand-tinted charcoal (deep navy-charcoal), distinct from
+     the neutral charcoal used by the dark hero bands (#16181d). */
+  --charcoal: 220 12% 10%;
+  --brand-charcoal: 204 27% 14%;
+
   /* Toggle (on state) */
   --toggle-on: 152 58% 45%;
 
@@ -160,6 +165,10 @@
   --brand-hover: 204 42% 32%;
   --brand-soft: 204 42% 48%;
   --brand-soft-hover: 204 42% 41%;
+
+  /* Info chip — lifted so it reads against dark surfaces. */
+  --charcoal: 220 10% 18%;
+  --brand-charcoal: 204 18% 26%;
 
   --toggle-on: 152 55% 48%;
 
@@ -588,6 +597,50 @@
 .cursor-drift-1 { animation: cursorDrift1 14s ease-in-out infinite; }
 .cursor-drift-2 { animation: cursorDrift2 18s ease-in-out infinite; }
 
+/* ServiceBot working edge — a subtle rainbow stroke around the page while the
+   agent is thinking or running actions. Fades in/out only when work starts or
+   finishes; it never sits inside the ServiceBot panel. */
+@property --sb-edge-angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+.servicebot-page-edge {
+  position: fixed;
+  inset: 0;
+  z-index: 45;
+  pointer-events: none;
+  padding: 2px;
+  opacity: 0;
+  transition: opacity 400ms ease;
+  background: conic-gradient(
+    from var(--sb-edge-angle),
+    hsl(0 85% 66%),
+    hsl(38 90% 62%),
+    hsl(90 55% 55%),
+    hsl(152 60% 50%),
+    hsl(200 85% 60%),
+    hsl(230 80% 66%),
+    hsl(275 70% 66%),
+    hsl(320 75% 66%),
+    hsl(0 85% 66%)
+  );
+  animation: servicebotRainbow 7s linear infinite;
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+}
+.servicebot-page-edge[data-active="true"] {
+  opacity: 0.4;
+}
+@keyframes servicebotRainbow {
+  to { --sb-edge-angle: 360deg; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .servicebot-page-edge { animation: none; }
+}
+
 /* Soft blink for "live" status dots. */
 @keyframes liveBlink {
   0%, 100% { opacity: 1; }
@@ -700,12 +753,12 @@
 .agent-markdown code {
   font-family: 'SF Mono', Menlo, monospace;
   font-size: 0.9em;
-  background: #f3f4f6;
+  background: hsl(var(--surface-hover));
   padding: 1px 5px;
   border-radius: 4px;
 }
 .agent-markdown pre {
-  background: #f3f4f6;
+  background: hsl(var(--surface-hover));
   border-radius: 8px;
   padding: 12px;
   overflow-x: auto;
@@ -717,12 +770,12 @@
   font-size: 0.85em;
 }
 .agent-markdown a {
-  color: #284B63;
+  color: hsl(var(--brand));
   text-decoration: underline;
   text-underline-offset: 2px;
 }
 .agent-markdown a:hover {
-  color: #1A3346;
+  color: hsl(var(--brand-hover));
 }
 .agent-markdown h1, .agent-markdown h2, .agent-markdown h3, .agent-markdown h4 {
   margin: 0.8em 0 0.4em 0;
@@ -734,14 +787,14 @@
 .agent-markdown h3 { font-size: 1.05em; }
 .agent-markdown h4 { font-size: 1em; }
 .agent-markdown blockquote {
-  border-left: 3px solid #e5e7eb;
+  border-left: 3px solid hsl(var(--border));
   padding-left: 12px;
   margin: 0.6em 0;
-  color: #6b7280;
+  color: hsl(var(--fg-muted));
 }
 .agent-markdown hr {
   border: none;
-  border-top: 1px solid #e5e7eb;
+  border-top: 1px solid hsl(var(--border));
   margin: 1em 0;
 }
 .agent-markdown table {
@@ -751,12 +804,12 @@
   font-size: 0.9em;
 }
 .agent-markdown th, .agent-markdown td {
-  border: 1px solid #e5e7eb;
+  border: 1px solid hsl(var(--border));
   padding: 6px 10px;
   text-align: left;
 }
 .agent-markdown th {
-  background: #f9fafb;
+  background: hsl(var(--surface-muted));
   font-weight: 600;
 }
 

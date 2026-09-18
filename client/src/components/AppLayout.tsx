@@ -3,6 +3,7 @@ import { useLocation } from 'wouter';
 import { Loading01Icon, ArrowLeft01Icon } from '@hugeicons/core-free-icons';
 import { HugeiconsIcon } from "@hugeicons/react";
 import { SidebarContent } from '@/components/Sidebar';
+import { SupportAgent } from '@/components/support/SupportAgent';
 import { CreateWorkspacePopup } from '@/components/CreateWorkspacePopup';
 import { InviteWorkspacePopup } from '@/components/InviteWorkspacePopup';
 import { useWorkspace } from '@/contexts/workspace-context';
@@ -75,6 +76,9 @@ export function AppLayout({
               </Suspense>
             </main>
           </div>
+
+          {/* ServiceBot dock — right-hand panel, sidebar-style on desktop */}
+          <SupportAgent />
         </div>
 
       {switchingWorkspace && (

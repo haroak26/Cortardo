@@ -12,23 +12,23 @@ import { runCodegenAgent } from "./fixes.ts";
 import { parseJson } from "./master.ts";
 import { buildCodegraphReport } from "./codegraph.ts";
 import { analyseChangedFiles, listRepositoryTree, loadChangedFiles, loadPullRequestContext, loadRepoGraphIndex } from "./run-inputs.ts";
-import { publishCortardoBotComment } from "./github.ts";
+import { publishCodeBotComment } from "./github.ts";
 import { buildVerifyComment, VERIFY_MARKER } from "./markdown.ts";
 import { renderChangedPatches, parsePatches, type ParsedPatch } from "./patch.ts";
 import { verifyPlanSystem, verifyPlanUser, verifyRepairSystem, verifyRepairUser } from "./prompts.ts";
 import {
   BudgetedModelClient,
-  cortardoBotCacheKey,
+  codeBotCacheKey,
   codegenModelConfig,
-  createCortardoBotModelClient,
-  createCortardoBotUsageTracker,
-  isCortardoBotBudgetError,
-  resolveCortardoBotModelConfig,
-  resolveCortardoBotSwarmConfig,
-  type CortardoBotModelClient,
-  type CortardoBotModelConfig,
-  type CortardoBotSwarmConfig,
-  type CortardoBotUsageTracker,
+  createCodeBotModelClient,
+  createCodeBotUsageTracker,
+  isCodeBotBudgetError,
+  resolveCodeBotModelConfig,
+  resolveCodeBotSwarmConfig,
+  type CodeBotModelClient,
+  type CodeBotModelConfig,
+  type CodeBotSwarmConfig,
+  type CodeBotUsageTracker,
 } from "./model.ts";
 import {
   applyEditsToSandbox,
@@ -43,7 +43,7 @@ import {
   writeProbeFiles,
   type VerifySandbox,
 } from "./sandbox.ts";
-import { buildFixReport, replaceCortardoBotSuggestions, DRAFT_SUGGESTION_BODY } from "./fixes.ts";
+import { buildFixReport, replaceCodeBotSuggestions, DRAFT_SUGGESTION_BODY } from "./fixes.ts";
 import { buildHypothesisReport } from "./hypotheses.ts";
 import { sortHypotheses } from "./rules.ts";
 import type {
@@ -68,7 +68,7 @@ import type {
   VerifyStageResult,
 } from "./types.ts";
 import { HYPOTHESIS_SEVERITIES } from "./types.ts";
-import { CORTARDO_BOT_VERSION } from "./version.ts";
+import { CODEBOT_VERSION } from "./version.ts";
 
 const MAX_VERIFY_COMMANDS = 5;
 const MAX_VERIFY_PROBES = 3;
@@ -196,7 +196,7 @@ export function parseVerifyPlan(
 // Fix selection
 // ---------------------------------------------------------------------------
 
-export function verifySeverities(config: CortardoBotSwarmConfig): HypothesisSeverity[] {
+export function verifySeverities(config: CodeBotSwarmConfig): HypothesisSeverity[] {
   return config.fixSeverities.length > 0 ? config.fixSeverities : [...HYPOTHESIS_SEVERITIES];
 }
 
@@ -226,7 +226,7 @@ export interface VerifyPlannerInput {
   packageJson?: string;
   repositoryTree: string[];
   likelyTests: string[];
-  client: CortardoBotModelClient;
+  client: CodeBotModelClient;
   signal?: AbortSignal;
   cacheKey?: string;
   commandTimeoutMs: number;
@@ -286,7 +286,7 @@ export interface VerifyRepairAgentInput {
   failure: string;
   verifyPlan: VerifyPlan;
   fileSnapshots: Array<{ path: string; content: string }>;
-  client: CortardoBotModelClient;
+  client: CodeBotModelClient;
   signal?: AbortSignal;
   cacheKey?: string;
   commandTimeoutMs: number;
@@ -383,8 +383,8 @@ export interface VerifyLoopInput {
   fixes: GeneratedFix[];
   plans: Map<string, VerifyPlan>;
   deps: VerifyFixDeps;
-  tracker: CortardoBotUsageTracker;
-  config: CortardoBotSwarmConfig;
+  tracker: CodeBotUsageTracker;
+  config: CodeBotSwarmConfig;
   deadline: number;
   sandboxId: string;
   onLog?: (message: string) => void;
@@ -723,11 +723,11 @@ export interface BuildVerifyReportInput {
   fullName?: string;
   severities?: HypothesisSeverity[];
   verifySandbox?: VerifySandbox | null;
-  coordinatorClient?: CortardoBotModelClient | null;
-  codegenClient?: CortardoBotModelClient | null;
-  modelConfig?: CortardoBotModelConfig;
-  swarmConfig?: CortardoBotSwarmConfig;
-  usageTracker?: CortardoBotUsageTracker;
+  coordinatorClient?: CodeBotModelClient | null;
+  codegenClient?: CodeBotModelClient | null;
+  modelConfig?: CodeBotModelConfig;
+  swarmConfig?: CodeBotSwarmConfig;
+  usageTracker?: CodeBotUsageTracker;
   onLog?: (message: string) => void;
   signal?: AbortSignal;
 }
@@ -790,8 +790,8 @@ function totalsOf(fixes: VerifiedFix[], available: number): VerifyReport["totals
 }
 
 export async function buildVerifyReport(input: BuildVerifyReportInput): Promise<VerifyReport> {
-  const configured = input.modelConfig ?? resolveCortardoBotModelConfig();
-  const swarmConfig = input.swarmConfig ?? resolveCortardoBotSwarmConfig();
+  const configured = input.modelConfig ?? resolveCodeBotModelConfig();
+  const swarmConfig = input.swarmConfig ?? resolveCodeBotSwarmConfig();
   const severities = input.severities ?? verifySeverities(swarmConfig);
   const warnings: string[] = [];
   const selected = selectVerifyFixes(input.fixReport, severities);
@@ -829,16 +829,16 @@ export async function buildVerifyReport(input: BuildVerifyReportInput): Promise<
     );
   }
 
-  const tracker = input.usageTracker ?? createCortardoBotUsageTracker(swarmConfig);
+  const tracker = input.usageTracker ?? createCodeBotUsageTracker(swarmConfig);
   tracker.beginReservedStage("verify");
   const coordinator = new BudgetedModelClient(
-    input.coordinatorClient ?? createCortardoBotModelClient(configured),
+    input.coordinatorClient ?? createCodeBotModelClient(configured),
     tracker,
     "coordinator",
     { modelId: configured.model, maxOutputTokens: configured.maxTokens },
   );
   const codegen = new BudgetedModelClient(
-    input.codegenClient ?? createCortardoBotModelClient(codegenModelConfig(configured)),
+    input.codegenClient ?? createCodeBotModelClient(codegenModelConfig(configured)),
     tracker,
     "codegen",
     { modelId: configured.codegenModel, maxOutputTokens: configured.codegenMaxTokens ?? configured.maxTokens },
@@ -895,7 +895,7 @@ export async function buildVerifyReport(input: BuildVerifyReportInput): Promise<
         likelyTests: input.report.files.find((file) => file.path === fix.hypothesis.file)?.tests ?? [],
         client: coordinator,
         signal: input.signal,
-        cacheKey: cortardoBotCacheKey("coordinator", input),
+        cacheKey: codeBotCacheKey("coordinator", input),
         commandTimeoutMs: swarmConfig.verifyCommandTimeoutMs,
       });
       if (planned.dropped.length > 0) warnings.push(`verify plan for ${fix.hypothesisId}: ${planned.dropped.join("; ")}`);
@@ -912,7 +912,7 @@ export async function buildVerifyReport(input: BuildVerifyReportInput): Promise<
       }
       return planned.plan;
     } catch (error) {
-      if (isCortardoBotBudgetError(error)) throw error;
+      if (isCodeBotBudgetError(error)) throw error;
       const message = error instanceof Error ? error.message : String(error);
       warnings.push(`verify planning failed for ${fix.hypothesisId} (${redact(message).slice(0, 200)}); fell back to the repository's scripts`);
       return fallbackVerifyPlan({ paths: treePaths, packageJson, commandTimeoutMs: swarmConfig.verifyCommandTimeoutMs });
@@ -970,7 +970,7 @@ export async function buildVerifyReport(input: BuildVerifyReportInput): Promise<
         timeoutMs: swarmConfig.e2bTimeoutMs,
         apiKey,
         metadata: {
-          cortardoBot: "verify",
+          codeBot: "verify",
           repository: input.repository,
           pullRequest: String(input.pullRequestNumber),
         },
@@ -1053,7 +1053,7 @@ export async function buildVerifyReport(input: BuildVerifyReportInput): Promise<
             fileSnapshots: context.snapshots,
             client: coordinator,
             signal: input.signal,
-            cacheKey: cortardoBotCacheKey("coordinator", input),
+            cacheKey: codeBotCacheKey("coordinator", input),
             commandTimeoutMs: swarmConfig.verifyCommandTimeoutMs,
           });
           if (decision.action !== "repair") return decision;
@@ -1216,9 +1216,9 @@ export function plannedSuggestions(input: {
   if (attempted && input.verifyReport) {
     return {
       verified: true,
-      label: "Cortardo Bot verified fix",
+      label: "CodeBot verified fix",
       body:
-        "**Cortardo Bot verified fixes** — these suggestions passed sandbox verification " +
+        "**CodeBot verified fixes** — these suggestions passed sandbox verification " +
         "(attempts, commands and evidence are in the review comment).",
       fixes: input.verifyReport.fixes.filter((fix) => fix.status === "verified").map(verifiedAsGeneratedFix),
     };
@@ -1227,7 +1227,7 @@ export function plannedSuggestions(input: {
   if (drafts.length === 0) return undefined;
   return {
     verified: false,
-    label: "Cortardo Bot draft fix — not sandbox-verified",
+    label: "CodeBot draft fix — not sandbox-verified",
     body: DRAFT_SUGGESTION_BODY,
     fixes: drafts,
   };
@@ -1248,12 +1248,12 @@ export interface VerifyStageInput {
   /** Structured handoffs from earlier stages; rebuilt internally when absent. */
   hypothesisReport?: HypothesisReport;
   fixReport?: FixReport;
-  modelClient?: CortardoBotModelClient | null;
-  swarmClient?: CortardoBotModelClient | null;
-  codegenClient?: CortardoBotModelClient | null;
-  modelConfig?: CortardoBotModelConfig;
-  swarmConfig?: CortardoBotSwarmConfig;
-  usageTracker?: CortardoBotUsageTracker;
+  modelClient?: CodeBotModelClient | null;
+  swarmClient?: CodeBotModelClient | null;
+  codegenClient?: CodeBotModelClient | null;
+  modelConfig?: CodeBotModelConfig;
+  swarmConfig?: CodeBotSwarmConfig;
+  usageTracker?: CodeBotUsageTracker;
   /** Injectable sandbox; `null` disables verification for this run. */
   verifySandbox?: VerifySandbox | null;
   readFile?: (path: string) => Promise<string | undefined>;
@@ -1289,9 +1289,9 @@ export async function runVerifyStage(input: VerifyStageInput): Promise<VerifySta
     maxFiles: input.maxFiles,
   });
 
-  const noModel = process.env.CORTARDO_BOT_NO_MODEL === "1";
-  const swarmConfig = input.swarmConfig ?? resolveCortardoBotSwarmConfig();
-  const tracker = input.usageTracker ?? createCortardoBotUsageTracker(swarmConfig);
+  const noModel = process.env.CODEBOT_NO_MODEL === "1";
+  const swarmConfig = input.swarmConfig ?? resolveCodeBotSwarmConfig();
+  const tracker = input.usageTracker ?? createCodeBotUsageTracker(swarmConfig);
   const hypothesisReport =
     input.hypothesisReport ??
     (input.fixReport
@@ -1376,11 +1376,11 @@ export async function runVerifyStage(input: VerifyStageInput): Promise<VerifySta
   if (suggestionPlan && !suggestionPlan.verified) {
     verifyReport.warnings.push("sandbox verification did not run; the drafts are posted unverified");
   }
-  let body = buildVerifyComment({ report: verifyReport, runId: input.runId, version: CORTARDO_BOT_VERSION });
+  let body = buildVerifyComment({ report: verifyReport, runId: input.runId, version: CODEBOT_VERSION });
   // The review comment is published first so it leads the PR conversation; the
   // suggestion review follows it.
   if (!input.dryRun && input.publish !== false) {
-    const published = await publishCortardoBotComment({
+    const published = await publishCodeBotComment({
       installationId: context.installationId,
       fullName: context.fullName,
       pullRequestNumber: input.pullRequestNumber,
@@ -1393,7 +1393,7 @@ export async function runVerifyStage(input: VerifyStageInput): Promise<VerifySta
   }
   if (!input.dryRun && !input.deferSuggestions && suggestionPlan) {
     try {
-      const replaced = await replaceCortardoBotSuggestions({
+      const replaced = await replaceCodeBotSuggestions({
         installationId: context.installationId,
         fullName: context.fullName,
         pullRequestNumber: input.pullRequestNumber,
@@ -1407,9 +1407,9 @@ export async function runVerifyStage(input: VerifyStageInput): Promise<VerifySta
       const message = error instanceof Error ? error.message : String(error);
       verifyReport.suggestions = { posted: 0, skipped: 0, removed: 0, error: message };
       verifyReport.warnings.push(`inline suggestions unavailable (${message}); the patches remain in the comment`);
-      body = buildVerifyComment({ report: verifyReport, runId: input.runId, version: CORTARDO_BOT_VERSION });
+      body = buildVerifyComment({ report: verifyReport, runId: input.runId, version: CODEBOT_VERSION });
       if (!input.dryRun && input.publish !== false && commentId !== null) {
-        const republished = await publishCortardoBotComment({
+        const republished = await publishCodeBotComment({
           installationId: context.installationId,
           fullName: context.fullName,
           pullRequestNumber: input.pullRequestNumber,
@@ -1427,7 +1427,7 @@ export async function runVerifyStage(input: VerifyStageInput): Promise<VerifySta
     `${verifyReport.totals.attempts} attempt(s) · $${verifyReport.usage.totalCostUsd.toFixed(4)}`;
   return {
     stage: "verify",
-    version: CORTARDO_BOT_VERSION,
+    version: CODEBOT_VERSION,
     durationMs: Date.now() - started,
     headSha: context.headSha,
     summary,

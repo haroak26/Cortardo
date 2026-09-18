@@ -73,6 +73,8 @@ export default {
         "surface-muted": "hsl(var(--surface-muted) / <alpha-value>)",
         "surface-subtle": "hsl(var(--surface-subtle) / <alpha-value>)",
         "surface-deep": "hsl(var(--surface-deep) / <alpha-value>)",
+        charcoal: "hsl(var(--charcoal) / <alpha-value>)",
+        "brand-charcoal": "hsl(var(--brand-charcoal) / <alpha-value>)",
         "border-subtle": "hsl(var(--border-subtle) / <alpha-value>)",
         "border-strong": "hsl(var(--border-strong) / <alpha-value>)",
         "fg-strong": "hsl(var(--fg-strong) / <alpha-value>)",

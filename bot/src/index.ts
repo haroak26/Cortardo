@@ -2,37 +2,37 @@ import { randomUUID } from "node:crypto";
 import type { Repository } from "@shared/schema";
 import { storage } from "../../server/storage.ts";
 import { buildCodegraphReport, type BuildCodegraphReportInput } from "./codegraph.ts";
-import { publishCortardoBotComment } from "./github.ts";
+import { publishCodeBotComment } from "./github.ts";
 import { buildCodegraphComment, buildReviewComment, CODEGRAPH_MARKER, REVIEW_MARKER } from "./markdown.ts";
 import { analyseChangedFiles, loadChangedFiles, loadPullRequestContext, loadRepoGraphIndex } from "./run-inputs.ts";
 import { runHypothesisStage } from "./hypotheses.ts";
-import { replaceCortardoBotSuggestions, runFixesStage } from "./fixes.ts";
+import { replaceCodeBotSuggestions, runFixesStage } from "./fixes.ts";
 import { plannedSuggestions, runVerifyStage } from "./verify.ts";
-import { createCortardoBotUsageTracker, resolveCortardoBotSwarmConfig } from "./model.ts";
+import { createCodeBotUsageTracker, resolveCodeBotSwarmConfig } from "./model.ts";
 import type {
-  CortardoBotRunInput,
-  CortardoBotRunReceipt,
-  CortardoBotRunResult,
-  CortardoBotStageName,
-  CortardoBotStageReceipt,
-  CortardoBotStageResult,
+  CodeBotRunInput,
+  CodeBotRunReceipt,
+  CodeBotRunResult,
+  CodeBotStageName,
+  CodeBotStageReceipt,
+  CodeBotStageResult,
   FixReport,
   HypothesisReport,
   ModelUsage,
   VerifyReport,
 } from "./types.ts";
-import { CORTARDO_BOT_STAGES } from "./types.ts";
-import { CORTARDO_BOT_VERSION } from "./version.ts";
+import { CODEBOT_STAGES } from "./types.ts";
+import { CODEBOT_VERSION } from "./version.ts";
 
-export { CORTARDO_BOT_VERSION } from "./version.ts";
+export { CODEBOT_VERSION } from "./version.ts";
 export { buildCodegraphReport } from "./codegraph.ts";
-export { buildCodegraphComment, buildHypothesesComment, buildFixesComment, CORTARDO_BOT_MARKER, CODEGRAPH_MARKER, HYPOTHESES_MARKER, FIXES_MARKER } from "./markdown.ts";
-export { listCortardoBotComments, publishCortardoBotComment } from "./github.ts";
+export { buildCodegraphComment, buildHypothesesComment, buildFixesComment, CODEBOT_MARKER, CODEGRAPH_MARKER, HYPOTHESES_MARKER, FIXES_MARKER } from "./markdown.ts";
+export { listCodeBotComments, publishCodeBotComment } from "./github.ts";
 export { scanHypotheses, conditionRule } from "./rules.ts";
 export { runAssignmentPlanner, runSynthesis, mergeHypotheses, parseModelHypotheses, dedupeHypotheses, sameFinding } from "./master.ts";
 export { runSwarm, fallbackAssignments } from "./swarm.ts";
 export { buildHypothesisReport, runHypothesisStage } from "./hypotheses.ts";
-export { buildFixReport, runFixesStage, runFixPlanner, runCodegenAgent, parseFixPlans, validateFixEdits, replaceCortardoBotSuggestions } from "./fixes.ts";
+export { buildFixReport, runFixesStage, runFixPlanner, runCodegenAgent, parseFixPlans, validateFixEdits, replaceCodeBotSuggestions } from "./fixes.ts";
 export { buildVerifyReport, runVerifyStage, runVerifyLoop, runVerifyPlanner, runVerifyRepair, parseVerifyPlan, selectVerifyFixes } from "./verify.ts";
 export {
   createE2bSandbox,
@@ -54,12 +54,12 @@ export interface CodegraphStageInput {
   repository: Repository;
   pullRequestNumber: number;
   dryRun?: boolean;
-  /** Codegraph is internal: `runCortardoBot` always disables its comment. */
+  /** Codegraph is internal: `runCodeBot` always disables its comment. */
   publish?: boolean;
   maxFiles?: number;
 }
 
-export async function runCodegraphStage(input: CodegraphStageInput): Promise<CortardoBotStageResult> {
+export async function runCodegraphStage(input: CodegraphStageInput): Promise<CodeBotStageResult> {
   const started = Date.now();
   const { repository } = input;
   const context = await loadPullRequestContext(repository, input.pullRequestNumber);
@@ -87,13 +87,13 @@ export async function runCodegraphStage(input: CodegraphStageInput): Promise<Cor
     maxFiles: input.maxFiles,
   };
   const report = buildCodegraphReport(reportInput);
-  const body = buildCodegraphComment({ report, runId: input.runId, version: CORTARDO_BOT_VERSION });
+  const body = buildCodegraphComment({ report, runId: input.runId, version: CODEBOT_VERSION });
 
   let commentId: number | null = null;
   let commentUrl: string | null = null;
   let replacedComments = 0;
   if (!input.dryRun && input.publish !== false) {
-    const published = await publishCortardoBotComment({
+    const published = await publishCodeBotComment({
       installationId: context.installationId,
       fullName: context.fullName,
       pullRequestNumber: input.pullRequestNumber,
@@ -111,7 +111,7 @@ export async function runCodegraphStage(input: CodegraphStageInput): Promise<Cor
 
   return {
     stage: "codegraph",
-    version: CORTARDO_BOT_VERSION,
+    version: CODEBOT_VERSION,
     durationMs: Date.now() - started,
     headSha: context.headSha,
     summary,
@@ -122,17 +122,17 @@ export async function runCodegraphStage(input: CodegraphStageInput): Promise<Cor
   };
 }
 
-export async function runCortardoBot(input: CortardoBotRunInput): Promise<CortardoBotRunResult> {
-  const runId = input.runId ?? `cortardo-bot-${randomUUID().slice(0, 8)}`;
+export async function runCodeBot(input: CodeBotRunInput): Promise<CodeBotRunResult> {
+  const runId = input.runId ?? `codebot-${randomUUID().slice(0, 8)}`;
   const repository = await storage.getRepositoryById(input.repositoryId);
   if (!repository) throw new Error(`repository not found: ${input.repositoryId}`);
 
-  const stages: CortardoBotStageName[] = input.stages?.length ? input.stages : CORTARDO_BOT_STAGES;
-  const results: CortardoBotStageResult[] = [];
+  const stages: CodeBotStageName[] = input.stages?.length ? input.stages : CODEBOT_STAGES;
+  const results: CodeBotStageResult[] = [];
   // One tracker for the whole run: stage 2 and stage 3 share one ceiling and
   // stage 4 keeps its reserved slice.
-  const swarmConfig = resolveCortardoBotSwarmConfig();
-  const usageTracker = createCortardoBotUsageTracker(swarmConfig);
+  const swarmConfig = resolveCodeBotSwarmConfig();
+  const usageTracker = createCodeBotUsageTracker(swarmConfig);
   let hypothesisReport: HypothesisReport | undefined;
   let fixReport: FixReport | undefined;
   let verifyReport: VerifyReport | undefined;
@@ -227,7 +227,7 @@ export async function runCortardoBot(input: CortardoBotRunInput): Promise<Cortar
           verifyReport,
           severities: swarmConfig.fixSeverities,
           runId,
-          version: CORTARDO_BOT_VERSION,
+          version: CODEBOT_VERSION,
         })
       : "";
   let body = buildBody();
@@ -236,7 +236,7 @@ export async function runCortardoBot(input: CortardoBotRunInput): Promise<Cortar
   let replacedComments = 0;
   const context = !input.dryRun && publishable ? await loadPullRequestContext(repository, input.pullRequestNumber) : undefined;
   if (context) {
-    const published = await publishCortardoBotComment({
+    const published = await publishCodeBotComment({
       installationId: context.installationId,
       fullName: context.fullName,
       pullRequestNumber: input.pullRequestNumber,
@@ -249,7 +249,7 @@ export async function runCortardoBot(input: CortardoBotRunInput): Promise<Cortar
   }
   if (context && suggestionPlan) {
     try {
-      const replaced = await replaceCortardoBotSuggestions({
+      const replaced = await replaceCodeBotSuggestions({
         installationId: context.installationId,
         fullName: context.fullName,
         pullRequestNumber: input.pullRequestNumber,
@@ -269,7 +269,7 @@ export async function runCortardoBot(input: CortardoBotRunInput): Promise<Cortar
       if (target) {
         target.warnings.push(`inline suggestions unavailable (${message}); the patches remain in the comment`);
         body = buildBody();
-        const republished = await publishCortardoBotComment({
+        const republished = await publishCodeBotComment({
           installationId: context.installationId,
           fullName: context.fullName,
           pullRequestNumber: input.pullRequestNumber,
@@ -283,7 +283,7 @@ export async function runCortardoBot(input: CortardoBotRunInput): Promise<Cortar
     }
   }
 
-  const stageReceipts: CortardoBotStageReceipt[] = results.map((result) => ({
+  const stageReceipts: CodeBotStageReceipt[] = results.map((result) => ({
     stage: result.stage,
     status: "ok",
     durationMs: result.durationMs,
@@ -291,9 +291,9 @@ export async function runCortardoBot(input: CortardoBotRunInput): Promise<Cortar
     commentId: result.commentId,
     usage: "report" in result ? (result as { report?: { usage?: ModelUsage } }).report?.usage : undefined,
   }));
-  const receipt: CortardoBotRunReceipt = {
+  const receipt: CodeBotRunReceipt = {
     runId,
-    version: CORTARDO_BOT_VERSION,
+    version: CODEBOT_VERSION,
     repository: repository.fullName,
     pullRequestNumber: input.pullRequestNumber,
     headSha: results[0]?.headSha ?? "",
@@ -312,14 +312,14 @@ export async function runCortardoBot(input: CortardoBotRunInput): Promise<Cortar
   const failedCalls =
     (runUsage?.coordinator.failedCalls ?? 0) + (runUsage?.swarm.failedCalls ?? 0) + (runUsage?.codegen.failedCalls ?? 0);
   if (failedCalls > 0) {
-    console.warn(`[cortardo-bot] ${failedCalls} model call(s) failed before completing this run`);
+    console.warn(`[codebot] ${failedCalls} model call(s) failed before completing this run`);
   }
   // One JSON line per run so cost is recorded outside the replaceable comments.
-  console.log(`CORTARDO_BOT_RECEIPT ${JSON.stringify(receipt)}`);
+  console.log(`CODEBOT_RECEIPT ${JSON.stringify(receipt)}`);
 
   return {
     runId,
-    version: CORTARDO_BOT_VERSION,
+    version: CODEBOT_VERSION,
     repository: repository.fullName,
     pullRequestNumber: input.pullRequestNumber,
     headSha: results[0]?.headSha ?? "",

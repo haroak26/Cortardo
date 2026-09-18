@@ -8,16 +8,16 @@ import { catalogEntry, parseReasoningEffort, type ReasoningEffort } from "@share
 import { HYPOTHESIS_SEVERITIES, type HypothesisSeverity } from "./types.ts";
 
 /** Coordinator (master agent): plans the investigation and synthesizes it. */
-export const CORTARDO_BOT_DEFAULT_COORDINATOR_MODEL = "openai/gpt-5.6-terra";
+export const CODEBOT_DEFAULT_COORDINATOR_MODEL = "openai/gpt-5.6-terra";
 /** Swarm (investigator): reads the code and gathers evidence per assignment. */
-export const CORTARDO_BOT_DEFAULT_SWARM_MODEL = "openai/gpt-5.6-luna";
+export const CODEBOT_DEFAULT_SWARM_MODEL = "openai/gpt-5.6-luna";
 /** Codegen (engineer): writes the fix for a planned hypothesis. */
-export const CORTARDO_BOT_DEFAULT_CODEGEN_MODEL = "openai/gpt-5.6-sol";
-export const CORTARDO_BOT_DEFAULT_MODEL = CORTARDO_BOT_DEFAULT_COORDINATOR_MODEL;
+export const CODEBOT_DEFAULT_CODEGEN_MODEL = "openai/gpt-5.6-sol";
+export const CODEBOT_DEFAULT_MODEL = CODEBOT_DEFAULT_COORDINATOR_MODEL;
 
-export type CortardoBotModelRole = "coordinator" | "swarm" | "codegen";
+export type CodeBotModelRole = "coordinator" | "swarm" | "codegen";
 
-export interface CortardoBotModelConfig {
+export interface CodeBotModelConfig {
   /** Coordinator (master agent) model — the one a plain client calls. */
   model: string;
   /** Swarm (investigator) model. */
@@ -40,7 +40,7 @@ export interface CortardoBotModelConfig {
   promptCacheEnabled?: boolean;
 }
 
-export interface CortardoBotSwarmConfig {
+export interface CodeBotSwarmConfig {
   /** Maximum assignments handed to swarm agents. */
   maxAgents: number;
   /** Maximum swarm agents in flight at once. */
@@ -87,10 +87,10 @@ export interface CortardoBotSwarmConfig {
   e2bTimeoutMs: number;
 }
 
-export const CORTARDO_BOT_DEFAULT_FIX_SEVERITIES: HypothesisSeverity[] = ["critical", "high"];
+export const CODEBOT_DEFAULT_FIX_SEVERITIES: HypothesisSeverity[] = ["critical", "high"];
 
 function parseSeverities(value: string | undefined): HypothesisSeverity[] {
-  if (value === undefined) return [...CORTARDO_BOT_DEFAULT_FIX_SEVERITIES];
+  if (value === undefined) return [...CODEBOT_DEFAULT_FIX_SEVERITIES];
   const known = new Set<string>(HYPOTHESIS_SEVERITIES);
   const parsed = value
     .split(",")
@@ -100,12 +100,12 @@ function parseSeverities(value: string | undefined): HypothesisSeverity[] {
 }
 
 /** A copy of the config that calls the swarm model instead of the coordinator. */
-export function swarmModelConfig(config: CortardoBotModelConfig): CortardoBotModelConfig {
+export function swarmModelConfig(config: CodeBotModelConfig): CodeBotModelConfig {
   return { ...config, model: config.swarmModel, maxTokens: config.swarmMaxTokens ?? config.maxTokens };
 }
 
 /** A copy of the config that calls the codegen model instead of the coordinator. */
-export function codegenModelConfig(config: CortardoBotModelConfig): CortardoBotModelConfig {
+export function codegenModelConfig(config: CodeBotModelConfig): CodeBotModelConfig {
   return {
     ...config,
     model: config.codegenModel,
@@ -124,73 +124,73 @@ function envFloat(value: string | undefined, fallback: number): number {
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
 }
 
-export function resolveCortardoBotModelConfig(env: Record<string, string | undefined> = process.env): CortardoBotModelConfig {
+export function resolveCodeBotModelConfig(env: Record<string, string | undefined> = process.env): CodeBotModelConfig {
   return {
-    model: env.CORTARDO_BOT_MODEL?.trim() || CORTARDO_BOT_DEFAULT_COORDINATOR_MODEL,
-    swarmModel: env.CORTARDO_BOT_SWARM_MODEL?.trim() || CORTARDO_BOT_DEFAULT_SWARM_MODEL,
-    codegenModel: env.CORTARDO_BOT_CODEGEN_MODEL?.trim() || CORTARDO_BOT_DEFAULT_CODEGEN_MODEL,
+    model: env.CODEBOT_MODEL?.trim() || CODEBOT_DEFAULT_COORDINATOR_MODEL,
+    swarmModel: env.CODEBOT_SWARM_MODEL?.trim() || CODEBOT_DEFAULT_SWARM_MODEL,
+    codegenModel: env.CODEBOT_CODEGEN_MODEL?.trim() || CODEBOT_DEFAULT_CODEGEN_MODEL,
     baseUrl: env.CORTADO_AI_BASE_URL?.trim() || "https://api-gateway.merge.dev/v1/ai-sdk",
     apiKey:
       // Explicit override first so an exhausted project key can be swapped
       // without touching the shared CORTADO_AI_* configuration.
-      env.CORTARDO_BOT_API_KEY?.trim() ||
+      env.CODEBOT_API_KEY?.trim() ||
       env.CORTADO_AI_API_KEY?.trim() ||
-      env.CORTARDO_BOT_MERGE_API_KEY?.trim() ||
+      env.CODEBOT_MERGE_API_KEY?.trim() ||
       env.MERGE_GATEWAY_API_KEY?.trim() ||
       // Workspace fallback for local validation runs.
       env.OPENCODE_MERGE_KEY?.trim() ||
       "",
-    timeoutMs: envInt(env.CORTARDO_BOT_MODEL_TIMEOUT_MS, 60_000),
-    maxRetries: envInt(env.CORTARDO_BOT_MODEL_RETRIES, 1),
-    maxTokens: envInt(env.CORTARDO_BOT_MODEL_MAX_TOKENS, 4_000),
-    swarmMaxTokens: envInt(env.CORTARDO_BOT_SWARM_MAX_TOKENS, 2_000),
-    codegenMaxTokens: envInt(env.CORTARDO_BOT_CODEGEN_MAX_TOKENS, 1_500),
-    reasoning: parseReasoningEffort(env.CORTARDO_BOT_REASONING) ?? "medium",
-    codegenReasoning: parseReasoningEffort(env.CORTARDO_BOT_REASONING_CODEGEN) ?? "minimal",
-    promptCacheEnabled: env.CORTARDO_BOT_PROMPT_CACHE !== "0",
+    timeoutMs: envInt(env.CODEBOT_MODEL_TIMEOUT_MS, 60_000),
+    maxRetries: envInt(env.CODEBOT_MODEL_RETRIES, 1),
+    maxTokens: envInt(env.CODEBOT_MODEL_MAX_TOKENS, 4_000),
+    swarmMaxTokens: envInt(env.CODEBOT_SWARM_MAX_TOKENS, 2_000),
+    codegenMaxTokens: envInt(env.CODEBOT_CODEGEN_MAX_TOKENS, 1_500),
+    reasoning: parseReasoningEffort(env.CODEBOT_REASONING) ?? "medium",
+    codegenReasoning: parseReasoningEffort(env.CODEBOT_REASONING_CODEGEN) ?? "minimal",
+    promptCacheEnabled: env.CODEBOT_PROMPT_CACHE !== "0",
   };
 }
 
-export function resolveCortardoBotSwarmConfig(env: Record<string, string | undefined> = process.env): CortardoBotSwarmConfig {
+export function resolveCodeBotSwarmConfig(env: Record<string, string | undefined> = process.env): CodeBotSwarmConfig {
   return {
-    maxAgents: envInt(env.CORTARDO_BOT_SWARM_AGENTS, 6),
-    concurrency: envInt(env.CORTARDO_BOT_SWARM_CONCURRENCY, 3),
-    maxTurns: envInt(env.CORTARDO_BOT_SWARM_TURNS, 3),
-    maxToolsPerTurn: envInt(env.CORTARDO_BOT_SWARM_TOOLS, 3),
-    maxCostUsd: envFloat(env.CORTARDO_BOT_MAX_COST_USD, 0.5),
-    targetCostUsd: envFloat(env.CORTARDO_BOT_TARGET_COST_USD, 0.4),
-    reserveUsd: envFloat(env.CORTARDO_BOT_STAGE4_RESERVE_USD, 0.15),
-    stage2BudgetUsd: envFloat(env.CORTARDO_BOT_STAGE2_BUDGET, 0.22),
-    timeoutMs: envInt(env.CORTARDO_BOT_HYPOTHESES_MS, 300_000),
-    searchEnabled: env.CORTARDO_BOT_SWARM_SEARCH !== "0",
-    learningsEnabled: env.CORTARDO_BOT_LEARNINGS !== "0",
-    maxFixes: envInt(env.CORTARDO_BOT_MAX_FIXES, 0),
-    fixSeverities: parseSeverities(env.CORTARDO_BOT_FIX_SEVERITIES),
-    codegenConcurrency: envInt(env.CORTARDO_BOT_CODEGEN_CONCURRENCY, 2),
-    codegenTurns: envInt(env.CORTARDO_BOT_CODEGEN_TURNS, 2),
-    verifyEnabled: env.CORTARDO_BOT_VERIFY !== "0",
-    verifyAttempts: Math.min(4, Math.max(1, envInt(env.CORTARDO_BOT_VERIFY_ATTEMPTS, 4))),
-    verifyTimeoutMs: envInt(env.CORTARDO_BOT_VERIFY_MS, 900_000),
-    verifyCommandTimeoutMs: envInt(env.CORTARDO_BOT_VERIFY_COMMAND_TIMEOUT_MS, 300_000),
-    verifyCommands: (env.CORTARDO_BOT_VERIFY_COMMANDS ?? "")
+    maxAgents: envInt(env.CODEBOT_SWARM_AGENTS, 6),
+    concurrency: envInt(env.CODEBOT_SWARM_CONCURRENCY, 3),
+    maxTurns: envInt(env.CODEBOT_SWARM_TURNS, 3),
+    maxToolsPerTurn: envInt(env.CODEBOT_SWARM_TOOLS, 3),
+    maxCostUsd: envFloat(env.CODEBOT_MAX_COST_USD, 0.5),
+    targetCostUsd: envFloat(env.CODEBOT_TARGET_COST_USD, 0.4),
+    reserveUsd: envFloat(env.CODEBOT_STAGE4_RESERVE_USD, 0.15),
+    stage2BudgetUsd: envFloat(env.CODEBOT_STAGE2_BUDGET, 0.22),
+    timeoutMs: envInt(env.CODEBOT_HYPOTHESES_MS, 300_000),
+    searchEnabled: env.CODEBOT_SWARM_SEARCH !== "0",
+    learningsEnabled: env.CODEBOT_LEARNINGS !== "0",
+    maxFixes: envInt(env.CODEBOT_MAX_FIXES, 0),
+    fixSeverities: parseSeverities(env.CODEBOT_FIX_SEVERITIES),
+    codegenConcurrency: envInt(env.CODEBOT_CODEGEN_CONCURRENCY, 2),
+    codegenTurns: envInt(env.CODEBOT_CODEGEN_TURNS, 2),
+    verifyEnabled: env.CODEBOT_VERIFY !== "0",
+    verifyAttempts: Math.min(4, Math.max(1, envInt(env.CODEBOT_VERIFY_ATTEMPTS, 4))),
+    verifyTimeoutMs: envInt(env.CODEBOT_VERIFY_MS, 900_000),
+    verifyCommandTimeoutMs: envInt(env.CODEBOT_VERIFY_COMMAND_TIMEOUT_MS, 300_000),
+    verifyCommands: (env.CODEBOT_VERIFY_COMMANDS ?? "")
       .split("\n")
       .map((entry) => entry.trim())
       .filter((entry) => entry.length > 0),
-    e2bTemplate: env.CORTARDO_BOT_E2B_TEMPLATE?.trim() || env.CORTADO_E2B_TEMPLATE?.trim() || "cortardo-review-v1",
-    e2bTimeoutMs: envInt(env.CORTARDO_BOT_E2B_TIMEOUT_MS, 900_000),
+    e2bTemplate: env.CODEBOT_E2B_TEMPLATE?.trim() || env.CORTADO_E2B_TEMPLATE?.trim() || "cortardo-review-v1",
+    e2bTimeoutMs: envInt(env.CODEBOT_E2B_TIMEOUT_MS, 900_000),
   };
 }
 
-export class CortardoBotModelError extends Error {
+export class CodeBotModelError extends Error {
   readonly retryable: boolean;
   constructor(message: string, retryable = false) {
     super(message);
-    this.name = "CortardoBotModelError";
+    this.name = "CodeBotModelError";
     this.retryable = retryable;
   }
 }
 
-export interface CortardoBotModelCompletion {
+export interface CodeBotModelCompletion {
   text: string;
   model: string;
   tokensIn: number;
@@ -201,15 +201,15 @@ export interface CortardoBotModelCompletion {
   durationMs: number;
 }
 
-export interface CortardoBotMessage {
+export interface CodeBotMessage {
   role: "user" | "assistant";
   content: string;
 }
 
-export interface CortardoBotCompleteInput {
+export interface CodeBotCompleteInput {
   system: string;
   user: string;
-  history?: CortardoBotMessage[];
+  history?: CodeBotMessage[];
   signal?: AbortSignal;
   /** Gateway cache key for the shared prompt prefix (prompt_cache_key). */
   cacheKey?: string;
@@ -217,12 +217,12 @@ export interface CortardoBotCompleteInput {
   maxOutputTokens?: number;
 }
 
-export interface CortardoBotModelClient {
+export interface CodeBotModelClient {
   readonly id: string;
-  complete(input: CortardoBotCompleteInput): Promise<CortardoBotModelCompletion>;
+  complete(input: CodeBotCompleteInput): Promise<CodeBotModelCompletion>;
 }
 
-export interface CortardoBotRoleUsage {
+export interface CodeBotRoleUsage {
   id: string;
   calls: number;
   tokensIn: number;
@@ -233,7 +233,7 @@ export interface CortardoBotRoleUsage {
   failedCalls: number;
 }
 
-export function emptyRoleUsage(id: string): CortardoBotRoleUsage {
+export function emptyRoleUsage(id: string): CodeBotRoleUsage {
   return { id, calls: 0, tokensIn: 0, tokensOut: 0, cachedTokensIn: 0, costUsd: 0, failedCalls: 0 };
 }
 
@@ -241,7 +241,7 @@ function roundUsd(value: number): number {
   return Math.round(value * 1_000_000) / 1_000_000;
 }
 
-export interface CortardoBotUsageTrackerOptions {
+export interface CodeBotUsageTrackerOptions {
   /** Soft goal the budget allocation aims at; reported only. */
   targetCostUsd?: number;
   /** Slice of `maxCostUsd` that stages 1-3 may never spend (stage 4). */
@@ -253,8 +253,8 @@ export interface CortardoBotUsageTrackerOptions {
  * `beginStage` narrows it further for a stage, and `reserve`/`release` keep
  * concurrent in-flight calls from overshooting it.
  */
-export class CortardoBotUsageTracker {
-  readonly usage: Record<CortardoBotModelRole, CortardoBotRoleUsage>;
+export class CodeBotUsageTracker {
+  readonly usage: Record<CodeBotModelRole, CodeBotRoleUsage>;
   readonly targetCostUsd: number;
   readonly reserveUsd: number;
 
@@ -263,7 +263,7 @@ export class CortardoBotUsageTracker {
 
   constructor(
     readonly maxCostUsd: number,
-    options: CortardoBotUsageTrackerOptions = {},
+    options: CodeBotUsageTrackerOptions = {},
   ) {
     this.usage = {
       coordinator: emptyRoleUsage(""),
@@ -334,7 +334,7 @@ export class CortardoBotUsageTracker {
     this.reservedUsd = Math.max(0, roundUsd(this.reservedUsd - estimatedUsd));
   }
 
-  record(role: CortardoBotModelRole, completion: CortardoBotModelCompletion): void {
+  record(role: CodeBotModelRole, completion: CodeBotModelCompletion): void {
     const usage = this.usage[role];
     usage.id = completion.model;
     usage.calls += 1;
@@ -344,7 +344,7 @@ export class CortardoBotUsageTracker {
     usage.costUsd = roundUsd(usage.costUsd + (completion.costUsd ?? 0));
   }
 
-  recordFailure(role: CortardoBotModelRole): void {
+  recordFailure(role: CodeBotModelRole): void {
     this.usage[role].failedCalls += 1;
   }
 }
@@ -354,13 +354,13 @@ const FALLBACK_INPUT_RATE = 7.5;
 const FALLBACK_OUTPUT_RATE = 37.5;
 const FALLBACK_CACHED_RATE = 0.75;
 
-export interface CortardoBotPricing {
+export interface CodeBotPricing {
   modelId: string;
   maxOutputTokens: number;
 }
 
 /** Conservative pre-call estimate: full-rate input, catalog output. */
-export function estimateCallCost(input: CortardoBotCompleteInput, pricing: CortardoBotPricing): number {
+export function estimateCallCost(input: CodeBotCompleteInput, pricing: CodeBotPricing): number {
   const entry = catalogEntry(pricing.modelId);
   const inputRate = entry?.inputCostPerMillion ?? FALLBACK_INPUT_RATE;
   const outputRate = entry?.outputCostPerMillion ?? FALLBACK_OUTPUT_RATE;
@@ -377,21 +377,21 @@ export function estimateCallCost(input: CortardoBotCompleteInput, pricing: Corta
  * it also admits calls against the remaining budget and clamps their output,
  * so a single call cannot blow the run ceiling.
  */
-export class BudgetedModelClient implements CortardoBotModelClient {
+export class BudgetedModelClient implements CodeBotModelClient {
   constructor(
-    private readonly inner: CortardoBotModelClient,
-    private readonly tracker: CortardoBotUsageTracker,
-    private readonly role: CortardoBotModelRole,
-    private readonly pricing?: CortardoBotPricing,
+    private readonly inner: CodeBotModelClient,
+    private readonly tracker: CodeBotUsageTracker,
+    private readonly role: CodeBotModelRole,
+    private readonly pricing?: CodeBotPricing,
   ) {}
 
   get id(): string {
     return this.inner.id;
   }
 
-  async complete(input: CortardoBotCompleteInput): Promise<CortardoBotModelCompletion> {
+  async complete(input: CodeBotCompleteInput): Promise<CodeBotModelCompletion> {
     if (this.tracker.exhausted) {
-      throw new CortardoBotModelError(`model cost budget exhausted ($${this.tracker.maxCostUsd.toFixed(2)})`, false);
+      throw new CodeBotModelError(`model cost budget exhausted ($${this.tracker.maxCostUsd.toFixed(2)})`, false);
     }
     if (!this.pricing) {
       const completion = await this.inner.complete(input);
@@ -400,7 +400,7 @@ export class BudgetedModelClient implements CortardoBotModelClient {
     }
     const estimate = estimateCallCost(input, this.pricing);
     if (!this.tracker.canAfford(estimate)) {
-      throw new CortardoBotModelError(
+      throw new CodeBotModelError(
         `model cost budget would be exceeded (estimated $${estimate.toFixed(4)}, $${this.tracker.remainingUsd.toFixed(4)} left of $${this.tracker.maxCostUsd.toFixed(2)})`,
         false,
       );
@@ -420,21 +420,21 @@ export class BudgetedModelClient implements CortardoBotModelClient {
 }
 
 /** Thrown when a model call is blocked purely by the cost budget. */
-export function isCortardoBotBudgetError(error: unknown): boolean {
-  return error instanceof CortardoBotModelError && /cost budget/.test(error.message);
+export function isCodeBotBudgetError(error: unknown): boolean {
+  return error instanceof CodeBotModelError && /cost budget/.test(error.message);
 }
 
 /** Attributes every completion to the agent holding it (per-assignment/fix). */
-export class CortardoBotUsageCollectingClient implements CortardoBotModelClient {
+export class CodeBotUsageCollectingClient implements CodeBotModelClient {
   readonly usage = { calls: 0, tokensIn: 0, tokensOut: 0, cachedTokensIn: 0, costUsd: 0 };
 
-  constructor(private readonly inner: CortardoBotModelClient) {}
+  constructor(private readonly inner: CodeBotModelClient) {}
 
   get id(): string {
     return this.inner.id;
   }
 
-  async complete(input: CortardoBotCompleteInput): Promise<CortardoBotModelCompletion> {
+  async complete(input: CodeBotCompleteInput): Promise<CodeBotModelCompletion> {
     const completion = await this.inner.complete(input);
     this.usage.calls += 1;
     this.usage.tokensIn += completion.tokensIn;
@@ -446,19 +446,19 @@ export class CortardoBotUsageCollectingClient implements CortardoBotModelClient 
 }
 
 /** Run-scoped tracker with the target and stage 4 reserve from the config. */
-export function createCortardoBotUsageTracker(config: CortardoBotSwarmConfig): CortardoBotUsageTracker {
-  return new CortardoBotUsageTracker(config.maxCostUsd, {
+export function createCodeBotUsageTracker(config: CodeBotSwarmConfig): CodeBotUsageTracker {
+  return new CodeBotUsageTracker(config.maxCostUsd, {
     targetCostUsd: config.targetCostUsd,
     reserveUsd: config.reserveUsd,
   });
 }
 
 /** Stable prompt_cache_key shared by every call of one role in one run. */
-export function cortardoBotCacheKey(
-  role: CortardoBotModelRole,
+export function codeBotCacheKey(
+  role: CodeBotModelRole,
   input: { repository: string; pullRequestNumber: number; headSha: string },
 ): string {
-  return `cortardo-bot:${role}:${input.repository}:${input.pullRequestNumber}:${input.headSha.slice(0, 12)}`;
+  return `codebot:${role}:${input.repository}:${input.pullRequestNumber}:${input.headSha.slice(0, 12)}`;
 }
 
 function combineSignals(timeout: AbortSignal, caller?: AbortSignal): AbortSignal {
@@ -477,7 +477,7 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-export class HttpCortardoBotModelClient implements CortardoBotModelClient {
+export class HttpCodeBotModelClient implements CodeBotModelClient {
   readonly id: string;
   private jsonModeSupported = true;
   private reasoningDisabled = false;
@@ -487,26 +487,26 @@ export class HttpCortardoBotModelClient implements CortardoBotModelClient {
   private readonly supportsReasoning: boolean;
 
   constructor(
-    private readonly config: CortardoBotModelConfig,
+    private readonly config: CodeBotModelConfig,
     private readonly fetchImpl: typeof fetch = globalThis.fetch.bind(globalThis),
   ) {
     this.id = `http:${config.model}`;
     this.supportsReasoning = catalogEntry(config.model)?.supportsReasoning ?? false;
   }
 
-  async complete(input: CortardoBotCompleteInput): Promise<CortardoBotModelCompletion> {
+  async complete(input: CodeBotCompleteInput): Promise<CodeBotModelCompletion> {
     let lastError: unknown;
     for (let attempt = 0; attempt <= this.config.maxRetries; attempt += 1) {
-      if (input.signal?.aborted) throw new CortardoBotModelError("model request aborted", false);
+      if (input.signal?.aborted) throw new CodeBotModelError("model request aborted", false);
       try {
         return await this.request(input, this.requestOptions(), 0);
       } catch (error) {
         lastError = error;
-        if (!(error instanceof CortardoBotModelError) || !error.retryable) throw error;
+        if (!(error instanceof CodeBotModelError) || !error.retryable) throw error;
         if (attempt < this.config.maxRetries) await delay(400 * (attempt + 1));
       }
     }
-    throw lastError instanceof Error ? lastError : new CortardoBotModelError(String(lastError), false);
+    throw lastError instanceof Error ? lastError : new CodeBotModelError(String(lastError), false);
   }
 
   /** Capability choices for one request; captured per call so concurrent
@@ -528,13 +528,13 @@ export class HttpCortardoBotModelClient implements CortardoBotModelClient {
   }
 
   private async request(
-    input: CortardoBotCompleteInput,
-    options: ReturnType<HttpCortardoBotModelClient["requestOptions"]>,
+    input: CodeBotCompleteInput,
+    options: ReturnType<HttpCodeBotModelClient["requestOptions"]>,
     depth: number,
-  ): Promise<CortardoBotModelCompletion> {
-    if (depth > 6) throw new CortardoBotModelError("model request gave up after too many capability fallbacks", false);
+  ): Promise<CodeBotModelCompletion> {
+    if (depth > 6) throw new CodeBotModelError("model request gave up after too many capability fallbacks", false);
     const started = Date.now();
-    if (input.signal?.aborted) throw new CortardoBotModelError("model request aborted", false);
+    if (input.signal?.aborted) throw new CodeBotModelError("model request aborted", false);
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.config.timeoutMs);
     const signal = combineSignals(controller.signal, input.signal);
@@ -567,14 +567,14 @@ export class HttpCortardoBotModelClient implements CortardoBotModelClient {
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      throw new CortardoBotModelError(`model request failed: ${message}`, !input.signal?.aborted);
+      throw new CodeBotModelError(`model request failed: ${message}`, !input.signal?.aborted);
     } finally {
       clearTimeout(timer);
     }
 
     const raw = await response.text();
     if (response.status === 429 || response.status >= 500) {
-      throw new CortardoBotModelError(`transient upstream status ${response.status}: ${raw.slice(0, 160)}`, true);
+      throw new CodeBotModelError(`transient upstream status ${response.status}: ${raw.slice(0, 160)}`, true);
     }
     if (!response.ok) {
       // Fallbacks are decided by what THIS request actually sent, so two
@@ -604,9 +604,9 @@ export class HttpCortardoBotModelClient implements CortardoBotModelClient {
         }
       }
       if (/provider_error|temporarily|overloaded|try again|rate limit|timed out/i.test(raw)) {
-        throw new CortardoBotModelError(`transient provider error: ${raw.slice(0, 200)}`, true);
+        throw new CodeBotModelError(`transient provider error: ${raw.slice(0, 200)}`, true);
       }
-      throw new CortardoBotModelError(`model request failed with status ${response.status}: ${raw.slice(0, 200)}`, false);
+      throw new CodeBotModelError(`model request failed with status ${response.status}: ${raw.slice(0, 200)}`, false);
     }
 
     let parsed: {
@@ -621,15 +621,15 @@ export class HttpCortardoBotModelClient implements CortardoBotModelClient {
     try {
       parsed = JSON.parse(raw);
     } catch {
-      throw new CortardoBotModelError(`model returned a non-JSON body: ${raw.slice(0, 120)}`, true);
+      throw new CodeBotModelError(`model returned a non-JSON body: ${raw.slice(0, 120)}`, true);
     }
     const choice = parsed.choices?.[0];
     const text = choice?.message?.content?.trim() ?? "";
     if (!text) {
       if (choice?.finish_reason === "length") {
-        throw new CortardoBotModelError("model output was truncated at the token ceiling", true);
+        throw new CodeBotModelError("model output was truncated at the token ceiling", true);
       }
-      throw new CortardoBotModelError("model returned an empty completion", true);
+      throw new CodeBotModelError("model returned an empty completion", true);
     }
     const tokensIn = parsed.usage?.prompt_tokens ?? 0;
     const tokensOut = parsed.usage?.completion_tokens ?? 0;
@@ -657,6 +657,6 @@ export class HttpCortardoBotModelClient implements CortardoBotModelClient {
   }
 }
 
-export function createCortardoBotModelClient(config: CortardoBotModelConfig = resolveCortardoBotModelConfig()): CortardoBotModelClient {
-  return new HttpCortardoBotModelClient(config);
+export function createCodeBotModelClient(config: CodeBotModelConfig = resolveCodeBotModelConfig()): CodeBotModelClient {
+  return new HttpCodeBotModelClient(config);
 }

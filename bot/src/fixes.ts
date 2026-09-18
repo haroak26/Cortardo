@@ -14,22 +14,22 @@ import { codegenSystem, codegenUser, coordinatorFixPlanSystem, coordinatorFixPla
 import { createPullRequestReview, deletePullRequestReviewComment, listPullRequestReviewComments } from "../../server/lib/github/api.ts";
 import {
   BudgetedModelClient,
-  CortardoBotUsageCollectingClient,
-  cortardoBotCacheKey,
+  CodeBotUsageCollectingClient,
+  codeBotCacheKey,
   codegenModelConfig,
-  createCortardoBotModelClient,
-  createCortardoBotUsageTracker,
-  isCortardoBotBudgetError,
-  resolveCortardoBotModelConfig,
-  resolveCortardoBotSwarmConfig,
-  type CortardoBotMessage,
-  type CortardoBotModelClient,
-  type CortardoBotModelConfig,
-  type CortardoBotSwarmConfig,
-  type CortardoBotUsageTracker,
+  createCodeBotModelClient,
+  createCodeBotUsageTracker,
+  isCodeBotBudgetError,
+  resolveCodeBotModelConfig,
+  resolveCodeBotSwarmConfig,
+  type CodeBotMessage,
+  type CodeBotModelClient,
+  type CodeBotModelConfig,
+  type CodeBotSwarmConfig,
+  type CodeBotUsageTracker,
 } from "./model.ts";
 import { buildHypothesisReport } from "./hypotheses.ts";
-import { publishCortardoBotComment } from "./github.ts";
+import { publishCodeBotComment } from "./github.ts";
 import { buildFixesComment, FIXES_MARKER } from "./markdown.ts";
 import { analyseChangedFiles, loadChangedFiles, loadPullRequestContext, loadRepoGraphIndex } from "./run-inputs.ts";
 import { executeReadTool, READ_TOOL_NAMES, type ReadToolContext } from "./tools.ts";
@@ -49,7 +49,7 @@ import type {
   HypothesisSeverity,
   RepoGraphIndex,
 } from "./types.ts";
-import { CORTARDO_BOT_VERSION } from "./version.ts";
+import { CODEBOT_VERSION } from "./version.ts";
 
 const MAX_EDITS_PER_FIX = 6;
 const MAX_CODEGEN_ATTEMPTS = 2;
@@ -128,7 +128,7 @@ export interface FixPlannerInput {
   hypotheses: Hypothesis[];
   files: CodegraphChangedFile[];
   maxFixes: number;
-  client: CortardoBotModelClient;
+  client: CodeBotModelClient;
   signal?: AbortSignal;
   cacheKey?: string;
 }
@@ -295,8 +295,8 @@ export interface CodegenAgentInput {
   analyses: Map<string, FileAnalysis>;
   report: CodegraphReport;
   index: RepoGraphIndex | null;
-  client: CortardoBotModelClient;
-  config: CortardoBotSwarmConfig;
+  client: CodeBotModelClient;
+  config: CodeBotSwarmConfig;
   deadline: number;
   /** Shared, identical prefix for every codegen call so the provider can cache it. */
   sharedContext?: string;
@@ -380,14 +380,14 @@ export async function runCodegenAgent(input: CodegenAgentInput): Promise<Codegen
     failureContext: input.failureContext,
   });
 
-  let priorHistory: CortardoBotMessage[] = [];
+  let priorHistory: CodeBotMessage[] = [];
   let feedback: string | undefined;
   let lastErrors: string[] = [];
   let lastTransport: string | undefined;
   let toolCalls = 0;
   let turns = 0;
   let stoppedReason = "no attempt";
-  const collecting = new CortardoBotUsageCollectingClient(input.client);
+  const collecting = new CodeBotUsageCollectingClient(input.client);
 
   for (let attempt = 1; attempt <= MAX_CODEGEN_ATTEMPTS; attempt += 1) {
     const feedbackBlock =
@@ -417,7 +417,7 @@ export async function runCodegenAgent(input: CodegenAgentInput): Promise<Codegen
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      if (isCortardoBotBudgetError(error)) {
+      if (isCodeBotBudgetError(error)) {
         return {
           edits: [],
           summary: "",
@@ -547,14 +547,14 @@ export interface BuildFixReportInput {
   /** Severity gate for codegen; defaults to the swarm config's priority set. */
   severities?: HypothesisSeverity[];
   /** `null` disables model tiers; omit to build from the environment. */
-  coordinatorClient?: CortardoBotModelClient | null;
-  codegenClient?: CortardoBotModelClient | null;
-  modelConfig?: CortardoBotModelConfig;
-  swarmConfig?: CortardoBotSwarmConfig;
+  coordinatorClient?: CodeBotModelClient | null;
+  codegenClient?: CodeBotModelClient | null;
+  modelConfig?: CodeBotModelConfig;
+  swarmConfig?: CodeBotSwarmConfig;
   readFile?: (path: string) => Promise<string | undefined>;
   searchCode?: (query: string) => Promise<Array<{ path: string; fragments: string[] }>>;
   /** Run-level budget shared with stage 2; created when absent. */
-  usageTracker?: CortardoBotUsageTracker;
+  usageTracker?: CodeBotUsageTracker;
   onLog?: (message: string) => void;
   signal?: AbortSignal;
 }
@@ -563,7 +563,7 @@ function emptyRole(id: string) {
   return { id, calls: 0, tokensIn: 0, tokensOut: 0, cachedTokensIn: 0, costUsd: 0, failedCalls: 0 };
 }
 
-const SUGGESTION_MARKER = "<!-- cortardo-bot:fix";
+const SUGGESTION_MARKER = "<!-- codebot:fix";
 
 function skippedFix(hypothesis: Hypothesis, outcome: FixOutcome, reason: string, plan?: FixPlan): GeneratedFix {
   return {
@@ -581,8 +581,8 @@ function skippedFix(hypothesis: Hypothesis, outcome: FixOutcome, reason: string,
 }
 
 export async function buildFixReport(input: BuildFixReportInput): Promise<FixReport> {
-  const configured = input.modelConfig ?? resolveCortardoBotModelConfig();
-  const swarmConfig = input.swarmConfig ?? resolveCortardoBotSwarmConfig();
+  const configured = input.modelConfig ?? resolveCodeBotModelConfig();
+  const swarmConfig = input.swarmConfig ?? resolveCodeBotSwarmConfig();
   const maxFixes = input.maxFixes ?? swarmConfig.maxFixes;
   const severities = input.severities ?? swarmConfig.fixSeverities;
   const available = sortHypotheses(input.hypotheses);
@@ -691,16 +691,16 @@ export async function buildFixReport(input: BuildFixReportInput): Promise<FixRep
     };
   }
 
-  const tracker = input.usageTracker ?? createCortardoBotUsageTracker(swarmConfig);
+  const tracker = input.usageTracker ?? createCodeBotUsageTracker(swarmConfig);
   tracker.beginStage("fixes");
   const coordinator = new BudgetedModelClient(
-    input.coordinatorClient ?? createCortardoBotModelClient(configured),
+    input.coordinatorClient ?? createCodeBotModelClient(configured),
     tracker,
     "coordinator",
     { modelId: configured.model, maxOutputTokens: configured.maxTokens },
   );
   const codegen = new BudgetedModelClient(
-    input.codegenClient ?? createCortardoBotModelClient(codegenModelConfig(configured)),
+    input.codegenClient ?? createCodeBotModelClient(codegenModelConfig(configured)),
     tracker,
     "codegen",
     { modelId: configured.codegenModel, maxOutputTokens: configured.codegenMaxTokens ?? configured.maxTokens },
@@ -720,7 +720,7 @@ export async function buildFixReport(input: BuildFixReportInput): Promise<FixRep
       maxFixes,
       client: coordinator,
       signal: input.signal,
-      cacheKey: cortardoBotCacheKey("coordinator", input),
+      cacheKey: codeBotCacheKey("coordinator", input),
     });
     plans = planner.plans;
     notFixable = planner.notFixable;
@@ -808,7 +808,7 @@ export async function buildFixReport(input: BuildFixReportInput): Promise<FixRep
           onLog: input.onLog,
           readFile: stageReadFile,
           searchCode: input.searchCode,
-          cacheKey: cortardoBotCacheKey("codegen", input),
+          cacheKey: codeBotCacheKey("codegen", input),
         });
         if (result.budgetBlocked) {
           fixes.push(
@@ -902,10 +902,10 @@ export interface ReplaceSuggestionsInput {
 }
 
 export const DRAFT_SUGGESTION_BODY =
-  "**Cortardo Bot draft fixes** — one-click suggestions generated from the hypotheses stage. " +
+  "**CodeBot draft fixes** — one-click suggestions generated from the hypotheses stage. " +
   "They are unverified drafts: review before applying.";
 
-export async function replaceCortardoBotSuggestions(
+export async function replaceCodeBotSuggestions(
   input: ReplaceSuggestionsInput,
 ): Promise<{ posted: number; skipped: number; removed: number }> {
   const existing = await listPullRequestReviewComments(input.installationId, input.fullName, input.pullRequestNumber);
@@ -953,15 +953,15 @@ export interface FixStageInput {
   severities?: HypothesisSeverity[];
   /** Structured handoff from stage 2; built internally when absent. */
   hypothesisReport?: HypothesisReport;
-  modelClient?: CortardoBotModelClient | null;
-  swarmClient?: CortardoBotModelClient | null;
-  codegenClient?: CortardoBotModelClient | null;
-  modelConfig?: CortardoBotModelConfig;
-  swarmConfig?: CortardoBotSwarmConfig;
+  modelClient?: CodeBotModelClient | null;
+  swarmClient?: CodeBotModelClient | null;
+  codegenClient?: CodeBotModelClient | null;
+  modelConfig?: CodeBotModelConfig;
+  swarmConfig?: CodeBotSwarmConfig;
   readFile?: (path: string) => Promise<string | undefined>;
   searchCode?: (query: string) => Promise<Array<{ path: string; fragments: string[] }>>;
   /** Run-level budget shared with stage 2; created when absent. */
-  usageTracker?: CortardoBotUsageTracker;
+  usageTracker?: CodeBotUsageTracker;
   onLog?: (message: string) => void;
   signal?: AbortSignal;
 }
@@ -993,9 +993,9 @@ export async function runFixesStage(input: FixStageInput): Promise<FixStageResul
     maxFiles: input.maxFiles,
   });
 
-  const noModel = process.env.CORTARDO_BOT_NO_MODEL === "1";
-  const swarmConfig = input.swarmConfig ?? resolveCortardoBotSwarmConfig();
-  const tracker = input.usageTracker ?? createCortardoBotUsageTracker(swarmConfig);
+  const noModel = process.env.CODEBOT_NO_MODEL === "1";
+  const swarmConfig = input.swarmConfig ?? resolveCodeBotSwarmConfig();
+  const tracker = input.usageTracker ?? createCodeBotUsageTracker(swarmConfig);
   const hypothesisReport =
     input.hypothesisReport ??
     (await buildHypothesisReport({
@@ -1049,16 +1049,16 @@ export async function runFixesStage(input: FixStageInput): Promise<FixStageResul
   let commentId: number | null = null;
   let commentUrl: string | null = null;
   let replacedComments = 0;
-  let body = buildFixesComment({ report: fixReport, runId: input.runId, version: CORTARDO_BOT_VERSION });
+  let body = buildFixesComment({ report: fixReport, runId: input.runId, version: CODEBOT_VERSION });
   if (!input.dryRun && !input.deferSuggestions) {
-    fixReport.suggestions = await replaceCortardoBotSuggestions({
+    fixReport.suggestions = await replaceCodeBotSuggestions({
       installationId: context.installationId,
       fullName: context.fullName,
       pullRequestNumber: input.pullRequestNumber,
       headSha: context.headSha,
       fixes: fixReport.fixes,
       body: DRAFT_SUGGESTION_BODY,
-      label: "Cortardo Bot draft fix — not sandbox-verified",
+      label: "CodeBot draft fix — not sandbox-verified",
     })
       .then((replaced) => ({ posted: replaced.posted, skipped: replaced.skipped }))
       .catch((error: unknown) => {
@@ -1066,11 +1066,11 @@ export async function runFixesStage(input: FixStageInput): Promise<FixStageResul
         fixReport.warnings.push(`inline suggestions unavailable (${message}); patches remain in the comment`);
         return { posted: 0, skipped: 0, error: message };
       });
-    body = buildFixesComment({ report: fixReport, runId: input.runId, version: CORTARDO_BOT_VERSION });
+    body = buildFixesComment({ report: fixReport, runId: input.runId, version: CODEBOT_VERSION });
   }
   if (!input.dryRun && input.publish !== false) {
-    body = buildFixesComment({ report: fixReport, runId: input.runId, version: CORTARDO_BOT_VERSION });
-    const published = await publishCortardoBotComment({
+    body = buildFixesComment({ report: fixReport, runId: input.runId, version: CODEBOT_VERSION });
+    const published = await publishCodeBotComment({
       installationId: context.installationId,
       fullName: context.fullName,
       pullRequestNumber: input.pullRequestNumber,
@@ -1089,7 +1089,7 @@ export async function runFixesStage(input: FixStageInput): Promise<FixStageResul
   const summary = `${fixReport.totals.generated} draft fix(es) · ${considered} hypothesis(es) · $${fixReport.usage.totalCostUsd.toFixed(4)}`;
   return {
     stage: "fixes",
-    version: CORTARDO_BOT_VERSION,
+    version: CODEBOT_VERSION,
     durationMs: Date.now() - started,
     headSha: context.headSha,
     summary,

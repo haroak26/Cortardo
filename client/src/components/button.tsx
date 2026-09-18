@@ -26,10 +26,52 @@ export interface IconButtonProps extends React.ButtonHTMLAttributes<HTMLButtonEl
 /* ─── Shared base ─── */
 
 const base =
-  "inline-flex items-center justify-center font-medium leading-none shrink-0 whitespace-nowrap min-w-fit " +
+  "inline-flex items-center justify-center font-medium leading-none shrink-0 whitespace-nowrap min-w-fit touch-manipulation " +
   "transition-transform duration-100 ease-out active:scale-[0.97] " +
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50 " +
   "disabled:cursor-not-allowed disabled:pointer-events-none select-none";
+
+/* ─── Press feedback ─── */
+
+const MIN_PRESS_MS = 140;
+
+function usePressFeedback() {
+  const [pressed, setPressed] = React.useState(false);
+  const pressedAtRef = React.useRef(0);
+  const releaseTimerRef = React.useRef<number>();
+
+  const press = React.useCallback(() => {
+    window.clearTimeout(releaseTimerRef.current);
+    pressedAtRef.current = Date.now();
+    setPressed(true);
+  }, []);
+
+  const release = React.useCallback(() => {
+    const remaining = MIN_PRESS_MS - (Date.now() - pressedAtRef.current);
+    if (remaining > 0) {
+      releaseTimerRef.current = window.setTimeout(() => setPressed(false), remaining);
+    } else {
+      setPressed(false);
+    }
+  }, []);
+
+  React.useEffect(() => () => window.clearTimeout(releaseTimerRef.current), []);
+
+  const pressProps = React.useMemo(
+    () => ({
+      onPointerDown: (event: React.PointerEvent<HTMLElement>) => {
+        if (event.pointerType === "mouse" && event.button !== 0) return;
+        press();
+      },
+      onPointerUp: (_event: React.PointerEvent<HTMLElement>) => release(),
+      onPointerLeave: (_event: React.PointerEvent<HTMLElement>) => release(),
+      onPointerCancel: (_event: React.PointerEvent<HTMLElement>) => release(),
+    }),
+    [press, release],
+  );
+
+  return { pressed, pressProps };
+}
 
 /* ─── Main button ─── */
 
@@ -41,7 +83,7 @@ const mainSize: Record<ButtonSize, string> = {
 
 const mainDesign: Record<ButtonDesign, string> = {
   primary:
-    "bg-primary text-primary-foreground hover:bg-primary/90 active:bg-primary/80",
+    "bg-primary text-primary-foreground hover:bg-primary/90 active:bg-primary/80 disabled:opacity-50",
   secondary:
     "bg-surface-hover text-foreground hover:bg-surface-hover/80 active:bg-surface-active/80",
   outline:
@@ -51,7 +93,7 @@ const mainDesign: Record<ButtonDesign, string> = {
   destructive:
     "bg-destructive text-destructive-foreground hover:bg-destructive/90 active:bg-destructive/90",
   pill:
-    "bg-primary text-primary-foreground hover:bg-primary/90 active:bg-primary/80 rounded-full",
+    "bg-primary text-primary-foreground hover:bg-primary/90 active:bg-primary/80 rounded-full disabled:opacity-50",
   "pill-secondary":
     "bg-surface-hover text-foreground hover:bg-surface-hover/80 active:bg-surface-active/80 rounded-full",
   "pill-ghost":
@@ -95,11 +137,12 @@ const iconDesign: Record<IconButtonDesign, string> = {
 
 export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
   ({ className, design = "primary", size = "sm", isLoading, disabled, icon: Icon, children, href, ...props }, ref) => {
-    const classes = cn(base, mainSize[size], mainDesign[design], className);
+    const { pressed, pressProps } = usePressFeedback();
+    const classes = cn(base, mainSize[size], mainDesign[design], pressed && "scale-[0.97]", className);
 
     if (href) {
       return (
-        <a href={href} className={classes}>
+        <a href={href} className={classes} {...pressProps}>
           {isLoading ? (
             <Loader className={cn("animate-spin shrink-0 origin-center", loaderSize[size])} aria-hidden="true" />
           ) : (
@@ -118,6 +161,22 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
         disabled={disabled || isLoading}
         className={classes}
         {...props}
+        onPointerDown={(event) => {
+          pressProps.onPointerDown(event);
+          props.onPointerDown?.(event);
+        }}
+        onPointerUp={(event) => {
+          pressProps.onPointerUp(event);
+          props.onPointerUp?.(event);
+        }}
+        onPointerLeave={(event) => {
+          pressProps.onPointerLeave(event);
+          props.onPointerLeave?.(event);
+        }}
+        onPointerCancel={(event) => {
+          pressProps.onPointerCancel(event);
+          props.onPointerCancel?.(event);
+        }}
       >
         {isLoading ? (
           <Loader className={cn("animate-spin shrink-0 origin-center", loaderSize[size])} aria-hidden="true" />
@@ -143,11 +202,29 @@ export function IconButton({
   type = "button",
   ...props
 }: IconButtonProps) {
+  const { pressed, pressProps } = usePressFeedback();
+
   return (
     <button
       type={type}
-      className={cn(base, iconSize[size], iconDesign[design], "relative", className)}
+      className={cn(base, iconSize[size], iconDesign[design], "relative", pressed && "scale-[0.97]", className)}
       {...props}
+      onPointerDown={(event) => {
+        pressProps.onPointerDown(event);
+        props.onPointerDown?.(event);
+      }}
+      onPointerUp={(event) => {
+        pressProps.onPointerUp(event);
+        props.onPointerUp?.(event);
+      }}
+      onPointerLeave={(event) => {
+        pressProps.onPointerLeave(event);
+        props.onPointerLeave?.(event);
+      }}
+      onPointerCancel={(event) => {
+        pressProps.onPointerCancel(event);
+        props.onPointerCancel?.(event);
+      }}
     >
       {children ?? (Icon ? <Icon className="shrink-0" /> : null)}
       {badge !== undefined && badge > 0 && (

@@ -25,7 +25,7 @@ const reason = arg("reason") ?? "dismissed by a reviewer";
 const path = arg("path");
 
 async function resolveRepositoryId(fullName: string): Promise<string> {
-  if (process.env.CORTARDO_BOT_REPOSITORY_ID) return process.env.CORTARDO_BOT_REPOSITORY_ID;
+  if (process.env.CODEBOT_REPOSITORY_ID) return process.env.CODEBOT_REPOSITORY_ID;
   const client = new pg.Client({ connectionString: process.env.DATABASE_URL });
   await client.connect();
   try {
@@ -52,20 +52,20 @@ if (dismiss) {
     findingKey: dismiss,
     path: path ?? null,
   });
-  console.log(`[cortardo-bot:learnings] dismissed ${dismiss} (learning ${row.id}): ${reason}`);
+  console.log(`[codebot:learnings] dismissed ${dismiss} (learning ${row.id}): ${reason}`);
 } else if (remove) {
   const rows = await storage.listRepositoryLearnings(repository.workspaceId, repository.id);
   const matches = rows.filter((row) => row.findingKey === remove);
   if (matches.length === 0) {
-    console.error(`[cortardo-bot:learnings] no active learning for ${remove}`);
+    console.error(`[codebot:learnings] no active learning for ${remove}`);
     process.exit(1);
   }
   for (const row of matches) await storage.deactivateRepositoryLearning(row.id);
-  console.log(`[cortardo-bot:learnings] removed ${matches.length} learning(s) for ${remove}`);
+  console.log(`[codebot:learnings] removed ${matches.length} learning(s) for ${remove}`);
 } else if (list) {
   const rows = await storage.listRepositoryLearnings(repository.workspaceId, repository.id);
   if (rows.length === 0) {
-    console.log(`[cortardo-bot:learnings] no active learnings for ${repositoryFullName}`);
+    console.log(`[codebot:learnings] no active learnings for ${repositoryFullName}`);
   } else {
     for (const row of rows) {
       console.log(`${row.id} ${row.findingKey ?? "-"} ${row.path ?? "-"} — ${row.text}`);

@@ -3,6 +3,7 @@ import {
   BOT_SETTINGS_DEFAULTS,
   COMMIT_REVIEW_DEFAULTS,
   PULL_REQUEST_REVIEW_DEFAULTS,
+  type BotAutonomyLevel,
   type BotSettingsPayload,
   type BotWorkspaceConfig,
   type CommitReviewSettings,
@@ -10,7 +11,7 @@ import {
 } from "@shared/bot";
 
 export { BOT_SETTINGS_DEFAULTS, COMMIT_REVIEW_DEFAULTS, PULL_REQUEST_REVIEW_DEFAULTS };
-export type { BotSettingsPayload, BotWorkspaceConfig, CommitReviewSettings, PullRequestReviewSettings };
+export type { BotAutonomyLevel, BotSettingsPayload, BotWorkspaceConfig, CommitReviewSettings, PullRequestReviewSettings };
 
 export interface ApiBotSettings extends BotSettingsPayload {}
 
@@ -226,7 +227,18 @@ export function useUpdateExclusion() {
       repositoryId?: string | null;
       enabled?: boolean;
     }) => sendJson<ApiExclusion>("PATCH", `/api/bot/exclusions/${id}`, patch),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/bot/exclusions"] }),
+    onMutate: async ({ id, ...patch }) => {
+      await queryClient.cancelQueries({ queryKey: ["/api/bot/exclusions"] });
+      const previous = queryClient.getQueriesData<ApiExclusion[]>({ queryKey: ["/api/bot/exclusions"] });
+      queryClient.setQueriesData<ApiExclusion[]>({ queryKey: ["/api/bot/exclusions"] }, (rows) =>
+        rows?.map((row) => (row.id === id ? { ...row, ...patch } : row)),
+      );
+      return { previous };
+    },
+    onError: (_error, _patch, context) => {
+      context?.previous.forEach(([key, data]) => queryClient.setQueryData(key, data));
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ["/api/bot/exclusions"] }),
   });
 }
 
@@ -280,6 +292,7 @@ export interface BotSettingsPatch {
   commitReviews?: Partial<CommitReviewSettings>;
   settings?: {
     instructions?: string;
+    autonomy?: BotAutonomyLevel;
     pullRequests?: Partial<PullRequestReviewSettings>;
   };
 }
@@ -298,6 +311,7 @@ export function useUpdateBotSettings(workspaceId: string | null) {
           commitReviews: { ...previous.commitReviews, ...(patch.commitReviews ?? {}) },
           settings: {
             instructions: patch.settings?.instructions ?? previous.settings.instructions,
+            autonomy: patch.settings?.autonomy ?? previous.settings.autonomy,
             pullRequests: {
               ...previous.settings.pullRequests,
               ...(patch.settings?.pullRequests ?? {}),

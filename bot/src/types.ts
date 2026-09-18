@@ -1,9 +1,9 @@
 import type { CodeGraphSymbol, CodeGraphSymbolEdge } from "@shared/codegraph";
 
-export type CortardoBotStageName = "codegraph" | "hypotheses" | "fixes" | "verify";
+export type CodeBotStageName = "codegraph" | "hypotheses" | "fixes" | "verify";
 
 /** Product pipeline: codegraph is internal and never publishes. */
-export const CORTARDO_BOT_STAGES: CortardoBotStageName[] = ["hypotheses", "fixes", "verify"];
+export const CODEBOT_STAGES: CodeBotStageName[] = ["hypotheses", "fixes", "verify"];
 
 export interface CodegraphChangedFile {
   path: string;
@@ -304,17 +304,17 @@ export interface RepoGraphIndex {
   symbolEdges: CodeGraphSymbolEdge[];
 }
 
-export interface CortardoBotRunInput {
+export interface CodeBotRunInput {
   repositoryId: string;
   pullRequestNumber: number;
-  stages?: CortardoBotStageName[];
+  stages?: CodeBotStageName[];
   runId?: string;
   dryRun?: boolean;
   maxFiles?: number;
 }
 
-export interface CortardoBotStageResult {
-  stage: CortardoBotStageName;
+export interface CodeBotStageResult {
+  stage: CodeBotStageName;
   version: string;
   durationMs: number;
   headSha: string;
@@ -325,7 +325,7 @@ export interface CortardoBotStageResult {
   replacedComments: number;
 }
 
-export interface CortardoBotRunResult {
+export interface CodeBotRunResult {
   runId: string;
   version: string;
   repository: string;
@@ -340,12 +340,12 @@ export interface CortardoBotRunResult {
   /** Run-cumulative model usage across every stage that ran. */
   usage?: ModelUsage;
   /** Machine-readable receipt, logged as one JSON line per run. */
-  receipt: CortardoBotRunReceipt;
-  stages: CortardoBotStageResult[];
+  receipt: CodeBotRunReceipt;
+  stages: CodeBotStageResult[];
 }
 
-export interface CortardoBotStageReceipt {
-  stage: CortardoBotStageName;
+export interface CodeBotStageReceipt {
+  stage: CodeBotStageName;
   status: "ok";
   durationMs: number;
   summary: string;
@@ -353,7 +353,7 @@ export interface CortardoBotStageReceipt {
   usage?: ModelUsage;
 }
 
-export interface CortardoBotRunReceipt {
+export interface CodeBotRunReceipt {
   runId: string;
   version: string;
   repository: string;
@@ -367,16 +367,16 @@ export interface CortardoBotRunReceipt {
   totalCostUsd: number;
   totalCalls: number;
   cacheHitRate: number;
-  stages: CortardoBotStageReceipt[];
+  stages: CodeBotStageReceipt[];
 }
 
 /** Internal handoff: stage 2 returns its structured report for stage 3. */
-export interface HypothesisStageResult extends CortardoBotStageResult {
+export interface HypothesisStageResult extends CodeBotStageResult {
   report: HypothesisReport;
 }
 
 /** Internal handoff: stage 3 returns its structured report. */
-export interface FixStageResult extends CortardoBotStageResult {
+export interface FixStageResult extends CodeBotStageResult {
   report: FixReport;
   /** The hypotheses the fixes were planned from; used by the combined review. */
   hypothesisReport?: HypothesisReport;
@@ -510,7 +510,7 @@ export interface VerifyReport {
 }
 
 /** Internal handoff: stage 4 returns its structured report. */
-export interface VerifyStageResult extends CortardoBotStageResult {
+export interface VerifyStageResult extends CodeBotStageResult {
   report: VerifyReport;
   /** Upstream reports rebuilt when earlier stages did not run. */
   hypothesisReport?: HypothesisReport;

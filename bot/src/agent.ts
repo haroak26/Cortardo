@@ -1,9 +1,9 @@
 /**
  * A tiny read-only agent loop for the swarm. Same JSON protocol as the rest of
- * Cortardo Bot: the model thinks, calls read-only tools, sees the observations, and
+ * CodeBot: the model thinks, calls read-only tools, sees the observations, and
  * finishes with a JSON answer. No sandbox, no writes, no shell.
  */
-import type { CortardoBotMessage, CortardoBotModelClient } from "./model.ts";
+import type { CodeBotMessage, CodeBotModelClient } from "./model.ts";
 
 export interface AgentAction {
   tool: string;
@@ -22,7 +22,7 @@ export interface AgentRunInput {
   user: string;
   tools: ReadonlySet<string>;
   execute: (action: AgentAction) => Promise<AgentObservation>;
-  client: CortardoBotModelClient;
+  client: CodeBotModelClient;
   maxTurns: number;
   maxToolsPerTurn: number;
   deadline: number;
@@ -39,7 +39,7 @@ export interface AgentRunInput {
   /** Gateway prompt_cache_key for the shared prefix of this run. */
   cacheKey?: string;
   /** Pre-seeded conversation for a continued (retried) agent run. */
-  initialHistory?: CortardoBotMessage[];
+  initialHistory?: CodeBotMessage[];
   /** Stop when a turn adds no new evidence instead of spending another call. */
   stopWhenNoNewEvidence?: boolean;
 }
@@ -51,7 +51,7 @@ export interface AgentRunResult {
   toolCalls: number;
   observations: AgentObservation[];
   /** Conversation as of the return, so a retry can continue instead of restart. */
-  history: CortardoBotMessage[];
+  history: CodeBotMessage[];
   stoppedReason: string;
 }
 
@@ -88,7 +88,7 @@ function evidenceKeys(text: string): string[] {
 export async function runAgent(input: AgentRunInput): Promise<AgentRunResult> {
   const isFinal = input.isFinal ?? ((parsed: Record<string, unknown>) => Array.isArray(parsed.hypotheses));
   const observations: AgentObservation[] = [];
-  const history: CortardoBotMessage[] = [...(input.initialHistory ?? [])];
+  const history: CodeBotMessage[] = [...(input.initialHistory ?? [])];
   const seenEvidence = new Set<string>();
   let user = input.user;
   let turns = 0;

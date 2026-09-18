@@ -1,4 +1,4 @@
-# Cortardo Bot 0.4 — stage 4 (verify) live E2E report
+# CodeBot 0.4 — stage 4 (verify) live E2E report
 
 > Historical note: the first run below predates the single-comment change. At the time each
 > stage published its own marker comment (hypotheses / fixes / verify); the pipeline now
@@ -11,13 +11,13 @@ Run `2026-09-17` · PR [`haroak26/Artificial-Gateway#7`](https://github.com/haro
 Command:
 
 ```bash
-CORTARDO_BOT_MAX_COST_USD=0.50 CORTARDO_BOT_API_KEY=... npm run bot:e2e:verify
+CODEBOT_MAX_COST_USD=0.50 CODEBOT_API_KEY=... npm run bot:e2e:verify
 ```
 
 The e2e first removes every Bot-authored issue comment and review comment on the PR, so the
 run owns the conversation, then runs stages 2-4 and asserts: ≥1 priority fix generated, ≥1
 verified, sandbox used, one comment per stage, every review comment tagged
-`<!-- cortardo-bot:fix... -->`, no stale bot comments, and total cost within budget.
+`<!-- codebot:fix... -->`, no stale bot comments, and total cost within budget.
 
 ## Result
 
@@ -71,15 +71,15 @@ This is exactly the intended 1-2 attempt behavior; the cap of 4 was not needed.
 | **Total** | 27 | | | **$0.2742 of $0.50** |
 
 The stage-4 reserve ($0.15) was unlocked for the verify stage only; stages 2-3 stayed within
-the spendable $0.35. `CORTARDO_BOT_TARGET_COST_USD=0.40` was not reached.
+the spendable $0.35. `CODEBOT_TARGET_COST_USD=0.40` was not reached.
 
 ## Findings
 
 1. **The shared gateway key chain picked an exhausted key.** The first run failed with
-   `402 API key spend limit exceeded` from `CORTARDO_BOT_MERGE_API_KEY` while
-   `OPENCODE_MERGE_KEY` was live. The runner needs `CORTARDO_BOT_API_KEY` set explicitly; this is
+   `402 API key spend limit exceeded` from `CODEBOT_MERGE_API_KEY` while
+   `OPENCODE_MERGE_KEY` was live. The runner needs `CODEBOT_API_KEY` set explicitly; this is
    the documented override and the same finding as
-   [`cortardo-bot-cost-findings.md`](./cortardo-bot-cost-findings.md).
+   [`codebot-cost-findings.md`](./codebot-cost-findings.md).
 2. **Repaired reports.** Per-role usage objects were live tracker references, so published
    role sums drifted from the stage totals once later stages spent more. Role snapshots are
    now copied at report time; this run's receipt is internally consistent.
@@ -97,9 +97,9 @@ the spendable $0.35. `CORTARDO_BOT_TARGET_COST_USD=0.40` was not reached.
 ```bash
 npm run bot:test                                   # 99 unit tests, no network
 ./node_modules/.bin/tsc --noEmit
-CORTARDO_BOT_MAX_COST_USD=0.50 CORTARDO_BOT_API_KEY=... \
+CODEBOT_MAX_COST_USD=0.50 CODEBOT_API_KEY=... \
   npm run bot:e2e:verify                           # live, publishes to PR 7
-CORTARDO_BOT_DRY_RUN=1 CORTARDO_BOT_REPOSITORY_ID=... npm run bot:e2e:verify   # no writes
+CODEBOT_DRY_RUN=1 CODEBOT_REPOSITORY_ID=... npm run bot:e2e:verify   # no writes
 ```
 
 ---
@@ -107,12 +107,12 @@ CORTARDO_BOT_DRY_RUN=1 CORTARDO_BOT_REPOSITORY_ID=... npm run bot:e2e:verify   #
 ## Addendum — single-comment pipeline, fresh re-runs
 
 Later single-comment runs on `2026-09-17` publish the review comment first and the suggestion
-review second (`cortardo-bot-82a94878`: review `5718743257` at `17:41:57Z`, suggestion review
+review second (`codebot-82a94878`: review `5718743257` at `17:41:57Z`, suggestion review
 submitted `17:41:58Z`, 3/3 priority fixes verified, 4 inline suggestions, `$0.1937` of the
-budget). An earlier single-comment run (`cortardo-bot-b6064a18`, review `5718483151`, 4/4
+budget). An earlier single-comment run (`codebot-b6064a18`, review `5718483151`, 4/4
 verified) predates the ordering change.
 
-`2026-09-17` · run `cortardo-bot-b6064a18` · PR #7 head `74c5449d` · `CORTARDO_BOT_PROMPT_CACHE=0`
+`2026-09-17` · run `codebot-b6064a18` · PR #7 head `74c5449d` · `CODEBOT_PROMPT_CACHE=0`
 (provider cache entries cannot be purged through the API, so the run disables the
 `prompt_cache_key` marker and pays full input price on cold prefixes).
 
@@ -126,7 +126,7 @@ the 13 old review bodies were minimized; codegraph is no longer published at all
 | verify | 134.8s | $0.2372 | terra ×7 · sol ×7 | **4/4 verified, all reproduction** |
 
 Final artifact: **one review comment** `5718483151` plus **5 inline suggestions** (all
-`Cortardo Bot verified fix · high · 1 attempt(s)`); every fix verified on the first attempt. Total
+`CodeBot verified fix · high · 1 attempt(s)`); every fix verified on the first attempt. Total
 `$0.2372` of the `$0.50` budget, cache-hit rate 34.7% (implicit prefix cache only).
 
 ### Loop hardening from the first single-comment run
@@ -148,15 +148,15 @@ before this re-run:
 
 ### Final single-comment runs (PR 6 + PR 7)
 
-Both runs used `CORTARDO_BOT_PROMPT_CACHE=0` after clearing every comment on each PR and
+Both runs used `CODEBOT_PROMPT_CACHE=0` after clearing every comment on each PR and
 minimizing the old review bodies. The e2e asserts one review comment, suggestion tagging,
 publish order (`review created_at <= suggestion review submitted_at`), the budget and that no
 stale bot comments survive.
 
 | PR | Run | Review | Result | Suggestions | Cost |
 | --- | --- | --- | --- | ---: | ---: |
-| #6 | `cortardo-bot-25ce8bec` | `5719139423` | 2/3 verified (compile) · the third unverified after 4 attempts, no suggestion posted | 3 | $0.4319 |
-| #7 | `cortardo-bot-79fc7451` | `5719252190` | 3/3 verified (2 compile · 1 source check) | 4 | $0.4230 |
+| #6 | `codebot-25ce8bec` | `5719139423` | 2/3 verified (compile) · the third unverified after 4 attempts, no suggestion posted | 3 | $0.4319 |
+| #7 | `codebot-79fc7451` | `5719252190` | 3/3 verified (2 compile · 1 source check) | 4 | $0.4230 |
 
 **Honest grading in practice.** The review header reports "0 ran the changed code" on both
 runs: the client-only React changes could not be executed by the harness (no test suite and

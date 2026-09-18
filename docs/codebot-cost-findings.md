@@ -1,19 +1,19 @@
-# Cortardo Bot gateway cost/cache findings
+# CodeBot gateway cost/cache findings
 
 Probe: `bot/scripts/probe-gateway.ts` · run 2026-09-17 against `https://api-gateway.merge.dev/v1/ai-sdk`.
 Prefix ≈ 3,119 tokens sent twice per model; raw `usage` recorded per call.
 
 ## 1. Billing
 
-- **The gateway returns `usage.cost` on every successful call.** Cortardo Bot already prefers it
+- **The gateway returns `usage.cost` on every successful call.** CodeBot already prefers it
   (`model.ts:402`); the catalog-based fallback only matters if that ever stops.
 - Observed billed cost is **below** the local catalog estimate (e.g. luna ~$0.00074 for 3,676
   input tokens vs $0.00184 catalog). Treat `usage.cost` as authoritative and the catalog as a
   conservative admission estimate.
 - A 402 (`API key spend limit exceeded` / `Credit balance depleted`) is returned when a key is
   exhausted. The key-resolution chain can pick an exhausted key before a live one
-  (`CORTARDO_BOT_MERGE_API_KEY` depleted while `OPENCODE_MERGE_KEY` works). Set
-  `CORTARDO_BOT_API_KEY` explicitly for runs, or the resolver tries keys in order.
+  (`CODEBOT_MERGE_API_KEY` depleted while `OPENCODE_MERGE_KEY` works). Set
+  `CODEBOT_API_KEY` explicitly for runs, or the resolver tries keys in order.
 
 ## 2. Prompt caching
 
@@ -26,7 +26,7 @@ Prefix ≈ 3,119 tokens sent twice per model; raw `usage` recorded per call.
 - **Implicit caching alone does not happen.** Without a marker, two identical-prefix calls both
   billed at full rate and reported no cached tokens.
 - **Both explicit mechanisms work.** `prompt_cache_key` is a plain body parameter (no message
-  format change), so Cortardo Bot will send `prompt_cache_key: cortardo-bot:<role>:<repo>:<pr>:<head>`.
+  format change), so CodeBot will send `prompt_cache_key: codebot:<role>:<repo>:<pr>:<head>`.
 - Cache hits appear by content prefix: a marker call can hit a prefix cached by an earlier call
   (even one with a different key), so shared system+diff prefixes pay only once per run.
 - Cached input bills at roughly **10%** of the input rate. The local fallback cost now prices

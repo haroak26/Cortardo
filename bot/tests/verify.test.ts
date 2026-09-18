@@ -19,8 +19,8 @@ import {
   selectVerifyFixes,
   runVerifyPlanner,
 } from "../src/verify.ts";
-import { CortardoBotUsageTracker } from "../src/model.ts";
-import type { CortardoBotCompleteInput, CortardoBotModelClient, CortardoBotModelCompletion, CortardoBotSwarmConfig } from "../src/model.ts";
+import { CodeBotUsageTracker } from "../src/model.ts";
+import type { CodeBotCompleteInput, CodeBotModelClient, CodeBotModelCompletion, CodeBotSwarmConfig } from "../src/model.ts";
 import { buildVerifyComment, VERIFY_MARKER } from "../src/markdown.ts";
 import { renderFixDiff } from "../src/patch.ts";
 import type {
@@ -35,7 +35,7 @@ import type {
   VerifyReport,
 } from "../src/types.ts";
 
-const SWARM_CONFIG: CortardoBotSwarmConfig = {
+const SWARM_CONFIG: CodeBotSwarmConfig = {
   maxAgents: 6,
   concurrency: 2,
   maxTurns: 3,
@@ -186,16 +186,16 @@ function basePlan(overrides: Partial<VerifyPlan> = {}): VerifyPlan {
   };
 }
 
-class ScriptedClient implements CortardoBotModelClient {
+class ScriptedClient implements CodeBotModelClient {
   readonly id: string;
-  readonly calls: CortardoBotCompleteInput[] = [];
+  readonly calls: CodeBotCompleteInput[] = [];
   constructor(
     id: string,
     private readonly handler: (call: number) => string | Error,
   ) {
     this.id = id;
   }
-  async complete(input: CortardoBotCompleteInput): Promise<CortardoBotModelCompletion> {
+  async complete(input: CodeBotCompleteInput): Promise<CodeBotModelCompletion> {
     this.calls.push(input);
     const result = this.handler(this.calls.length);
     if (result instanceof Error) throw result;
@@ -316,7 +316,7 @@ function loopInput(
     fixes,
     plans: new Map([[fixes[0].hypothesisId, basePlan()]]),
     deps,
-    tracker: new CortardoBotUsageTracker(SWARM_CONFIG.maxCostUsd),
+    tracker: new CodeBotUsageTracker(SWARM_CONFIG.maxCostUsd),
     config: SWARM_CONFIG,
     deadline: Date.now() + 30_000,
     sandboxId: sandbox.id,
@@ -579,7 +579,7 @@ test("runVerifyLoop repairs an edit that no longer applies", async () => {
 test("runVerifyLoop skips when the cost budget is already spent", async () => {
   const sandbox = new FakeSandbox(() => ok());
   sandbox.setHead(`${REPO_DIR}/src/db.ts`, "const timeoutMs = 30_000;\n");
-  const tracker = new CortardoBotUsageTracker(0.001, { reserveUsd: 0.001 });
+  const tracker = new CodeBotUsageTracker(0.001, { reserveUsd: 0.001 });
   const results = await runVerifyLoop(
     loopInput(sandbox, [generatedFix()], { repair: async () => ({ action: "unfixable", diagnosis: "no" }) }, { tracker }),
   );
@@ -681,7 +681,7 @@ test("plannedSuggestions prefers the verified set, then drafts, then clears", ()
     fixReport: fixReportWith([generatedFix()]),
   });
   assert.equal(verified?.verified, true);
-  assert.equal(verified?.label, "Cortardo Bot verified fix");
+  assert.equal(verified?.label, "CodeBot verified fix");
   assert.deepEqual(verified?.fixes.map((fix) => fix.hypothesisId), [finding.id]);
 
   const drafts = plannedSuggestions({ fixReport: fixReportWith([generatedFix()]) });
@@ -951,9 +951,9 @@ test("buildVerifyComment renders statuses, attempts, commands and the marker", (
     suggestions: { posted: 1, skipped: 0, removed: 2 },
     warnings: [],
   };
-  const body = buildVerifyComment({ report, runId: "cortardo-bot-test", version: "0.4.0" });
+  const body = buildVerifyComment({ report, runId: "codebot-test", version: "0.4.0" });
   assert.ok(body.startsWith(VERIFY_MARKER));
-  assert.ok(body.includes("## Cortardo Bot · Stage 4: verify (autmpus loop)"));
+  assert.ok(body.includes("## CodeBot · Stage 4: verify (autmpus loop)"));
   assert.ok(body.includes("**VERIFIED**"));
   assert.ok(body.includes("reproduction:"));
   assert.ok(body.includes("npm run check"));
@@ -963,7 +963,7 @@ test("buildVerifyComment renders statuses, attempts, commands and the marker", (
 });
 
 test("usage tracker unlocks the stage-4 reserve only for the reserved stage", () => {
-  const tracker = new CortardoBotUsageTracker(0.5, { reserveUsd: 0.15 });
+  const tracker = new CodeBotUsageTracker(0.5, { reserveUsd: 0.15 });
   assert.equal(tracker.remainingUsd, 0.35);
   tracker.beginStage("fixes");
   assert.equal(tracker.remainingUsd, 0.35);

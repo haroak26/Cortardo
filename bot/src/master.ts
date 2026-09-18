@@ -22,7 +22,7 @@ import {
   coordinatorSystem,
   coordinatorSynthesizeUser,
 } from "./prompts.ts";
-import type { CortardoBotModelClient } from "./model.ts";
+import type { CodeBotModelClient } from "./model.ts";
 
 const MAX_DIFF_CHARS = 24_000;
 
@@ -360,7 +360,7 @@ export interface AssignmentPlannerInput {
   leads: Hypothesis[];
   dismissals: HypothesisDismissal[];
   maxAgents: number;
-  client: CortardoBotModelClient;
+  client: CodeBotModelClient;
   signal?: AbortSignal;
   cacheKey?: string;
 }
@@ -457,7 +457,7 @@ export interface SynthesisInput {
   maxHypotheses: number;
   files: CodegraphChangedFile[];
   patches: Map<string, ParsedPatch>;
-  client: CortardoBotModelClient;
+  client: CodeBotModelClient;
   signal?: AbortSignal;
   cacheKey?: string;
 }

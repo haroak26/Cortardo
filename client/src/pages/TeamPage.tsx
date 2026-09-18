@@ -12,6 +12,7 @@ import {
 import { ListSkeleton } from '@/components/ds';
 import { SettingsCard, SettingsRow } from '@/components/settings-ui';
 import { InviteWorkspacePopup } from '@/components/InviteWorkspacePopup';
+import { InfoChipHover } from '@/components/info-chip';
 
 interface Member {
   id: string;
@@ -48,10 +49,14 @@ function RoleBadge({ role }: { role: string }) {
 function StatusBadge({ member }: { member: Member }) {
   if (member.status === 'pending') {
     return (
-      <span className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full bg-amber-50 text-amber-700">
-        <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-        Pending
-      </span>
+      <InfoChipHover label="Invite pending">
+        <span
+          className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-amber-50"
+          aria-label="Pending"
+        >
+          <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+        </span>
+      </InfoChipHover>
     );
   }
   return (

@@ -1,20 +1,18 @@
 import { useMemo, useState } from 'react';
 import { Check, ListChecks, Pencil, Plus, Trash2, X } from 'lucide-react';
 import { Button } from '@/components/button';
-import { Badge, EmptyState, ListSkeleton, PillFilter } from '@/components/ds';
-import { FramedCard } from '@/components/framed-card';
+import { Badge, EmptyState, ListSkeleton } from '@/components/ds';
 import { TextInput, Textarea } from '@/components/text-input';
 import { ReviewPageShell } from '@/components/review/bits';
-import { BotSearch, BotStat, RepoScopeSelect } from '@/components/bot/bot-ui';
+import { SettingsCard, SettingsRow } from '@/components/settings-ui';
+import { BotStatusFilter, RepoScopeSelect, type BotStatusFilterValue } from '@/components/bot/bot-ui';
 import { timeAgo } from '@/lib/mock-review-data';
 import { useWorkspace } from '@/contexts/workspace-context';
 import { useBotRules, useCreateRule, useDeleteRule, useUpdateRule, type ApiRule } from '@/hooks/use-bot-memory';
 
-type StatusFilter = 'all' | 'active' | 'paused';
-
 function RuleMeta({ rule }: { rule: ApiRule }) {
   return (
-    <div className="flex flex-wrap items-center gap-2 mt-1.5">
+    <span className="mt-1.5 flex flex-wrap items-center gap-2">
       {rule.glob && (
         <span className="rounded-[6px] bg-surface-hover px-1.5 py-0.5 font-mono text-[11.5px] text-fg-soft">
           {rule.glob}
@@ -22,14 +20,13 @@ function RuleMeta({ rule }: { rule: ApiRule }) {
       )}
       <span className="text-[11.5px] text-fg-muted">{rule.scope}</span>
       <span className="text-[11.5px] text-fg-faint">· added {timeAgo(rule.createdAt)}</span>
-    </div>
+    </span>
   );
 }
 
 export default function BotRulesPage() {
   const { activeWorkspaceId } = useWorkspace();
-  const [search, setSearch] = useState('');
-  const [status, setStatus] = useState<StatusFilter>('all');
+  const [status, setStatus] = useState<BotStatusFilterValue>('all');
   const [showForm, setShowForm] = useState(false);
   const [instruction, setInstruction] = useState('');
   const [glob, setGlob] = useState('');
@@ -45,28 +42,15 @@ export default function BotRulesPage() {
   const updateRule = useUpdateRule();
   const deleteRule = useDeleteRule();
 
-  const counts = useMemo(
-    () => ({
-      total: rules.length,
-      active: rules.filter((rule) => rule.enabled).length,
-      paused: rules.filter((rule) => !rule.enabled).length,
-    }),
-    [rules],
+  const filtered = useMemo(
+    () =>
+      rules.filter((rule) => {
+        if (status === 'active' && !rule.enabled) return false;
+        if (status === 'paused' && rule.enabled) return false;
+        return true;
+      }),
+    [rules, status],
   );
-
-  const filtered = useMemo(() => {
-    const query = search.trim().toLowerCase();
-    return rules.filter((rule) => {
-      if (status === 'active' && !rule.enabled) return false;
-      if (status === 'paused' && rule.enabled) return false;
-      if (!query) return true;
-      return (
-        rule.instruction.toLowerCase().includes(query) ||
-        (rule.glob ?? '').toLowerCase().includes(query) ||
-        rule.scope.toLowerCase().includes(query)
-      );
-    });
-  }, [rules, search, status]);
 
   const resetForm = () => {
     setInstruction('');
@@ -112,15 +96,22 @@ export default function BotRulesPage() {
       title="Rules"
       description="Standing instructions the bot applies to every review it runs."
       actions={
-        <Button size="sm" onClick={() => (showForm ? resetForm() : setShowForm(true))}>
-          <Plus size={15} />
-          New rule
-        </Button>
+        <>
+          <Button
+            design="pill"
+            icon={Plus}
+            className="hover:!bg-primary active:!bg-primary"
+            onClick={() => (showForm ? resetForm() : setShowForm(true))}
+          >
+            Add Rule
+          </Button>
+          <BotStatusFilter value={status} onChange={setStatus} />
+        </>
       }
     >
       {showForm && (
-        <FramedCard className="mb-5">
-          <div className="space-y-3 p-4">
+        <SettingsCard className="mb-4 overflow-visible">
+          <div className="space-y-3 py-[12px]">
             <Textarea
               autoFocus
               value={instruction}
@@ -135,7 +126,7 @@ export default function BotRulesPage() {
                 onChange={(event) => setGlob(event.target.value)}
                 placeholder="Glob (optional), e.g. src/**/*.ts"
                 aria-label="Rule glob"
-                className="font-mono text-[13px]"
+                className="font-mono text-[13px] md:text-[13px]"
               />
               <RepoScopeSelect value={repositoryId} onChange={setRepositoryId} />
             </div>
@@ -154,34 +145,13 @@ export default function BotRulesPage() {
             </div>
             {createRule.error && <p className="text-[12px] text-destructive">{(createRule.error as Error).message}</p>}
           </div>
-        </FramedCard>
+        </SettingsCard>
       )}
-
-      <div className="mb-4 flex flex-wrap items-end justify-between gap-4">
-        <div className="flex items-center gap-6">
-          <BotStat label="Rules" value={counts.total} />
-          <BotStat label="Active" value={counts.active} tone="success" />
-          <BotStat label="Paused" value={counts.paused} tone="muted" />
-        </div>
-        <div className="flex items-center gap-2">
-          <PillFilter active={status === 'all'} onClick={() => setStatus('all')}>
-            All
-          </PillFilter>
-          <PillFilter active={status === 'active'} onClick={() => setStatus('active')}>
-            Active
-          </PillFilter>
-          <PillFilter active={status === 'paused'} onClick={() => setStatus('paused')}>
-            Paused
-          </PillFilter>
-        </div>
-      </div>
-
-      <BotSearch value={search} onChange={setSearch} placeholder="Search rules…" className="mb-5" />
 
       {error && <p className="mb-4 text-[13px] text-destructive">{(error as Error).message}</p>}
 
       {isLoading ? (
-        <ListSkeleton rows={4} />
+        <ListSkeleton rows={4} className="[&>*]:px-0" />
       ) : filtered.length === 0 ? (
         <EmptyState
           icon={ListChecks}
@@ -189,93 +159,92 @@ export default function BotRulesPage() {
           description={
             rules.length === 0
               ? 'Add a rule to steer what the bot looks for in every review.'
-              : 'Try a different search or status filter.'
+              : 'Try a different status filter.'
           }
           actions={
             rules.length === 0 ? (
-              <Button size="sm" onClick={() => setShowForm(true)}>
-                <Plus size={15} />
-                New rule
+              <Button design="pill" icon={Plus} onClick={() => setShowForm(true)}>
+                Add Rule
               </Button>
             ) : undefined
           }
         />
       ) : (
-        <FramedCard>
-          <ul>
-            {filtered.map((rule) => {
-              const editing = editingId === rule.id;
+        <SettingsCard className="overflow-visible">
+          {filtered.map((rule) => {
+            if (editingId === rule.id) {
               return (
-                <li key={rule.id} className="border-b border-border-subtle last:border-b-0">
-                  {editing ? (
-                    <div className="space-y-3 px-4 py-4">
-                      <Textarea
-                        autoFocus
-                        value={editInstruction}
-                        onChange={(event) => setEditInstruction(event.target.value)}
-                        aria-label="Edit rule instruction"
-                        rows={2}
-                      />
-                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                        <TextInput
-                          value={editGlob}
-                          onChange={(event) => setEditGlob(event.target.value)}
-                          placeholder="Glob (optional)"
-                          aria-label="Edit rule glob"
-                          className="font-mono text-[13px]"
-                        />
-                        <RepoScopeSelect value={editRepositoryId} onChange={setEditRepositoryId} />
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Button size="xs" onClick={saveEdit} isLoading={updateRule.isPending}>
-                          <Check size={13} />
-                          Save
-                        </Button>
-                        <Button size="xs" design="ghost" onClick={() => setEditingId(null)}>
-                          <X size={13} />
-                          Cancel
-                        </Button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="flex items-start gap-3 px-4 py-3.5">
-                      <div className="min-w-0 flex-1">
-                        <p className="text-[13.5px] leading-snug text-foreground">{rule.instruction}</p>
-                        <RuleMeta rule={rule} />
-                      </div>
-                      <div className="flex shrink-0 items-center gap-1.5 pt-0.5">
-                        <button
-                          type="button"
-                          onClick={() => updateRule.mutate({ id: rule.id, enabled: !rule.enabled })}
-                          className="cursor-pointer border-none bg-transparent p-0"
-                          aria-label={rule.enabled ? 'Pause rule' : 'Enable rule'}
-                        >
-                          <Badge tone={rule.enabled ? 'success' : 'neutral'}>{rule.enabled ? 'Active' : 'Paused'}</Badge>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => startEdit(rule)}
-                          className="cursor-pointer rounded-[6px] border-none bg-transparent p-1 text-fg-faint transition-colors hover:text-foreground"
-                          aria-label="Edit rule"
-                        >
-                          <Pencil size={13} />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => deleteRule.mutate(rule.id)}
-                          className="cursor-pointer rounded-[6px] border-none bg-transparent p-1 text-fg-faint transition-colors hover:text-destructive"
-                          aria-label="Delete rule"
-                        >
-                          <Trash2 size={13} />
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </li>
+                <div key={rule.id} className="space-y-3 py-[12px]">
+                  <Textarea
+                    autoFocus
+                    value={editInstruction}
+                    onChange={(event) => setEditInstruction(event.target.value)}
+                    aria-label="Edit rule instruction"
+                    rows={2}
+                  />
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                    <TextInput
+                      value={editGlob}
+                      onChange={(event) => setEditGlob(event.target.value)}
+                      placeholder="Glob (optional)"
+                      aria-label="Edit rule glob"
+                      className="font-mono text-[13px] md:text-[13px]"
+                    />
+                    <RepoScopeSelect value={editRepositoryId} onChange={setEditRepositoryId} />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button size="xs" onClick={saveEdit} isLoading={updateRule.isPending}>
+                      <Check size={13} />
+                      Save
+                    </Button>
+                    <Button size="xs" design="ghost" onClick={() => setEditingId(null)}>
+                      <X size={13} />
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
               );
-            })}
-          </ul>
-        </FramedCard>
+            }
+            return (
+              <SettingsRow
+                key={rule.id}
+                label={
+                  <span className="min-w-0">
+                    <span className="block leading-snug">{rule.instruction}</span>
+                    <RuleMeta rule={rule} />
+                  </span>
+                }
+              >
+                <span className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => updateRule.mutate({ id: rule.id, enabled: !rule.enabled })}
+                    className="cursor-pointer border-none bg-transparent p-0"
+                    aria-label={rule.enabled ? 'Pause rule' : 'Enable rule'}
+                  >
+                    <Badge tone={rule.enabled ? 'success' : 'neutral'}>{rule.enabled ? 'Active' : 'Paused'}</Badge>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => startEdit(rule)}
+                    className="cursor-pointer rounded-[6px] border-none bg-transparent p-1 text-fg-faint transition-colors hover:text-foreground"
+                    aria-label="Edit rule"
+                  >
+                    <Pencil size={13} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => deleteRule.mutate(rule.id)}
+                    className="cursor-pointer rounded-[6px] border-none bg-transparent p-1 text-fg-faint transition-colors hover:text-destructive"
+                    aria-label="Delete rule"
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                </span>
+              </SettingsRow>
+            );
+          })}
+        </SettingsCard>
       )}
     </ReviewPageShell>
   );

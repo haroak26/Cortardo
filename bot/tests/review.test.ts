@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildReviewComment, CORTARDO_BOT_MARKER, REVIEW_MARKER } from "../src/markdown.ts";
+import { buildReviewComment, CODEBOT_MARKER, REVIEW_MARKER } from "../src/markdown.ts";
 import type {
   FixReport,
   GeneratedFix,
@@ -169,13 +169,13 @@ test("buildReviewComment is one review with findings, fixes and a collapsed log"
       },
     ]),
     verifyReport: verifyReport([verified]),
-    runId: "cortardo-bot-test",
+    runId: "codebot-test",
     version: "0.4.0",
   });
 
   assert.ok(body.startsWith(REVIEW_MARKER));
-  assert.ok(body.includes(CORTARDO_BOT_MARKER));
-  assert.ok(body.includes("## Cortardo Bot review"));
+  assert.ok(body.includes(CODEBOT_MARKER));
+  assert.ok(body.includes("## CodeBot review"));
   assert.ok(body.includes("2 finding(s) · 1 critical/high · 1 priority fix(es) drafted · 1/1 verified in a sandbox"));
   assert.ok(body.includes("### Findings"));
   assert.ok(body.includes("**verified in sandbox**"));
@@ -219,7 +219,7 @@ test("buildReviewComment reports verified out-of-diff edits with their patch", (
       },
     ]),
     verifyReport: verifyReport([verified]),
-    runId: "cortardo-bot-test",
+    runId: "codebot-test",
     version: "0.4.0",
   });
 
@@ -231,20 +231,20 @@ test("buildReviewComment reports verified out-of-diff edits with their patch", (
 test("buildReviewComment survives a hypotheses-only report without fixes", () => {
   const body = buildReviewComment({
     hypothesisReport: hypothesisReport([hypothesis()]),
-    runId: "cortardo-bot-test",
+    runId: "codebot-test",
     version: "0.4.0",
   });
   assert.ok(body.includes("### Findings"));
   assert.ok(body.includes("**Fix:** no fix planned"));
   assert.ok(!body.includes("### Verified fixes"));
-  assert.ok(body.includes("## Cortardo Bot review"));
+  assert.ok(body.includes("## CodeBot review"));
 });
 
 test("buildReviewComment explains findings below the priority severities", () => {
   const body = buildReviewComment({
     hypothesisReport: hypothesisReport([hypothesis({ severity: "low" })]),
     severities: ["critical", "high"],
-    runId: "cortardo-bot-test",
+    runId: "codebot-test",
     version: "0.4.0",
   });
   assert.ok(body.includes("not a priority severity (critical/high) — not fixed"));

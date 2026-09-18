@@ -1,10 +1,10 @@
 import { useState, useRef, useCallback, useEffect, useMemo, forwardRef, useImperativeHandle } from 'react';
 import { createPortal } from 'react-dom';
-import { Button } from '@/components/button';
+import { Button, brandIconButtonClass } from '@/components/button';
 import { ArrowUp } from 'lucide-react';
 import { Alert02Icon } from '@hugeicons/core-free-icons';
 import { HugeiconsIcon } from "@hugeicons/react";
-import { Settings01Icon, PlusSignIcon, FolderOpenIcon, Cancel01Icon } from '@hugeicons/core-free-icons';
+import { Settings01Icon, PlusSignIcon, FolderOpenIcon, Cancel01Icon, SparklesIcon, StopIcon, Loading03Icon } from '@hugeicons/core-free-icons';
 
 type Attachment = {
   id: string;
@@ -31,6 +31,12 @@ type Props = {
   showFocusPlaceholder?: boolean;
   /** Dark glass treatment for use on dark hero backgrounds. */
   tone?: "light" | "dark";
+  /** Hide the attach + customize controls for fixed-model surfaces (Support Agent). */
+  showControls?: boolean;
+  /** Single-line pill layout with an inline model chip and circular send button. */
+  variant?: "box" | "pill";
+  /** Pill only: called when the loading send button is pressed to cancel. */
+  onStop?: () => void;
 };
 
 export type PromptInputHandle = {
@@ -46,6 +52,7 @@ const MODELS = [
   { value: 'GPT 5.6 Sol', label: 'GPT 5.6 Sol', icon: <img src="/chatgptlogo.svg" alt="" className="w-[14px] h-[14px] shrink-0" />, desc: 'Fast and efficient for quick iterations' },
   { value: 'Gemini 3.1 Pro', label: 'Gemini 3.1 Pro', icon: <img src="/geminilogo.webp" alt="" className="w-[14px] h-[14px] shrink-0" />, desc: 'Best for multimodal understanding' },
   { value: 'Gemini 3.7 Flash', label: 'Gemini 3.7 Flash', icon: <img src="/geminilogo.webp" alt="" className="w-[14px] h-[14px] shrink-0" />, desc: 'Optimised for speed and quality' },
+  { value: 'GLM 5.3 Flash', label: 'GLM 5.3 Flash', icon: <HugeiconsIcon icon={SparklesIcon} size={14} className="shrink-0 text-[hsl(var(--brand-soft))]" />, desc: 'Fast agent model for support and page actions' },
 ];
 
 const VARIATIONS = ['1 Variation', '2 Variations'] as const;
@@ -68,6 +75,7 @@ const MODEL_META: Record<string, { label: string; icon: React.ReactNode }> = {
   'GPT 5.6 Sol': { label: 'GPT 5.6 Sol', icon: <img src="/chatgptlogo.svg" alt="" className="w-[14px] h-[14px] shrink-0" /> },
   'Gemini 3.1 Pro': { label: 'Gemini 3.1 Pro', icon: <img src="/geminilogo.webp" alt="" className="w-[14px] h-[14px] shrink-0" /> },
   'Gemini 3.7 Flash': { label: 'Gemini 3.7 Flash', icon: <img src="/geminilogo.webp" alt="" className="w-[14px] h-[14px] shrink-0" /> },
+  'GLM 5.3 Flash': { label: 'GLM 5.3 Flash', icon: <HugeiconsIcon icon={SparklesIcon} size={14} className="shrink-0 text-[hsl(var(--brand-soft))]" /> },
 };
 
 type FlyoutView = 'model' | 'variations' | 'reasoning';
@@ -89,8 +97,9 @@ function MenuRow({ label, current, onClick, active = false }: { label: string; c
 }
 
 export const PromptInput = forwardRef<PromptInputHandle, Props>(
-  function PromptInput({ onSubmit, isLoading, placeholder = 'What would you like to review?', systemError, initialValue, compact = false, initialModel, initialReasoning, examples, showFocusPlaceholder = true, tone = 'light' }, ref) {
+  function PromptInput({ onSubmit, isLoading, placeholder = 'What would you like to review?', systemError, initialValue, compact = false, initialModel, initialReasoning, examples, showFocusPlaceholder = true, tone = 'light', showControls = true, variant = 'box', onStop }, ref) {
   const dark = tone === 'dark';
+  const pill = variant === 'pill';
   const [prompt, setPrompt] = useState(initialValue ?? '');
   const [model, setModel] = useState<string>(initialModel ?? MODELS[0].value);
   const [variations, setVariations] = useState<string>(VARIATIONS[0]);
@@ -113,6 +122,7 @@ export const PromptInput = forwardRef<PromptInputHandle, Props>(
   const attachRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   /* Slow typewriter reveal for the rotating example placeholders. */
   useEffect(() => {
@@ -253,7 +263,7 @@ export const PromptInput = forwardRef<PromptInputHandle, Props>(
     setValue: (v: string) => {
       setPrompt(v);
       setTyped(0);
-      textareaRef.current?.focus();
+      (inputRef.current ?? textareaRef.current)?.focus();
     },
     typePrompt: (text: string) => {
       setPrompt('');
@@ -305,6 +315,65 @@ export const PromptInput = forwardRef<PromptInputHandle, Props>(
     setAttachments(prev => prev.filter(a => a.id !== id));
   }, []);
 
+  if (pill) {
+    return (
+      <div className={`w-full ${dark ? 'prompt-input-dark' : ''}`}>
+        {systemError && (
+          <div role="alert" className="mb-2 rounded-[10px] bg-[hsl(var(--danger)/0.14)] px-3 py-2 flex items-center justify-between gap-2">
+            <p className="text-[12px] font-medium text-[hsl(var(--danger))]">Something went wrong. Please try again.</p>
+            <HugeiconsIcon icon={Alert02Icon} size={13} strokeWidth={2} className="text-[hsl(var(--danger))] shrink-0" />
+          </div>
+        )}
+        <div
+          className={`flex items-center gap-1.5 h-[46px] rounded-full pl-4 pr-1.5 ${
+            dark
+              ? 'bg-white/[0.06] border border-white/10 shadow-[0_8px_32px_-8px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-xl'
+              : 'bg-surface-hover'
+          }`}
+        >
+          <input
+            ref={inputRef}
+            type="text"
+            value={systemError ? '' : prompt}
+            onChange={(e) => { if (!systemError) setPrompt(e.target.value); }}
+            onKeyDown={systemError ? undefined : handleKeyDown}
+            onFocus={() => setFocused(true)}
+            onBlur={() => setFocused(false)}
+            placeholder={placeholder}
+            disabled={systemError}
+            className={`min-w-0 flex-1 h-[34px] p-0 bg-transparent outline-none border-none text-[13px] leading-[34px] placeholder:text-fg-faint ${dark ? 'text-white/95 placeholder:text-white/30' : 'text-foreground placeholder:text-fg-faint'}`}
+          />
+          {isLoading && onStop ? (
+            <button
+              type="button"
+              onClick={onStop}
+              aria-label="Stop"
+              className={`flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-full border-none cursor-pointer transition-colors ${
+                dark ? 'bg-white/[0.08] text-white/80 hover:bg-white/[0.14]' : 'bg-surface-deep text-foreground hover:bg-surface-hover-strong'
+              }`}
+            >
+              <HugeiconsIcon icon={StopIcon} size={13} strokeWidth={2} />
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={handleSubmit}
+              disabled={!prompt.trim() || isLoading || systemError}
+              aria-label="Send"
+              className={`${brandIconButtonClass} !h-[34px] !w-[34px] max-md:!h-[34px] max-md:!w-[34px]`}
+            >
+              {isLoading ? (
+                <HugeiconsIcon icon={Loading03Icon} size={15} strokeWidth={2} className="animate-spin" />
+              ) : (
+                <ArrowUp size={15} />
+              )}
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className={`w-full max-w-xl mx-auto ${dark ? 'prompt-input-dark' : ''}`}>
         {systemError && (
@@ -346,7 +415,7 @@ export const PromptInput = forwardRef<PromptInputHandle, Props>(
             onKeyDown={systemError ? undefined : handleKeyDown}
             onFocus={() => setFocused(true)}
             onBlur={() => setFocused(false)}
-            placeholder={systemError ? 'Ask Anything...' : showFocusPlaceholder && focused && typed === 0 ? 'Review anything...' : examples?.length ? '' : placeholder}
+            placeholder={systemError ? 'Ask Anything...' : focused && typed === 0 ? (examples?.length ? placeholder : showFocusPlaceholder ? 'Review anything...' : placeholder) : examples?.length ? '' : placeholder}
             rows={visibleRows}
             className={`w-full resize-none bg-transparent outline-none border-none leading-relaxed placeholder:text-fg-faint ${dark ? 'text-white/95 placeholder:text-white/30' : 'text-foreground placeholder:text-fg-faint'} ${compact ? 'text-[13px] pl-3 pr-2.5 pt-2.5 pb-0' : 'text-[14px] pl-4 pr-3 sm:pl-4 sm:pr-3 pt-3 sm:pt-3 pb-0 sm:pb-1'}`}
           />
@@ -361,6 +430,12 @@ export const PromptInput = forwardRef<PromptInputHandle, Props>(
         </div>
 
         <div className={`flex items-end justify-between ${compact ? 'px-2.5 pb-2.5' : 'px-3 pb-3'}`}>
+          {!showControls ? (
+            <span className="flex items-center gap-1.5 h-[28px] pl-0.5 text-[11px] font-medium text-fg-faint select-none">
+              {MODEL_META[model]?.icon}
+              {MODEL_META[model]?.label ?? model}
+            </span>
+          ) : (
           <div className="flex items-center gap-1.5">
             {/* Attach dropdown */}
             <div className="relative" ref={attachRef}>
@@ -500,6 +575,7 @@ export const PromptInput = forwardRef<PromptInputHandle, Props>(
               )}
             </div>
           </div>
+          )}
 
           <Button
             onClick={handleSubmit}

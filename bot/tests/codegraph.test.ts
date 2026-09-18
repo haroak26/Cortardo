@@ -158,14 +158,14 @@ test("renders the stage comment with marker, table and file sections", () => {
     index: indexFixture(),
   });
 
-  const body = buildCodegraphComment({ report, runId: "cortardo-bot-test", version: "0.1.0" });
+  const body = buildCodegraphComment({ report, runId: "codebot-test", version: "0.1.0" });
   assert.ok(body.includes(CODEGRAPH_MARKER));
-  assert.ok(body.includes("## Cortardo Bot · Stage 1: codegraph"));
+  assert.ok(body.includes("## CodeBot · Stage 1: codegraph"));
   assert.ok(body.includes("| [`src/pricing.ts`]("));
   assert.ok(body.includes("`src/cart.ts#total` calls `price`"));
   assert.ok(body.includes("src/pricing.test.ts"));
   assert.ok(body.includes("code index is at 3f7d3774"));
-  assert.ok(body.includes("_Run `cortardo-bot-test`"));
+  assert.ok(body.includes("_Run `codebot-test`"));
 });
 
 test("reports an empty graph without throwing", () => {
@@ -177,7 +177,7 @@ test("reports an empty graph without throwing", () => {
     analyses: new Map(),
     index: null,
   });
-  const body = buildCodegraphComment({ report, runId: "cortardo-bot-empty", version: "0.1.0" });
+  const body = buildCodegraphComment({ report, runId: "codebot-empty", version: "0.1.0" });
   assert.equal(report.totals.files, 0);
   assert.ok(body.includes("No analyzable source files changed in this diff."));
 });
