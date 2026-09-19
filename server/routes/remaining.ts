@@ -19,7 +19,7 @@ import {
   createWorkspaceSchema, updateWorkspaceSchema, inviteWorkspaceMemberSchema,
   updateWorkspaceMemberSchema, bulkInviteMemberSchema,
   PLAN_LIMITS,
-  type PlanTier, type BillingPeriod, type User,
+  type PlanTier, type User,
   type WorkspaceMember,
   workspaces, users,
 } from "@shared/schema";
@@ -44,12 +44,9 @@ const PRICE_ENV_NAMES: Record<Exclude<PaidPlan, "free">, string[]> = {
   enterprise: ["ENTERPRISE"],
 };
 
-function stripePriceFor(plan: PaidPlan, billingPeriod: BillingPeriod = "monthly", currency: Currency = "usd"): string | null {
+function stripePriceFor(plan: PaidPlan, currency: Currency = "usd"): string | null {
   const names = PRICE_ENV_NAMES[plan as Exclude<PaidPlan, "free">] ?? [];
-  const cur = [currency.toUpperCase()];
-  const combos = billingPeriod === "annual"
-    ? [[...cur, "ANNUAL"], ["ANNUAL", ...cur], ["ANNUAL"]]
-    : [cur, []];
+  const combos = [[currency.toUpperCase()], []];
   for (const name of names) {
     for (const combo of combos) {
       const value = process.env[`STRIPE_PRICE_${name}${combo.length ? `_${combo.join("_")}` : ""}`];
@@ -94,13 +91,11 @@ async function notifyWorkspaceAdminsAndOwners(
   }
 }
 
-function planInfoFromPriceId(priceId: string | undefined | null): { plan: PaidPlan; billingPeriod: BillingPeriod } | null {
+function planInfoFromPriceId(priceId: string | undefined | null): { plan: PaidPlan } | null {
   if (!priceId) return null;
   for (const plan of ["free", "pro", "team", "enterprise"] as const) {
-    for (const bp of ["monthly", "annual"] as const) {
-      for (const currency of CURRENCIES) {
-        if (priceId === stripePriceFor(plan, bp, currency)) return { plan, billingPeriod: bp };
-      }
+    for (const currency of CURRENCIES) {
+      if (priceId === stripePriceFor(plan, currency)) return { plan };
     }
   }
   return null;
@@ -208,13 +203,12 @@ export function registerRemainingRoutes(app: Express): void {
     try {
       const stripe = new Stripe(stripeSecretKey, { apiVersion: STRIPE_API_VERSION });
       const user = req.user as User;
-      const { plan, billingPeriod, currency } = z.object({
+      const { plan, currency } = z.object({
         plan: z.enum(["free", "pro", "team", "enterprise"]),
-        billingPeriod: z.enum(["monthly", "annual"]).optional().default("monthly"),
         currency: z.enum(CURRENCIES).optional().default("usd"),
       }).parse(req.body);
       if (plan === "free") return res.status(400).json({ message: "Free plan cannot be purchased" });
-      const priceId = stripePriceFor(plan, billingPeriod, currency);
+      const priceId = stripePriceFor(plan, currency);
       if (!priceId) return res.status(400).json({ message: `Plan "${plan}" is not configured for ${currency.toUpperCase()}` });
       try {
         await stripe.prices.retrieve(priceId);
@@ -248,13 +242,13 @@ export function registerRemainingRoutes(app: Express): void {
           const renewsAt = (updatedSub as unknown as { current_period_end?: number }).current_period_end;
           await storage.updateSubscription(fullUser.id, {
             stripeCustomerId: customerId, stripeSubscriptionId: updatedSub.id,
-            plan, billingPeriod, subscriptionStatus: updatedSub.status,
+            plan, billingPeriod: "monthly", subscriptionStatus: updatedSub.status,
             cancelAtPeriodEnd: false, planRenewsAt: renewsAt ? new Date(renewsAt * 1000) : null,
           });
           return res.json({ ok: true, message: `Switched to the ${plan} plan` });
         }
       }
-      sub = await storage.updateSubscription(fullUser.id, { billingPeriod });
+      sub = await storage.updateSubscription(fullUser.id, { billingPeriod: "monthly" });
       const session = await stripe.checkout.sessions.create({ mode: "subscription", payment_method_types: ["card"], allow_promotion_codes: true, currency, line_items: [{ price: priceId, quantity: 1 }], customer: customerId, success_url: `${getPublicUrl(req)}/account?billing=success&plan=${plan}`, cancel_url: `${getPublicUrl(req)}/account?billing=cancelled`, metadata: { userId: String(fullUser.id), plan, currency }, subscription_data: { metadata: { userId: String(fullUser.id), plan, currency } } });
       return res.json({ url: session.url });
     } catch (err) {
@@ -304,7 +298,7 @@ export function registerRemainingRoutes(app: Express): void {
     const usageRec = await storage.getUsage(user.id);
     return res.json({
       plan, status: sub?.subscriptionStatus ?? null, cancelAtPeriodEnd: sub?.cancelAtPeriodEnd ?? false,
-      billingPeriod: sub?.billingPeriod ?? "monthly", renewsAt: sub?.planRenewsAt ? sub.planRenewsAt.toISOString() : null,
+      billingPeriod: "monthly", renewsAt: sub?.planRenewsAt ? sub.planRenewsAt.toISOString() : null,
       limits, usage: { storageUsed: usageRec.storageUsed, projectsCount: usageRec.projectsCount, designFilesCount: usageRec.designFilesCount, versionCount: usageRec.versionCount, componentCount: usageRec.componentCount },
     });
   });
@@ -831,7 +825,7 @@ export function registerRemainingRoutes(app: Express): void {
           await storage.updateSubscription(user.id, {
             stripeCustomerId: customerId, stripeSubscriptionId: isLive ? stripeSub.id : null,
             plan: isLive && priceInfo ? priceInfo.plan : "free",
-            billingPeriod: isLive && priceInfo ? priceInfo.billingPeriod : "monthly",
+            billingPeriod: "monthly",
             subscriptionStatus: stripeSub.status, planRenewsAt: renewsAt ? new Date(renewsAt * 1000) : null, cancelAtPeriodEnd: !!stripeSub.cancel_at_period_end,
           });
           if (isLive) {
@@ -869,7 +863,7 @@ export function registerRemainingRoutes(app: Express): void {
           await storage.updateSubscription(user.id, {
             stripeCustomerId: customerId, stripeSubscriptionId: isLive ? stripeSub.id : null,
             plan: isLive && priceInfo ? priceInfo.plan : "free",
-            billingPeriod: isLive && priceInfo ? priceInfo.billingPeriod : "monthly",
+            billingPeriod: "monthly",
             subscriptionStatus: stripeSub.status, planRenewsAt: renewsAt ? new Date(renewsAt * 1000) : null, cancelAtPeriodEnd: !!stripeSub.cancel_at_period_end,
           });
           if (isLive && user.email && priceInfo) {

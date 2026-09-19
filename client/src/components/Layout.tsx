@@ -1,6 +1,8 @@
 import React, { useState, useRef, useEffect } from "react";
 import { Link } from "wouter";
-import { X, ArrowRight, Palette, PenTool, Layers, Share2, Sparkles, Star, BarChart3 } from "lucide-react";
+import { ArrowRight, ChevronDown } from "lucide-react";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { File01Icon, Activity01Icon, Mail01Icon, Clock01Icon, News01Icon } from "@hugeicons/core-free-icons";
 
 import { useUser, useLogout } from "@/hooks/use-user";
 import { CookieBar } from "./CookieBar";
@@ -35,33 +37,14 @@ interface LayoutProps {
 
 const navDropdowns = [
   {
-    label: "Product",
-    href: "/product",
+    label: "Resources",
+    href: "/docs",
     items: [
-      { icon: PenTool, title: "Code Review", desc: "AI review on every pull request", href: "/product" },
-      { icon: Layers, title: "Security Scans", desc: "Catch vulnerabilities before merge", href: "/product" },
-      { icon: Share2, title: "Integrations", desc: "Stripe billing and payments", href: "/product" },
-      { icon: Sparkles, title: "AI Features", desc: "AI-powered review tools", href: "/product" },
-    ],
-  },
-  {
-    label: "Pricing",
-    href: "/pricing",
-    items: [
-      { icon: PenTool, title: "Starter", desc: "$5/mo — For getting started", href: "/pricing" },
-      { icon: Star, title: "Pro", desc: "$29/mo — For growing teams", href: "/pricing" },
-      { icon: BarChart3, title: "Max", desc: "$99/mo — For teams that want everything", href: "/pricing" },
-      { icon: ArrowRight, title: "Compare Plans", desc: "See all features side by side", href: "/pricing" },
-    ],
-  },
-  {
-    label: "Affiliate",
-    href: "/affiliate",
-    items: [
-      { icon: PenTool, title: "Affiliate Program", desc: "Earn recurring commission", href: "/affiliate" },
-      { icon: Layers, title: "Partners", desc: "Grow with Cortardo", href: "/affiliate" },
-      { icon: Share2, title: "Refer a friend", desc: "Share the love, earn rewards", href: "/affiliate" },
-      { icon: Sparkles, title: "Contact sales", desc: "Talk to a human", href: "/contact" },
+      { icon: File01Icon, title: "Docs", desc: "Set up Cortardo in minutes", href: "/docs", tile: "bg-brand text-white", viewBox: "3 1 18 21.5" },
+      { icon: Activity01Icon, title: "Status", desc: "Live uptime and incident history", href: "/status", tile: "bg-brand text-white", viewBox: "2 2 20 20" },
+      { icon: Mail01Icon, title: "Contact", desc: "Reach the team behind Cortardo", href: "/contact", tile: "bg-brand text-white", viewBox: "1 1 22 22" },
+      { icon: Clock01Icon, title: "Changelog", desc: "Every fix, feature, and release", href: "/changelog", tile: "bg-brand text-white", viewBox: "1 1 22 22" },
+      { icon: News01Icon, title: "Blog", desc: "Stories, tips, and product news", href: "/blog", tile: "bg-brand text-white", viewBox: "1 1 22 22" },
     ],
   },
 ];
@@ -73,12 +56,23 @@ export function Layout({ children, showFooter = true, panel = false, fullWidth =
   const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
   const [scrolled, setScrolled] = useState(false);
   const hoverTimeout = useRef<ReturnType<typeof setTimeout>>();
+  const navRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     const onScroll = () => setScrolled(document.documentElement.scrollTop > 0);
     onScroll();
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
+  useEffect(() => {
+    const onDocMouseDown = (event: MouseEvent) => {
+      if (navRef.current && !navRef.current.contains(event.target as Node)) {
+        setActiveDropdown(null);
+      }
+    };
+    document.addEventListener("mousedown", onDocMouseDown);
+    return () => document.removeEventListener("mousedown", onDocMouseDown);
   }, []);
 
   const handleNavEnter = (label: string) => {
@@ -110,7 +104,7 @@ export function Layout({ children, showFooter = true, panel = false, fullWidth =
       )}
     >
       <div className={cn(
-        "overflow-x-hidden flex items-center justify-between",
+        "overflow-x-clip flex items-center justify-between",
         !fullWidth && "max-w-[1280px] mx-auto",
         bleedHeader
           ? "w-full pl-1.5 sm:pl-2 md:pl-3 pr-1.5 sm:pr-2 md:pr-3"
@@ -126,11 +120,72 @@ export function Layout({ children, showFooter = true, panel = false, fullWidth =
  
         <div className="flex items-center justify-end gap-2.5">
           <div className="hidden md:flex items-center gap-1">
-            <nav className="flex items-center gap-0.5">
-              {navDropdowns.map(({ label, href }) => (
-                <Link key={label} href={href} className={cn("inline-flex items-center text-[15px] font-medium px-3 leading-[20px] transition-colors hover:opacity-80", overDark ? "text-white/80 hover:text-white" : "text-foreground")}>
+            <nav ref={navRef} className="flex items-center gap-0.5">
+              {[
+                { label: "Product", href: "/product" },
+                { label: "Pricing", href: "/pricing" },
+                { label: "CodeBot", href: "/codebot" },
+              ].map(({ label, href }) => (
+                <Link
+                  key={label}
+                  href={href}
+                  className={cn("inline-flex h-5 items-center text-[15px] font-medium px-3 leading-[20px] transition-colors hover:opacity-80", overDark ? "text-white/80 hover:text-white" : "text-foreground")}
+                >
                   {label}
                 </Link>
+              ))}
+
+              {navDropdowns.map(({ label, items }) => (
+                <div
+                  key={label}
+                  className="relative flex items-center"
+                  onMouseEnter={() => handleNavEnter(label)}
+                  onMouseLeave={handleNavLeave}
+                >
+                  <button
+                    type="button"
+                    onClick={() => setActiveDropdown(activeDropdown === label ? null : label)}
+                    className={cn(
+                      "inline-flex h-5 items-center gap-1 text-[15px] font-medium px-3 leading-[20px] transition-colors cursor-pointer bg-transparent border-none",
+                      overDark ? "text-white/80 hover:text-white" : "text-foreground hover:opacity-80",
+                    )}
+                    aria-expanded={activeDropdown === label}
+                  >
+                    {label}
+                    <ChevronDown
+                      size={13}
+                      strokeWidth={2}
+                      className={cn("transition-transform duration-150", activeDropdown === label && "rotate-180")}
+                    />
+                  </button>
+
+                  {activeDropdown === label && (
+                    <div
+                      className="absolute left-1/2 top-full z-50 -translate-x-1/2 pt-3"
+                      onMouseEnter={handleDropdownEnter}
+                      onMouseLeave={handleNavLeave}
+                    >
+                      <div className="w-[320px] bg-background border border-border rounded-[18px] p-1.5 flex flex-col gap-0.5 shadow-md">
+                        {items.map(({ icon: Icon, title, desc, href: itemHref, tile, viewBox }) => (
+                          <Link
+                            key={title}
+                            href={itemHref}
+                            onClick={() => setActiveDropdown(null)}
+                            className="flex items-center gap-2.5 px-2.5 py-2 rounded-[12px] transition-colors hover:bg-surface-hover"
+                          >
+                            <span className={cn("grid h-7 w-7 shrink-0 place-items-center overflow-hidden rounded-full leading-none", tile)}>
+                              <HugeiconsIcon icon={Icon} size={15} strokeWidth={1.5} viewBox={viewBox} className="block" />
+                            </span>
+                            <span className="flex min-w-0 flex-col">
+                              <span className="whitespace-nowrap text-[13px] font-medium leading-[1.3] text-foreground">{title}</span>
+                              <span className="mt-0.5 whitespace-nowrap text-[12px] leading-[1.4] text-fg-muted">{desc}</span>
+                            </span>
+                          </Link>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
               ))}
             </nav>
 
@@ -203,7 +258,8 @@ export function Layout({ children, showFooter = true, panel = false, fullWidth =
             {[
               { label: "Product", href: "/product" },
               { label: "Pricing", href: "/pricing" },
-              { label: "Affiliate", href: "/affiliate" },
+              { label: "CodeBot", href: "/codebot" },
+              { label: "Resources", href: "/docs" },
             ].map(({ label, href }) => (
               <div key={label}>
                 <Link
@@ -315,7 +371,7 @@ export function Layout({ children, showFooter = true, panel = false, fullWidth =
                 {[
                   {
                     heading: "Product",
-                    links: [["Product", "/product"], ["Features", "/#features"], ["Pricing", "/pricing"], ["Affiliate", "/affiliate"]],
+                    links: [["Product", "/product"], ["Features", "/#features"], ["Pricing", "/pricing"]],
                   },
                   {
                     heading: "Resources",

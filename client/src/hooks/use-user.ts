@@ -24,11 +24,11 @@ export type PlanInfo = {
   plan: PlanTier;
   status: string | null;
   cancelAtPeriodEnd: boolean;
-  billingPeriod: "monthly" | "annual";
+  billingPeriod: "monthly";
   renewsAt: string | null;
   limits: {
     label: string;
-    prices: { monthly: number; annual: number };
+    prices: { monthly: number };
     projects: number | "unlimited";
     designFiles: number | "unlimited";
     editors: number | "unlimited";

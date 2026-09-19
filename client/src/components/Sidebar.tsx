@@ -354,7 +354,7 @@ export function SidebarContent({ location: _location, onNavigate, collapsed, mob
               {activeWorkspace?.name ?? 'Select workspace'}
             </span>
             <span className="block text-[11px] font-medium text-fg-muted truncate">
-              {planInfo?.limits.label ?? 'Free'} plan
+              {planInfo?.limits.label ?? 'Starter'} plan
             </span>
           </span>
           {isSubNav ? (
@@ -473,7 +473,7 @@ export function SidebarContent({ location: _location, onNavigate, collapsed, mob
                 </NavGroup>
               ))}
             </div>
-            <AccountFooter user={user} userLoading={userLoading} planLabel={planInfo?.limits.label ?? 'Free'} onNavigate={onNavigate} />
+            <AccountFooter user={user} userLoading={userLoading} planLabel={planInfo?.limits.label ?? 'Starter'} onNavigate={onNavigate} />
           </>
         ) : isBotPage ? (
           <>
@@ -484,7 +484,7 @@ export function SidebarContent({ location: _location, onNavigate, collapsed, mob
                 </NavGroup>
               ))}
             </div>
-            <AccountFooter user={user} userLoading={userLoading} planLabel={planInfo?.limits.label ?? 'Free'} onNavigate={onNavigate} />
+            <AccountFooter user={user} userLoading={userLoading} planLabel={planInfo?.limits.label ?? 'Starter'} onNavigate={onNavigate} />
           </>
         ) : (
           <div className={cn("flex flex-col", !mobile && "flex-1")}>
@@ -498,7 +498,7 @@ export function SidebarContent({ location: _location, onNavigate, collapsed, mob
               <TabRow tabs={TEAM_TABS} activeTab={activeTab} onNavigate={onNavigate} onAction={() => onInviteToWorkspace?.()} />
             </NavGroup>
             {!mobile && <div className="flex-1" />}
-            <AccountFooter user={user} userLoading={userLoading} planLabel={planInfo?.limits.label ?? 'Free'} onNavigate={onNavigate} />
+            <AccountFooter user={user} userLoading={userLoading} planLabel={planInfo?.limits.label ?? 'Starter'} onNavigate={onNavigate} />
           </div>
         )}
       </div>

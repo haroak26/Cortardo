@@ -1252,10 +1252,10 @@ export default function Account() {
   });
 
   const checkoutMutation = useMutation({
-    mutationFn: async ({ plan, billingPeriod, currency }: { plan: PlanTier; billingPeriod?: string; currency?: string }) => {
+    mutationFn: async ({ plan, currency }: { plan: PlanTier; currency?: string }) => {
       const r = await fetch("/api/billing/checkout", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        credentials: "include", body: JSON.stringify({ plan, billingPeriod: billingPeriod ?? "monthly", currency: currency?.toLowerCase() ?? "usd" }),
+        credentials: "include", body: JSON.stringify({ plan, currency: currency?.toLowerCase() ?? "usd" }),
       });
       if (!r.ok) {
         const err = await r.json().catch(() => ({ message: "Failed to create checkout session" }));
@@ -1277,9 +1277,9 @@ export default function Account() {
 
   type PlanInfo = {
     plan: PlanTier; status: string | null; cancelAtPeriodEnd: boolean;
-    billingPeriod: "monthly" | "annual";
+    billingPeriod: "monthly";
     renewsAt: string | null;
-    limits: { label: string; prices: { monthly: number; annual: number } };
+    limits: { label: string; prices: { monthly: number } };
     usage: {};
   };
   const { data: planInfo } = useQuery<PlanInfo>({
@@ -1339,7 +1339,7 @@ export default function Account() {
   const emailVerified = (user as any).emailVerified ?? false;
   const pendingEmail = (user as any).pendingEmail;
   const currentPlan = planInfo?.plan ?? "free";
-  const planLabel = planInfo?.limits?.label ?? "Free";
+  const planLabel = planInfo?.limits?.label ?? "Starter";
 
 const contentBySection: Record<string, React.ReactNode> = {
   "": <AccountOverview user={user} planLabel={planLabel} currentPlan={currentPlan} />,

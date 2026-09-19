@@ -1,36 +1,30 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import { Layout } from "@/components/Layout";
-import {
-  ChevronDown,
-} from "lucide-react";
+import { ChevronDown } from "lucide-react";
 
 /* ─── Data ─── */
 
 const faqs = [
   {
-    q: "Can I switch plans at any time?",
-    a: "Yes, you can upgrade or downgrade whenever you need to from your billing page. Changes take effect immediately and your payment is adjusted prorata.",
+    q: "What is CodeBot?",
+    a: "CodeBot is Cortardo's staged review agent. It maps the changed code, scans for risks, drafts fixes, and verifies them in a sandbox before posting a single review comment.",
   },
   {
-    q: "Is there a free plan?",
-    a: "Yes! The Starter plan is available without a payment card and includes 1 repo, 100 reviews per month, 100 MB storage, and 10 AI credits per month. Paid plans start at $10/month.",
+    q: "Does CodeBot change my code?",
+    a: "No. Every stage is read-only on your repository. Fixes arrive as suggestions, and nothing is applied until you accept it.",
   },
   {
-    q: "Can my whole team use Cortardo?",
-    a: "Yes, every plan includes unlimited collaborators. Invite your entire engineering team at no extra cost.",
+    q: "How are fixes verified?",
+    a: "Each candidate fix is applied in an isolated cloud sandbox, the project is built and run, and failures are diagnosed and repaired across a few attempts. Fixes that don't pass are never suggested.",
   },
   {
-    q: "Which languages does Cortardo support?",
-    a: "Cortardo reviews all major languages — TypeScript, JavaScript, Python, Go, Rust, Java, Ruby, and more — plus framework-aware checks for React, Next.js, Django, and Rails.",
+    q: "What happens to findings it can't verify?",
+    a: "They stay in the review as advisories with their honest status — CodeBot never posts a suggestion it hasn't proven.",
   },
   {
-    q: "Does Cortardo work with my git provider?",
-    a: "Yes. Cortardo works alongside your existing workflow — open your reviews and the agent handles the rest, with no downloads needed.",
-  },
-  {
-    q: "Can I customise what Cortardo looks for?",
-    a: "Yes, write review rules in plain English. Tell Cortardo your team's conventions and it enforces them on every PR, with inline suggestions and one-click fixes.",
+    q: "Do I need to change my workflow?",
+    a: "No. CodeBot works alongside your existing review process, publishing one comment on the pull request with findings, fix statuses, and a collapsed verification log.",
   },
 ];
 
@@ -108,16 +102,8 @@ function SectionHead({
 
 /* ─── Page ─── */
 
-export default function Landing() {
+export default function CodeBot() {
   const [openFaq, setOpenFaq] = useState<number | null>(null);
-
-  /* Support /#features navigation from the header on other pages. */
-  useEffect(() => {
-    if (window.location.hash === "#features") {
-      const el = document.getElementById("features");
-      if (el) setTimeout(() => el.scrollIntoView({ behavior: "smooth", block: "start" }), 60);
-    }
-  }, []);
 
   return (
     <Layout fullWidth bleedHeader logo="/CortardoFull.svg?v=1" logoClassName="h-[14px] sm:h-[16px] md:h-[20px]">
@@ -127,16 +113,16 @@ export default function Landing() {
         <div className="mx-auto w-full max-w-4xl px-6 pt-6 md:pt-10 pb-12 md:pb-16 text-center">
           <Reveal delay={0.06}>
             <h1 className="font-baskerville text-[30px] sm:text-[38px] md:text-[44px] text-foreground font-normal leading-[1.18] tracking-[-0.01em]">
-              Review every line.
+              Introducing CodeBot.
               <br />{" "}
-              Merge with confidence.
+              The reviewer that proves its fixes.
             </h1>
           </Reveal>
 
           <Reveal delay={0.1}>
             <p className="mx-auto mt-5 max-w-[520px] text-[14.5px] md:text-[15.5px] text-foreground/80 font-normal leading-[1.7] text-pretty">
-              Cortardo reviews every pull request, catching bugs, security
-              <br /> issues, and style drift before they reach production.
+              CodeBot reads every pull request, ranks what's actually wrong,
+              <br /> and only suggests fixes it has verified in a sandbox.
             </p>
           </Reveal>
         </div>
@@ -159,8 +145,8 @@ export default function Landing() {
                 <SectionHead
                   index="01"
                   label="How it works"
-                  title="From pull request to merged."
-                  subtitle="No stale reviews. No bottlenecks waiting on a senior engineer's availability."
+                  title="Four stages. One review."
+                  subtitle="Codegraph maps the change, hypotheses surface the risks, fixes are drafted, and verification runs the code — all before a single comment is posted."
                 />
               </Reveal>
             </div>
@@ -170,7 +156,7 @@ export default function Landing() {
           </div>
         </section>
 
-        {/* ── [02] Cortardo Agent — image placeholder left, header right ── */}
+        {/* ── [02] Hypotheses — image placeholder left, header right ── */}
         <section>
           <div className="grid items-center gap-12 lg:grid-cols-2 lg:gap-16">
             <div className="order-2 lg:order-1">
@@ -182,25 +168,25 @@ export default function Landing() {
               <Reveal>
                 <SectionHead
                   index="02"
-                  label="Cortardo Agent"
-                  title="One push. A full code review."
-                  subtitle="Cortardo watches your repositories and reviews every pull request automatically — flagging bugs, security vulnerabilities, and style drift with line-by-line comments and one-click fixes."
+                  label="Hypotheses"
+                  title="Advisories ranked by evidence."
+                  subtitle="Every finding is mechanism-level and honest about being unproven, then ranked by priority — so you see what matters first, not a wall of noise."
                 />
               </Reveal>
             </div>
           </div>
         </section>
 
-        {/* ── [03] Team collaboration — header left, image placeholder right ── */}
+        {/* ── [03] Verified fixes — header left, image placeholder right ── */}
         <section>
           <div className="grid items-center gap-12 lg:grid-cols-2 lg:gap-16">
             <div>
               <Reveal>
                 <SectionHead
                   index="03"
-                  label="Team collaboration"
-                  title="Review in the same thread, even when you're apart."
-                  subtitle="Inline comments, resolved threads, and shared rules mean your whole team reviews together — with tribal knowledge captured as conventions Cortardo enforces on every PR."
+                  label="Verified fixes"
+                  title="Fixes proven before they ship."
+                  subtitle="Drafts are cloned into an isolated sandbox, applied, and run. Only fixes that pass become inline suggestions you can accept with one click."
                 />
               </Reveal>
             </div>
@@ -210,7 +196,7 @@ export default function Landing() {
           </div>
         </section>
 
-        {/* ── [04] Export code for free — image placeholder left, header right ── */}
+        {/* ── [04] One comment — image placeholder left, header right ── */}
         <section>
           <div className="grid items-center gap-12 lg:grid-cols-2 lg:gap-16">
             <div className="order-2 lg:order-1">
@@ -222,9 +208,9 @@ export default function Landing() {
               <Reveal>
                 <SectionHead
                   index="04"
-                  label="Fix with one click"
-                  title="Review to merge, without the busywork."
-                  subtitle="Every plan, including Free, gets inline suggestions that apply straight to your branch. No copy-paste, no follow-up commits, no cost."
+                  label="One comment"
+                  title="One review. No noise."
+                  subtitle="Findings, fix statuses, and the verification log arrive in a single review comment, with a native GitHub suggestion for every verified fix."
                 />
               </Reveal>
             </div>
@@ -239,7 +225,7 @@ export default function Landing() {
                 index="05"
                 label="FAQ"
                 title="Frequently asked questions."
-                subtitle="Everything you need to know about Cortardo plans and features."
+                subtitle="Everything you need to know about how CodeBot reviews and verifies your code."
               />
             </Reveal>
             <div className="flex flex-col divide-y divide-border border-t border-border">

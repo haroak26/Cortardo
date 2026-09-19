@@ -2,7 +2,6 @@ import { useState } from "react";
 import { Layout } from "@/components/Layout";
 import { PricingSection } from "@/components/PricingSection";
 import { ChevronDown } from "lucide-react";
-import { LandingHero } from "@/components/marketing";
 
 const faqs = [
   {
@@ -15,7 +14,7 @@ const faqs = [
   },
   {
     q: "Is there a free plan?",
-    a: "Yes! The Free plan includes 10 repos, 100 reviews per month, 1 seat, 100 MB storage, and 1500 AI credits per month — no payment card required.",
+    a: "Yes! The Starter plan includes 1 repo, 100 reviews per month, 1 seat, 100 MB storage, and 10 AI credits per month — no payment card required.",
   },
   {
     q: "Can I switch plans at any time?",
@@ -30,20 +29,22 @@ const faqs = [
 export default function Pricing() {
   const [openFaq, setOpenFaq] = useState<number | null>(null);
   return (
-    <Layout fullWidth>
+    <Layout fullWidth bleedHeader logo="/CortardoFull.svg?v=1" logoClassName="h-[14px] sm:h-[16px] md:h-[20px]">
       <div className="landing-grid" />
 
       {/* ── HERO ──────────────────────────────────────────────────── */}
-      <LandingHero
-        title={
-          <>
-            Simple pricing.
-            <br />
-            No games.
-          </>
-        }
-        description="Start for free, upgrade when you grow. No hidden fees."
-      />
+      <section className="relative w-full overflow-hidden pt-20 md:pt-28 pb-14 md:pb-20">
+        <div className="relative px-6 md:px-10">
+          <div className="relative mx-auto max-w-4xl text-center">
+            <h1 className="font-baskerville text-[30px] sm:text-[38px] md:text-[44px] text-foreground font-normal leading-[1.18] tracking-[-0.01em]">
+              Simple pricing. No games.
+            </h1>
+            <p className="mx-auto mt-5 max-w-[520px] text-[14.5px] md:text-[15.5px] text-foreground/80 font-normal leading-[1.7] text-pretty">
+              Start for free, upgrade when you grow. No hidden fees.
+            </p>
+          </div>
+        </div>
+      </section>
 
       {/* ── PRICING CARDS ────────────────────────────────────────── */}
       <div className="lds-marketing-section">

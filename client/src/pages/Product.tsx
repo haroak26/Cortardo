@@ -1,263 +1,260 @@
-import { Link } from "wouter";
+import { useState } from "react";
+import { motion, useReducedMotion } from "framer-motion";
 import { Layout } from "@/components/Layout";
-import { Button } from "@/components/button";
-import { Eyebrow } from "@/components/ds";
-import { LandingHero, SectionHeader, SoftCard, type FeatureVariant } from "@/components/marketing";
-import {
-  ArrowRight,
-  Bug,
-  FileSearch,
-  GitMerge,
-  GitPullRequest,
-  MessageSquare,
-  ShieldCheck,
-  Sparkles,
-  Terminal,
-  Zap,
-} from "lucide-react";
+import { ChevronDown } from "lucide-react";
 
-const features: { icon: typeof GitPullRequest; title: string; description: string; variant: FeatureVariant }[] = [
+/* ─── Data ─── */
+
+const faqs = [
   {
-    icon: Sparkles,
-    title: "PR to reviewed in seconds",
-    description: "Push a branch and Cortardo reviews the full diff in seconds — line-by-line, not a rubber stamp.",
-    variant: "brand",
+    q: "How fast are reviews?",
+    a: "Cortardo reviews the full diff in seconds after you push. Findings appear inline on the pull request — bugs, security issues, and style drift — not in a separate tool.",
   },
   {
-    icon: Bug,
-    title: "Bug detection",
-    description: "Logic errors, edge cases, and null paths caught before they ever reach production.",
-    variant: "purple",
+    q: "Which languages does Cortardo support?",
+    a: "Cortardo reviews all major languages — TypeScript, JavaScript, Python, Go, Rust, Java, Ruby, and more — plus framework-aware checks for React, Next.js, Django, and Rails.",
   },
   {
-    icon: ShieldCheck,
-    title: "Security scanning",
-    description: "Injection, XSS, unsafe deps, and secret leaks flagged with severity and a suggested fix.",
-    variant: "amber",
+    q: "Does Cortardo work with my git provider?",
+    a: "Yes. Cortardo works alongside your existing workflow — open your reviews and the agent handles the rest, with no downloads needed.",
   },
   {
-    icon: MessageSquare,
-    title: "Inline suggestions",
-    description: "Comments land right on the line. Accept a fix with one click and keep moving.",
-    variant: "green",
+    q: "Can I customise what Cortardo looks for?",
+    a: "Yes, write review rules in plain English. Tell Cortardo your team's conventions and it enforces them on every PR, with inline suggestions and one-click fixes.",
   },
   {
-    icon: Zap,
-    title: "One-click fixes",
-    description: "Apply suggested patches straight to your branch — no copy-paste, no follow-up commits.",
-    variant: "brand",
-  },
-  {
-    icon: FileSearch,
-    title: "PR summaries",
-    description: "Instant walkthroughs of what changed, why it matters, and what to check before merging.",
-    variant: "purple",
-  },
-  {
-    icon: GitMerge,
-    title: "Style enforcement",
-    description: "Your conventions, written in plain English, enforced automatically on every review.",
-    variant: "green",
+    q: "Can my whole team use Cortardo?",
+    a: "Yes, every plan includes unlimited collaborators. Invite your entire engineering team at no extra cost.",
   },
 ];
 
-const steps = [
-  {
-    num: "01",
-    title: "Open your reviews",
-    description: "See findings, walkthroughs, and suggested fixes across your workspace in one place.",
-  },
-  {
-    num: "02",
-    title: "Run a review",
-    description: "Cortardo Agent reads the diff and posts a full review — bugs, security, style, and summaries.",
-  },
-  {
-    num: "03",
-    title: "Fix and merge",
-    description: "Accept inline suggestions with one click, resolve threads, and merge with confidence.",
-  },
-];
+/* ─── Motion helper ─── */
 
-function AppPreview() {
+function Reveal({
+  children,
+  className,
+  delay = 0,
+}: {
+  children: React.ReactNode;
+  className?: string;
+  delay?: number;
+}) {
+  const reduce = useReducedMotion();
   return (
-    <div className="relative mt-16 md:mt-20 rounded-2xl border border-border bg-background shadow-[0_20px_60px_-20px_rgba(0,0,0,0.12)] overflow-hidden pointer-events-none select-none">
-          <div className="flex items-center gap-2 px-4 h-11 border-b border-border bg-surface-subtle/60">
-            <div className="flex items-center gap-2 px-3 h-6 rounded-md bg-background border border-border text-[11px] text-fg-muted font-medium">
-              app.cortardo.com/reviews
-            </div>
-          </div>
+    <motion.div
+      className={className}
+      initial={reduce ? false : { opacity: 0, y: 12 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, margin: "-60px" }}
+      transition={{ duration: 0.45, delay, ease: "easeOut" }}
+    >
+      {children}
+    </motion.div>
+  );
+}
 
-      <div className="flex h-[380px] md:h-[440px]">
-        <div className="hidden sm:flex flex-col gap-2 px-2.5 py-3 border-r border-border bg-surface-subtle/40">
-          {[GitPullRequest, MessageSquare, Bug, ShieldCheck, Terminal].map((Icon, i) => (
-            <span
-              key={i}
-              className={`flex items-center justify-center w-8 h-8 rounded-lg border ${i === 0 ? "bg-brand/10 border-brand/30 text-brand" : "border-transparent text-fg-muted"}`}
-            >
-              <Icon size={15} strokeWidth={1.75} />
-            </span>
-          ))}
-        </div>
+/* ─── Image placeholder — dashed box shown until real section imagery lands ─── */
 
-        <div className="flex-1 min-w-0 relative bg-[radial-gradient(70%_60%_at_50%_0%,hsl(var(--brand)/0.08),transparent_70%)]">
-          <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[300px] md:w-[360px] rounded-xl bg-white border border-border shadow-[0_12px_40px_-12px_rgba(0,0,0,0.18)] p-4">
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-[13px] font-semibold text-foreground tracking-[-0.01em]">fix: auth token refresh</span>
-              <span className="px-1.5 py-0.5 rounded-full bg-brand/10 text-brand text-[10px] font-bold uppercase tracking-wide">PR #128</span>
-            </div>
-            <div className="space-y-2">
-              <div className="h-2.5 w-3/5 rounded-full bg-[linear-gradient(90deg,#284B63,#4A7A96)]" />
-              <div className="h-2 w-full rounded-full bg-border/70" />
-              <div className="h-2 w-11/12 rounded-full bg-emerald-200/70" />
-              <div className="h-2 w-4/5 rounded-full bg-rose-200/70" />
-            </div>
-            <div className="mt-3 flex gap-2">
-              <div className="h-7 w-24 rounded-lg bg-gradient-to-r from-[#284B63] to-[#4A7A96]" />
-              <div className="h-7 w-24 rounded-lg border border-border" />
-            </div>
-          </div>
-
-          <div className="absolute left-4 bottom-3 hidden md:flex items-center gap-1.5 text-[11px] text-fg-muted font-medium">
-            <span className="flex -space-x-1">
-              <span className="w-5 h-5 rounded-full bg-sky-400 border-2 border-white" />
-              <span className="w-5 h-5 rounded-full bg-fuchsia-400 border-2 border-white" />
-            </span>
-            Ava and 2 others are reviewing
-          </div>
-          <div className="absolute right-4 bottom-3 flex items-center gap-1.5 text-[11px] text-fg-muted font-medium">
-            <Sparkles size={12} className="text-brand" />
-            Reviewed by Cortardo Agent
-          </div>
-        </div>
-
-        <div className="hidden lg:flex flex-col gap-2.5 w-44 p-3 border-l border-border bg-surface-subtle/40">
-          <div className="text-[11px] font-semibold text-fg-muted uppercase tracking-[0.08em]">Findings</div>
-          {[["Bugs", "2"], ["Security", "1"], ["Style", "4"], ["Coverage", "+0.8%"]].map(([k, v]) => (
-            <div key={k} className="flex items-center justify-between">
-              <span className="text-[11px] text-fg-muted font-medium">{k}</span>
-              <span className="text-[11px] text-foreground font-semibold px-1.5 py-0.5 rounded-md bg-background border border-border">{v}</span>
-            </div>
-          ))}
-        </div>
-      </div>
+function ImageComingSoon() {
+  return (
+    <div className="flex aspect-[4/3] w-full items-center justify-center rounded-[8px] border border-dashed border-border bg-surface-subtle/40">
+      <span className="text-[13px] font-medium text-fg-muted">Image coming soon</span>
     </div>
   );
 }
 
-export default function Product() {
+/* ─── Section header — mono index + label, big title, optional subtext ─── */
+
+function SectionHead({
+  index,
+  label,
+  title,
+  subtitle,
+}: {
+  index?: string;
+  label?: string;
+  title: string;
+  subtitle?: string;
+}) {
   return (
-    <Layout fullWidth logo="/CortardoFull.svg?v=1" logoClassName="h-[20px] sm:h-[26px] md:h-[36px]">
-      <div className="landing-grid" />
-
-      {/* ── Hero ── */}
-      <LandingHero
-        title={
-          <>
-            Review every line.
-            <br />
-            Merge with confidence.
-          </>
-        }
-        description="Connect a repo and Cortardo reviews every pull request — bugs, security issues, and style drift flagged line-by-line, with one-click fixes your whole team can build on."
-        actions={
-          <>
-            <Link href="/auth/signup">
-              <Button design="pill" size="md" className="h-[46px] px-6 text-[15px]">
-                Start reviewing free
-              </Button>
-            </Link>
-            <Link href="/pricing" className="group flex items-center gap-1.5 text-[15px] font-medium text-fg-muted hover:text-foreground transition-colors">
-              See pricing
-              <ArrowRight size={15} strokeWidth={2} className="transition-transform duration-200 group-hover:translate-x-0.5" />
-            </Link>
-          </>
-        }
-      />
-
-      {/* ── Product preview ── */}
-      <section className="w-full">
-        <div className="mx-auto max-w-[1280px] px-6 md:px-10">
-          <AppPreview />
+    <div>
+      {(index || label) && (
+        <div className="flex items-center gap-2.5">
+          {index && <span className="font-mono text-[12px] text-fg-faint">[{index}]</span>}
+          {label && (
+            <span className="text-[11.5px] font-semibold uppercase tracking-[0.14em] text-brand">
+              {label}
+            </span>
+          )}
         </div>
-      </section>
+      )}
+      <h2 className="mt-5 font-baskerville text-[26px] sm:text-[32px] md:text-[38px] font-normal leading-[1.15] tracking-[-0.01em] text-balance text-foreground">
+        {title}
+      </h2>
+      {subtitle && (
+        <p className="mt-4 max-w-[560px] text-[16.5px] md:text-[18px] font-normal leading-[1.65] text-pretty text-foreground">
+          {subtitle}
+        </p>
+      )}
+    </div>
+  );
+}
 
-      {/* ── How it works ── */}
-      <section className="w-full py-20 md:py-28">
-        <div className="mx-auto max-w-[1280px] px-6 md:px-10">
-          <div className="text-center">
-            <SectionHeader
-              centered
-              label="How it works"
-              title="From pull request to merged."
-              subtitle="No waiting on a reviewer's calendar. No merge-day surprises."
-            />
-          </div>
-          <div className="mt-14 md:mt-16 grid md:grid-cols-3 gap-x-12 gap-y-10">
-            {steps.map((step) => (
-              <div key={step.num} className="border-t border-border pt-6">
-                <p className="text-[13px] font-semibold text-[#FF7A6E] tracking-[0.06em]">{step.num}</p>
-                <h3 className="mt-3 text-[18px] font-semibold text-foreground tracking-[-0.01em]">{step.title}</h3>
-                <p className="mt-2 text-[14px] text-fg-muted leading-[1.65] font-medium">{step.description}</p>
-              </div>
-            ))}
-          </div>
+/* ─── Page ─── */
+
+export default function Product() {
+  const [openFaq, setOpenFaq] = useState<number | null>(null);
+
+  return (
+    <Layout fullWidth bleedHeader logo="/CortardoFull.svg?v=1" logoClassName="h-[14px] sm:h-[16px] md:h-[20px]">
+      {/* ── Hero: copy on white background, mockup box below ── */}
+      <div className="w-full px-1.5 sm:px-2 md:px-3 pt-10 md:pt-14 pb-16 md:pb-24">
+        {/* Hero copy — centered on white */}
+        <div className="mx-auto w-full max-w-4xl px-6 pt-6 md:pt-10 pb-12 md:pb-16 text-center">
+          <Reveal delay={0.06}>
+            <h1 className="font-baskerville text-[30px] sm:text-[38px] md:text-[44px] text-foreground font-normal leading-[1.18] tracking-[-0.01em]">
+              Ship clean code.
+              <br />{" "}
+              Skip the review bottleneck.
+            </h1>
+          </Reveal>
+
+          <Reveal delay={0.1}>
+            <p className="mx-auto mt-5 max-w-[520px] text-[14.5px] md:text-[15.5px] text-foreground/80 font-normal leading-[1.7] text-pretty">
+              Connect a repo and Cortardo reviews every pull request, flagging
+              <br /> bugs, security issues, and style drift before they reach production.
+            </p>
+          </Reveal>
         </div>
-      </section>
 
-      {/* ── Features ── */}
-      <section className="w-full py-20 md:py-28 border-t border-border">
-        <div className="mx-auto max-w-[1280px] px-6 md:px-10">
-          <SectionHeader
-            label="Features"
-            title="Everything you need to review great code."
-            subtitle="The agent catches what humans miss. Your team keeps the final say."
-          />
-          <div className="mt-14 md:mt-16 grid sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-5">
-            {features.map(({ icon: Icon, title, description, variant }) => (
-              <SoftCard key={title} className="p-6 h-full flex flex-col gap-3">
-                <span className="flex items-center justify-center w-9 h-9 rounded-[10px] bg-white border border-border/70 shrink-0">
-                  <Icon
-                    size={17}
-                    strokeWidth={1.75}
-                    className={
-                      variant === "brand"
-                        ? "text-sky-500"
-                        : variant === "amber"
-                          ? "text-amber-500"
-                          : variant === "purple"
-                            ? "text-fuchsia-500"
-                            : "text-emerald-500"
-                    }
-                  />
-                </span>
-                <h3 className="text-[15px] font-semibold text-foreground tracking-[-0.01em]">{title}</h3>
-                <p className="text-[13px] text-fg-muted leading-[1.65] font-medium">{description}</p>
-              </SoftCard>
-            ))}
+        <Reveal>
+          <div className="flex h-[640px] w-full items-center justify-center rounded-[8px] border border-dashed border-border bg-surface-subtle/40 md:h-[760px] md:rounded-[10px]">
+            <span className="text-[13px] font-medium text-fg-muted">Mockup coming soon</span>
           </div>
-        </div>
-      </section>
+        </Reveal>
+      </div>
 
-      {/* ── Final CTA ── */}
-      <section className="relative w-full border-t border-border overflow-hidden">
-        <div className="hero-glow" />
-        <div className="relative mx-auto max-w-[1280px] px-6 md:px-10 py-24 md:py-32">
-          <div className="max-w-2xl">
-            <Eyebrow label="START FREE">No card required</Eyebrow>
-            <h2 className="mt-6 text-[34px] sm:text-[44px] md:text-[52px] font-semibold leading-[1.06] tracking-[-0.03em] text-foreground">
-              Your next review is one push away.
-            </h2>
-            <div className="mt-10 flex items-center gap-4">
-              <Link href="/auth/signup">
-                <Button design="pill" size="md" className="h-[48px] px-7 text-[16px]">
-                  Start reviewing free
-                </Button>
-              </Link>
+      {/* ── Open sections — no cards, just content with breathing room. ── */}
+      <div className="mx-auto w-full max-w-6xl px-6 md:px-10 flex flex-col gap-20 md:gap-28">
+
+        {/* ── [01] How it works — header left, image placeholder right ── */}
+        <section id="features" className="scroll-mt-[80px]">
+          <div className="grid items-center gap-12 lg:grid-cols-2 lg:gap-16">
+            <div>
+              <Reveal>
+                <SectionHead
+                  index="01"
+                  label="How it works"
+                  title="From pull request to merged."
+                  subtitle="Open your reviews, run the agent, fix and merge — no waiting on a reviewer's calendar and no merge-day surprises."
+                />
+              </Reveal>
+            </div>
+            <Reveal delay={0.1} className="w-full">
+              <ImageComingSoon />
+            </Reveal>
+          </div>
+        </section>
+
+        {/* ── [02] Cortardo Agent — image placeholder left, header right ── */}
+        <section>
+          <div className="grid items-center gap-12 lg:grid-cols-2 lg:gap-16">
+            <div className="order-2 lg:order-1">
+              <Reveal delay={0.1} className="w-full">
+                <ImageComingSoon />
+              </Reveal>
+            </div>
+            <div className="order-1 lg:order-2">
+              <Reveal>
+                <SectionHead
+                  index="02"
+                  label="Cortardo Agent"
+                  title="One push. A full code review."
+                  subtitle="Push a branch and Cortardo reviews the full diff in seconds — logic errors, edge cases, and unsafe dependencies caught before they ever reach production."
+                />
+              </Reveal>
             </div>
           </div>
-        </div>
-      </section>
+        </section>
+
+        {/* ── [03] Inline suggestions — header left, image placeholder right ── */}
+        <section>
+          <div className="grid items-center gap-12 lg:grid-cols-2 lg:gap-16">
+            <div>
+              <Reveal>
+                <SectionHead
+                  index="03"
+                  label="Inline suggestions"
+                  title="Comments land right on the line."
+                  subtitle="Accept a fix with one click and keep moving. Every plan, including Free, gets inline suggestions that apply straight to your branch — no copy-paste, no follow-up commits."
+                />
+              </Reveal>
+            </div>
+            <Reveal delay={0.1} className="w-full">
+              <ImageComingSoon />
+            </Reveal>
+          </div>
+        </section>
+
+        {/* ── [04] PR summaries — image placeholder left, header right ── */}
+        <section>
+          <div className="grid items-center gap-12 lg:grid-cols-2 lg:gap-16">
+            <div className="order-2 lg:order-1">
+              <Reveal delay={0.1} className="w-full">
+                <ImageComingSoon />
+              </Reveal>
+            </div>
+            <div className="order-1 lg:order-2">
+              <Reveal>
+                <SectionHead
+                  index="04"
+                  label="PR summaries"
+                  title="Merge with full context."
+                  subtitle="Instant walkthroughs of what changed, why it matters, and what to check before merging — with your team's conventions enforced automatically on every review."
+                />
+              </Reveal>
+            </div>
+          </div>
+        </section>
+
+        {/* ── [05] FAQ — header left, accordion right ── */}
+        <section className="pb-10 md:pb-16">
+          <div className="grid gap-12 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] lg:gap-16">
+            <Reveal>
+              <SectionHead
+                index="05"
+                label="FAQ"
+                title="Frequently asked questions."
+                subtitle="Everything you need to know about how Cortardo reviews your code."
+              />
+            </Reveal>
+            <div className="flex flex-col divide-y divide-border border-t border-border">
+              {faqs.map(({ q, a }, i) => (
+                <div key={q}>
+                  <button
+                    onClick={() => setOpenFaq(openFaq === i ? null : i)}
+                    className="flex w-full items-center justify-between gap-4 py-5 md:py-6 text-left bg-none border-none cursor-pointer group"
+                  >
+                    <span className="text-[15px] md:text-[16px] font-semibold tracking-[-0.01em] text-foreground group-hover:text-brand transition-colors">
+                      {q}
+                    </span>
+                    <ChevronDown
+                      className={`h-4 w-4 shrink-0 text-fg-muted transition-transform duration-200 ${openFaq === i ? "rotate-180" : ""}`}
+                    />
+                  </button>
+                  <div
+                    className={`grid transition-all duration-200 ease-out ${openFaq === i ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"}`}
+                  >
+                    <div className="overflow-hidden">
+                      <p className="pb-6 text-[13.5px] md:text-[14px] font-medium leading-[1.7] text-fg-muted">{a}</p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+      </div>
     </Layout>
   );
 }

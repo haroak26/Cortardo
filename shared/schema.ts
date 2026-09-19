@@ -194,11 +194,10 @@ export type Subscription = typeof subscriptions.$inferSelect;
 
 export const PLAN_TIERS = ["free", "pro", "team", "enterprise"] as const;
 export type PlanTier = (typeof PLAN_TIERS)[number];
-export type BillingPeriod = "monthly" | "annual";
 
 export type PlanLimits = {
   label: string;
-  prices: { monthly: number; annual: number };
+  prices: { monthly: number };
   projects: number | "unlimited";
   designFiles: number | "unlimited";
   editors: number | "unlimited";
@@ -216,38 +215,38 @@ export type PlanLimits = {
 };
 
 // Tier keys map to the plan lineup:
-//   free → Free, pro → Hobby, team → Professional, enterprise → Enterprise
+//   free → Starter, pro → Individual, team → Professional, enterprise → Organization
 // 1 credit = $0.001 of AI API usage.
-// Monthly credit allowance: Free 1500, Hobby 5000, Professional 20000, Enterprise unlimited.
-// Pricing: $5/$20/$80 monthly, 20% off annually.
+// Monthly credit allowance: Starter 10, Individual 30, Professional 60, Organization 120.
+// Pricing: $10/$30/$60 monthly.
 export const PLAN_LIMITS: Record<PlanTier, PlanLimits> = {
   free: {
-    label: "Free", prices: { monthly: 0, annual: 0 },
-    projects: 10, designFiles: 10, editors: 1, viewers: 1, storage: 100,
+    label: "Starter", prices: { monthly: 0 },
+    projects: 1, designFiles: 10, editors: 1, viewers: 1, storage: 100,
     versionHistory: 7, components: 10, customFonts: false,
     exportPresets: false, advancedPrototyping: false, apiAccess: false, ssO: false,
-    prioritySupport: false, aiCredits: { monthly: 1500, daily: 500 },
+    prioritySupport: false, aiCredits: { monthly: 10, daily: 10 },
   },
   pro: {
-    label: "Hobby", prices: { monthly: 5, annual: 48 },
-    projects: "unlimited", designFiles: 100, editors: 1, viewers: 10, storage: 2048,
+    label: "Individual", prices: { monthly: 10 },
+    projects: 5, designFiles: 100, editors: 1, viewers: 10, storage: 2048,
     versionHistory: 30, components: 300, customFonts: true,
     exportPresets: true, advancedPrototyping: true, apiAccess: true, ssO: false,
-    prioritySupport: false, aiCredits: { monthly: 5000, daily: "unlimited" },
+    prioritySupport: false, aiCredits: { monthly: 30, daily: "unlimited" },
   },
   team: {
-    label: "Professional", prices: { monthly: 20, annual: 192 },
+    label: "Professional", prices: { monthly: 30 },
     projects: "unlimited", designFiles: 500, editors: 5, viewers: 50, storage: 10240,
     versionHistory: 90, components: 1000, customFonts: true,
     exportPresets: true, advancedPrototyping: true, apiAccess: true, ssO: false,
-    prioritySupport: true, aiCredits: { monthly: 20000, daily: "unlimited" },
+    prioritySupport: true, aiCredits: { monthly: 60, daily: "unlimited" },
   },
   enterprise: {
-    label: "Enterprise", prices: { monthly: 80, annual: 768 },
+    label: "Organization", prices: { monthly: 60 },
     projects: "unlimited", designFiles: "unlimited", editors: "unlimited", viewers: "unlimited", storage: 51200,
     versionHistory: 365, components: 10000, customFonts: true,
     exportPresets: true, advancedPrototyping: true, apiAccess: true, ssO: true,
-    prioritySupport: true, aiCredits: { monthly: "unlimited", daily: "unlimited" },
+    prioritySupport: true, aiCredits: { monthly: 120, daily: "unlimited" },
   },
 };
 

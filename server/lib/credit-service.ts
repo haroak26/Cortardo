@@ -56,11 +56,11 @@ export async function checkAllowance(
 
   if (monthlyAllowance === 0) {
     res.allowed = false;
-    res.reason = "Your plan does not include AI agent credits. Upgrade to Hobby to use the AI agent.";
+    res.reason = "Your plan does not include AI agent credits. Upgrade to Individual to use the AI agent.";
     return res;
   }
 
-  // Unlimited plans (Professional / Enterprise): no monthly or daily caps.
+  // Plans with a numeric monthly cap.
   if (monthlyAllowance !== "unlimited") {
     const monthlyRemaining = monthlyAllowance - monthlyUsed;
     const effectiveCredits = Math.max(0, estimatedCredits - Math.max(0, monthlyRemaining));
