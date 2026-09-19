@@ -371,7 +371,7 @@ test("buildFixReport stops codegen at the cost budget", async () => {
   const coordinator = new ScriptedClient("scripted:terra", () => PLAN_JSON);
   const codegen = new ScriptedClient("scripted:sol", () => CODEGEN_JSON);
   const report = await buildFixReport({
-    ...fixReportInput({ swarmConfig: { ...SWARM_CONFIG, maxCostUsd: 0.005 } }),
+    ...fixReportInput({ swarmConfig: { ...SWARM_CONFIG, maxCostUsd: 0.001 } }),
     coordinatorClient: coordinator,
     codegenClient: codegen,
   });

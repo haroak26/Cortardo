@@ -23,9 +23,9 @@ verified, sandbox used, one comment per stage, every review comment tagged
 
 | Stage | Duration | Model calls | Cost at stage end | Artifact |
 | --- | ---: | ---: | ---: | --- |
-| 2. hypotheses | 56.6s | terra ×2 · luna ×11 | $0.0466 | comment `5717962209` |
-| 3. fixes | 31.5s | terra ×3 · sol ×6 | $0.1350 | comment `5717968456` |
-| 4. verify | 170.9s | terra ×7 · sol ×9 | **$0.2742** | comment `5718003687` |
+| 2. hypotheses | 56.6s | GLM 5.3 ×2 · GPT 5 Nano ×11 | $0.0466 | comment `5717962209` |
+| 3. fixes | 31.5s | GLM 5.3 ×3 · GPT 5.6 Sol ×6 | $0.1350 | comment `5717968456` |
+| 4. verify | 170.9s | GLM 5.3 ×7 · GPT 5.6 Sol ×9 | **$0.2742** | comment `5718003687` |
 
 - **3/3 priority fixes verified** (4 attempts, 8 commands, 3 reproductions), 0 unverified,
   0 inconclusive, 0 skipped.
@@ -46,14 +46,14 @@ verified, sandbox used, one comment per stage, every review comment tagged
 | 3 | `s_b4393f8265` truncated stored API key | `client/src/pages/ApiKeys.tsx:165` | reproduction | **2** | probe + `npm run check` |
 
 All three harnesses failed on the unfixed head and passed with the fix — the strongest class
-of verification. Terra authored the probes; every command exited 0 after the fix, and the
+of verification. GLM 5.3 authored the probes; every command exited 0 after the fix, and the
 typed check (`tsc`) passed in the same clone.
 
 ## The repair cycle (fix 3)
 
-Attempt 1 failed on the probe. Terra's diagnosis read the sandbox output and the current
+Attempt 1 failed on the probe. GLM 5.3's diagnosis read the sandbox output and the current
 files, and concluded the drafted edit was necessary but incomplete — the page stored the key
-but never restored it, so a `sessionStorage.getItem` effect was missing. Sol then rewrote the
+but never restored it, so a `sessionStorage.getItem` effect was missing. GPT 5.6 Sol then rewrote the
 edit set from the pristine head, adding an out-of-diff `useEffect`. Attempt 2 passed:
 
 - attempt 1: probe exit 1 (reported as a reproduction gap, `npm run check` pass) → diagnosis
@@ -65,9 +65,9 @@ This is exactly the intended 1-2 attempt behavior; the cap of 4 was not needed.
 
 | Role | Calls | Tokens in/out | Cached in | Cost |
 | --- | ---: | --- | ---: | ---: |
-| terra (coordinator: plan, synthesis, verify plans, diagnosis) | 7 | 38,756 / 7,847 | 8,448 (22%) | $0.1565 |
-| luna (swarm investigators) | 11 | 29,636 / 4,403 | 16,984 (57%) | $0.0082 |
-| sol (codegen + repairs) | 9 | 18,882 / 1,484 | 6,519 (35%) | $0.1096 |
+| GLM 5.3 (coordinator: plan, synthesis, verify plans, diagnosis) | 7 | 38,756 / 7,847 | 8,448 (22%) | $0.1565 |
+| GPT 5 Nano (swarm investigators) | 11 | 29,636 / 4,403 | 16,984 (57%) | $0.0082 |
+| GPT 5.6 Sol (codegen + repairs) | 9 | 18,882 / 1,484 | 6,519 (35%) | $0.1096 |
 | **Total** | 27 | | | **$0.2742 of $0.50** |
 
 The stage-4 reserve ($0.15) was unlocked for the verify stage only; stages 2-3 stayed within
@@ -83,12 +83,12 @@ the spendable $0.35. `CODEBOT_TARGET_COST_USD=0.40` was not reached.
 2. **Repaired reports.** Per-role usage objects were live tracker references, so published
    role sums drifted from the stage totals once later stages spent more. Role snapshots are
    now copied at report time; this run's receipt is internally consistent.
-3. **Out-of-diff repair edits are not suggestions.** Sol's `useEffect` addition is part of
+3. **Out-of-diff repair edits are not suggestions.** GPT 5.6 Sol's `useEffect` addition is part of
    the verified patch but falls outside the PR diff, so it is printed in the verify comment
    instead of a one-click suggestion. The suggestion review contains the 3 in-diff edits.
 4. **Install dominates the sandbox cost**: 14.4s of the ~20s per-fix setup; the sandbox is
    reused across fixes and the harness itself is fast (4-5s `tsc`, 0.1s probes).
-5. **A pre-existing probe failure is not a fix failure.** Terra marks commands that already
+5. **A pre-existing probe failure is not a fix failure.** GLM 5.3 marks commands that already
    fail on the unfixed head and either drops them from the harness or uses them as the
    reproduction, as happened on fix 3.
 
@@ -121,9 +121,9 @@ the 13 old review bodies were minimized; codegraph is no longer published at all
 
 | Stage | Duration | Cost | Calls | Result |
 | --- | ---: | ---: | --- | --- |
-| hypotheses | 55.8s | $0.0449 | terra ×2 · luna ×14 | 7 findings, 4 critical/high |
-| fixes | 31.6s | $0.1556 | terra ×3 · sol ×7 | 4 drafts, 3 filtered by severity |
-| verify | 134.8s | $0.2372 | terra ×7 · sol ×7 | **4/4 verified, all reproduction** |
+| hypotheses | 55.8s | $0.0449 | GLM 5.3 ×2 · GPT 5 Nano ×14 | 7 findings, 4 critical/high |
+| fixes | 31.6s | $0.1556 | GLM 5.3 ×3 · GPT 5.6 Sol ×7 | 4 drafts, 3 filtered by severity |
+| verify | 134.8s | $0.2372 | GLM 5.3 ×7 · GPT 5.6 Sol ×7 | **4/4 verified, all reproduction** |
 
 Final artifact: **one review comment** `5718483151` plus **5 inline suggestions** (all
 `CodeBot verified fix · high · 1 attempt(s)`); every fix verified on the first attempt. Total
@@ -134,14 +134,14 @@ Final artifact: **one review comment** `5718483151` plus **5 inline suggestions*
 The first fresh run exposed three autmpus gaps on `s_fd221b5523`, all fixed and unit-tested
 before this re-run:
 
-1. **Phantom probe commands.** Terra planned `node probe/verify-playground-model.mjs` without
+1. **Phantom probe commands.** GLM 5.3 planned `node probe/verify-playground-model.mjs` without
    including the probe content, so the command failed `MODULE_NOT_FOUND` on every attempt.
    `parseVerifyPlan` now refuses commands that reference a `probe/...` file the plan does not
    include as a `probeFile`.
-2. **Blind diagnosis.** Repair snapshots were read after `git checkout -f`, so terra diagnosed
+2. **Blind diagnosis.** Repair snapshots were read after `git checkout -f`, so GLM 5.3 diagnosed
    the pristine head and concluded the (already applied) edit was missing. Snapshots are now
    taken from the failed attempt's working tree before the reset.
-3. **Harness-only repairs counted as unavailable.** When terra revised the harness but sol had
+3. **Harness-only repairs counted as unavailable.** When GLM 5.3 revised the harness but GPT 5.6 Sol had
    no source edits, the loop gave up. It now keeps the existing edits and retries when the
    harness signature (commands, probe paths, reproductions) changed; `runVerifyRepair` also
    carries previous probe files forward when the repair response omits them.
@@ -163,9 +163,46 @@ runs: the client-only React changes could not be executed by the harness (no tes
 no importable boundary), so the passes rest on `tsc`/source checks. That is exactly what the
 review now says, and the unverified PR 6 fix was correctly withheld from the suggestions.
 
-**Loop limitation found on PR 6.** Terra's repair planned a new helper module
+**Loop limitation found on PR 6.** GLM 5.3's repair planned a new helper module
 (`client/src/pages/usage-period.ts`) that stage-3 codegen had not created. The engineer can
 only emit find/replace edits on existing files, so the probe and `npm run check` failed on
 every attempt and the fix ended `unverified` after 4 attempts. The plan and repair prompts now
 state that edits replace existing text only and that a fix needing a new file must be folded
 into an existing changed file or declared not fixable.
+
+## OpenRouter migration run (2026-09-18, PR 7)
+
+The provider moved from Merge Gateway to OpenRouter
+(`https://openrouter.ai/api/v1`): the base URL default, the key chain
+(`CODEBOT_API_KEY` → `OPENROUTER_API_KEY` → `CORTADO_AI_API_KEY`), the catalog slugs
+(`z-ai/glm-5.3`, `z-ai/glm-5.3-flash`, `openai/gpt-5-nano`, `openai/gpt-5.6-sol`,
+`mistralai/mistral-nemo`), list pricing and docs. Every request now sends
+`usage: { include: true }` so OpenRouter reports `usage.cost`. The client also retries
+OpenRouter's transient in-flight credit 402s. `npm run bot:test` 112/112 and `tsc` clean.
+
+Command:
+
+```bash
+CODEBOT_API_KEY=sk-or-v1-... CODEBOT_PR=7 CODEBOT_SWARM_MAX_TOKENS=4000 \
+  CODEBOT_MODEL_RETRIES=2 CODEBOT_SWARM_CONCURRENCY=2 npm run bot:e2e:verify
+```
+
+**Result: blocked by provider credit, not by the pipeline.** The hypotheses stage passed on
+OpenRouter with the coordinator on **GLM 5.3**: 8 findings, 5 critical/high, 2 coordinator
+calls and 8/8 swarm calls succeeded (no truncations with a 4k swarm ceiling), $0.0286. The
+fixes stage then failed its planner call with an OpenRouter 402:
+
+```
+This request would exceed your available credits given your current in-flight requests.
+Retry after in-flight requests settle, or add credits.
+```
+
+The provided key is a free-tier key with no purchased credits: `GET /api/v1/credits` reports
+`total_credits: 0`, and OpenRouter now rejects any request whose reservation exceeds the
+roughly **$0.01** left, e.g. `Prompt tokens limit exceeded: 50005 > 10253` and
+`You requested up to 4000 tokens, but can only afford 3310`. The full e2e needs ~$0.05-0.10
+of headroom (the last gateway run cost $0.0529 for hypotheses+fixes+verify), so it cannot
+finish until the account is funded. Run `codebot-aa477a7a` published review comment
+`5735888642` with the 8 findings and the planner failure note; the strict gate assertions
+(≥1 generated fix, ≥1 verified) did not pass and the earlier run's artifacts were removed by
+the e2e cleanup.

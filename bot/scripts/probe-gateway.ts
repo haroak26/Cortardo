@@ -1,8 +1,8 @@
 /**
- * Gateway fact probe for cost work (phase 0). Sends a stable long prefix
- * twice per model to learn whether the gateway reports billed cost and
- * serves prompt tokens from cache, then repeats with prompt_cache_key and
- * an Anthropic-style cache_control block.
+ * OpenRouter fact probe for cost work (phase 0). Sends a stable long prefix
+ * twice per model to learn whether OpenRouter reports billed cost and serves
+ * prompt tokens from cache, then repeats with prompt_cache_key and an
+ * Anthropic-style cache_control block.
  *
  * Run: node --import tsx bot/scripts/probe-gateway.ts
  * Output: a markdown report on stdout. Costs a few cents at most.
@@ -11,13 +11,13 @@ import { resolveCodeBotModelConfig } from "../src/model.ts";
 
 const config = resolveCodeBotModelConfig();
 if (!config.apiKey) {
-  console.error("[probe] no gateway key configured (CODEBOT_API_KEY / CORTADO_AI_API_KEY / MERGE_GATEWAY_API_KEY)");
+  console.error("[probe] no OpenRouter key configured (CODEBOT_API_KEY / OPENROUTER_API_KEY / CORTADO_AI_API_KEY)");
   process.exit(1);
 }
 
 const MODELS = [
-  { role: "coordinator", id: "openai/gpt-5.6-terra", deep: true },
-  { role: "swarm", id: "openai/gpt-5.6-luna", deep: true },
+  { role: "coordinator", id: "z-ai/glm-5.3", deep: true },
+  { role: "swarm", id: "openai/gpt-5-nano", deep: true },
   { role: "codegen", id: "openai/gpt-5.6-sol", deep: true },
 ];
 
@@ -58,6 +58,7 @@ async function call(model: string, system: string, user: string, extra: Record<s
         { role: "user", content: user },
       ],
       max_tokens: 16,
+      usage: { include: true },
       ...extra,
     }),
   });
@@ -129,7 +130,7 @@ async function probeModel(model: string, deep: boolean): Promise<VariantRun[]> {
 }
 
 const report: string[] = [
-  "# Gateway cost/cache probe",
+  "# OpenRouter cost/cache probe",
   "",
   `Base URL: \`${config.baseUrl}\` · prefix ≈ ${Math.round(PREFIX.length / 4)} tokens · date ${new Date().toISOString()}`,
   "",

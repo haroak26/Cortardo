@@ -4,17 +4,17 @@ import { z } from "zod";
  * ServiceBot — the in-app assistant that answers questions about the
  * current page and performs work on it through browser-side tools.
  *
- * The model runs on Merge Gateway (`zai/glm-5.3-flash` by default). The
+ * The model runs on OpenRouter (`z-ai/glm-5.3-flash` by default). The
  * browser owns the tools: the model replies with a JSON envelope describing
  * what to say and which tools to run, the client executes them, feeds the
  * observations back, and repeats until the model reports `done`.
  */
 
-export const SUPPORT_AGENT_MODEL = "zai/glm-5.3-flash";
+export const SUPPORT_AGENT_MODEL = "z-ai/glm-5.3-flash";
 export const SUPPORT_AGENT_LABEL = "GLM 5.3 Flash";
-export const SUPPORT_AGENT_PROVIDER = "Merge Gateway";
+export const SUPPORT_AGENT_PROVIDER = "OpenRouter";
 /** Small Mistral model used to gate off-topic prompts before the main model. */
-export const SUPPORT_AGENT_GUARD_MODEL = "open-mistral-nemo";
+export const SUPPORT_AGENT_GUARD_MODEL = "mistralai/mistral-nemo";
 export const SUPPORT_AGENT_MAX_TURNS = 6;
 export const SUPPORT_AGENT_MAX_MESSAGES = 60;
 export const SUPPORT_AGENT_MAX_CHARS = 48_000;

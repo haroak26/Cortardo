@@ -15,14 +15,14 @@ import {
 
 /**
  * ServiceBot endpoints. The browser owns the page tools; this route only talks
- * to Merge Gateway (OpenAI-compatible) and returns the model's next reply. The
+ * to OpenRouter (OpenAI-compatible) and returns the model's next reply. The
  * client loop executes actions and asks again.
  *
  * A small Mistral guard model screens each new user turn before the main
  * GLM 5.3 Flash call, and a tiny title call names each conversation.
  *
- * Keys are tried in order so a spent or rate-limited gateway key falls
- * through to the next configured one instead of failing the chat.
+ * Keys are tried in order so a spent or rate-limited key falls through to the
+ * next configured one instead of failing the chat.
  */
 
 const REQUEST_TIMEOUT_MS = 45_000;
@@ -31,14 +31,12 @@ const MAX_OUTPUT_TOKENS = 3_000;
 const TRANSIENT_RETRY_DELAY_MS = 500;
 
 function gatewayConfig() {
-  const baseUrl = process.env.CORTADO_AI_BASE_URL?.trim() || "https://api-gateway.merge.dev/v1/ai-sdk";
+  const baseUrl = process.env.CORTADO_AI_BASE_URL?.trim() || "https://openrouter.ai/api/v1";
   const keys = [
     process.env.SUPPORT_AGENT_API_KEY,
+    process.env.OPENROUTER_API_KEY,
     process.env.CORTADO_AI_API_KEY,
     process.env.CODEBOT_API_KEY,
-    process.env.MERGE_GATEWAY_API_KEY,
-    process.env.CODEBOT_MERGE_API_KEY,
-    process.env.OPENCODE_MERGE_KEY,
   ]
     .map((value) => value?.trim())
     .filter((value): value is string => Boolean(value));
@@ -119,6 +117,9 @@ async function requestOnce(
     });
     const raw = await response.text();
     const upstream = upstreamMessage(raw);
+    if (response.status === 402 && /in-flight requests|available credits/i.test(raw)) {
+      throw failure(upstream || "provider busy (402)", response.status, "transient", upstream);
+    }
     if (response.status === 401 || response.status === 402 || response.status === 403) {
       throw failure(upstream || "gateway key rejected", response.status, "key", upstream);
     }

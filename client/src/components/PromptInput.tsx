@@ -47,9 +47,9 @@ export type PromptInputHandle = {
 };
 
 const MODELS = [
-  { value: 'GPT 5.6 Luna', label: 'GPT 5.6 Luna', icon: <img src="/chatgptlogo.svg" alt="" className="w-[14px] h-[14px] shrink-0" />, desc: 'Best for complex review tasks' },
-  { value: 'GPT 5.6 Terra', label: 'GPT 5.6 Terra', icon: <img src="/chatgptlogo.svg" alt="" className="w-[14px] h-[14px] shrink-0" />, desc: 'Balanced for everyday review work' },
-  { value: 'GPT 5.6 Sol', label: 'GPT 5.6 Sol', icon: <img src="/chatgptlogo.svg" alt="" className="w-[14px] h-[14px] shrink-0" />, desc: 'Fast and efficient for quick iterations' },
+  { value: 'GPT 5 Nano', label: 'GPT 5 Nano', icon: <img src="/chatgptlogo.svg" alt="" className="w-[14px] h-[14px] shrink-0" />, desc: 'Fast and efficient for quick iterations' },
+  { value: 'GLM 5.3', label: 'GLM 5.3', icon: <HugeiconsIcon icon={SparklesIcon} size={14} className="shrink-0 text-[hsl(var(--brand-soft))]" />, desc: 'Balanced for everyday review work' },
+  { value: 'GPT 5.6 Sol', label: 'GPT 5.6 Sol', icon: <img src="/chatgptlogo.svg" alt="" className="w-[14px] h-[14px] shrink-0" />, desc: 'Best for complex review tasks' },
   { value: 'Gemini 3.1 Pro', label: 'Gemini 3.1 Pro', icon: <img src="/geminilogo.webp" alt="" className="w-[14px] h-[14px] shrink-0" />, desc: 'Best for multimodal understanding' },
   { value: 'Gemini 3.7 Flash', label: 'Gemini 3.7 Flash', icon: <img src="/geminilogo.webp" alt="" className="w-[14px] h-[14px] shrink-0" />, desc: 'Optimised for speed and quality' },
   { value: 'GLM 5.3 Flash', label: 'GLM 5.3 Flash', icon: <HugeiconsIcon icon={SparklesIcon} size={14} className="shrink-0 text-[hsl(var(--brand-soft))]" />, desc: 'Fast agent model for support and page actions' },
@@ -70,8 +70,8 @@ const GEMINI_REASONING: { value: string; desc: string }[] = [
 ];
 
 const MODEL_META: Record<string, { label: string; icon: React.ReactNode }> = {
-  'GPT 5.6 Luna': { label: 'GPT 5.6 Luna', icon: <img src="/chatgptlogo.svg" alt="" className="w-[14px] h-[14px] shrink-0" /> },
-  'GPT 5.6 Terra': { label: 'GPT 5.6 Terra', icon: <img src="/chatgptlogo.svg" alt="" className="w-[14px] h-[14px] shrink-0" /> },
+  'GPT 5 Nano': { label: 'GPT 5 Nano', icon: <img src="/chatgptlogo.svg" alt="" className="w-[14px] h-[14px] shrink-0" /> },
+  'GLM 5.3': { label: 'GLM 5.3', icon: <HugeiconsIcon icon={SparklesIcon} size={14} className="shrink-0 text-[hsl(var(--brand-soft))]" /> },
   'GPT 5.6 Sol': { label: 'GPT 5.6 Sol', icon: <img src="/chatgptlogo.svg" alt="" className="w-[14px] h-[14px] shrink-0" /> },
   'Gemini 3.1 Pro': { label: 'Gemini 3.1 Pro', icon: <img src="/geminilogo.webp" alt="" className="w-[14px] h-[14px] shrink-0" /> },
   'Gemini 3.7 Flash': { label: 'Gemini 3.7 Flash', icon: <img src="/geminilogo.webp" alt="" className="w-[14px] h-[14px] shrink-0" /> },

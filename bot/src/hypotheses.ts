@@ -1,6 +1,6 @@
 /**
  * Hypotheses stage: deterministic rules produce grounded leads, the coordinator
- * plans assignments, luna swarm agents read the real code to confirm or kill
+ * plans assignments, GPT 5 Nano swarm agents read the real code to confirm or kill
  * them, and the coordinator synthesizes the final ranked list. Everything
  * published is an unproven advisory — later stages prove or fix. The stage is
  * honest when the model is unavailable and falls back to the deterministic

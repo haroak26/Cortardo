@@ -321,7 +321,7 @@ export function codegenUser(input: CodegenInput): string {
 }
 
 // ---------------------------------------------------------------------------
-// Stage 4 — sandbox verification (terra plans, terra diagnoses)
+// Stage 4 — sandbox verification (GLM 5.3 plans, GLM 5.3 diagnoses)
 // ---------------------------------------------------------------------------
 
 function renderEditsForPrompt(edits: FixEdit[], maxChars = 4_000): string {

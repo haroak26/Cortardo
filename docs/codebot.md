@@ -16,7 +16,7 @@ one native GitHub suggestion per verified fix.
 | 1. codegraph | shipped | Internal only: the code graph of the changed files, consumed by the later stages. Never published |
 | 2. hypotheses | shipped | Unproven, mechanism-level advisories, ranked by priority, rendered inside the single review |
 | 3. fixes | shipped | Coordinator fix plans + codegen drafts (priority severities only); drafts stay off GitHub until verification |
-| 4. verify | shipped | The autmpus loop: terra plans a sandbox test, the draft is cloned/applied/run in E2B, failures are diagnosed and repaired, verified edits become the inline suggestions |
+| 4. verify | shipped | The autmpus loop: GLM 5.3 plans a sandbox test, the draft is cloned/applied/run in E2B, failures are diagnosed and repaired, verified edits become the inline suggestions |
 
 The published review (`<!-- codebot -->` + `<!-- codebot:review -->`) carries the findings,
 the fix and verification status of each, the verified patches outside the diff, and a
@@ -47,17 +47,17 @@ run-inputs.ts ──► loadPullRequestContext / loadChangedFiles / analyseChang
    ▼
 runCodeBot() ─► stage 1 codegraph        buildCodegraphReport (internal, never published)
              ─► stage 2 hypotheses       scanHypotheses (9 rules, no model)
-                                         runAssignmentPlanner (terra)      call 1
-                                         runSwarm (luna, read tools)       ≤6 agents
-                                         runSynthesis (terra)              call 2
+                                         runAssignmentPlanner (GLM 5.3)         call 1
+                                         runSwarm (GPT 5 Nano, read tools)      ≤6 agents
+                                         runSynthesis (GLM 5.3)                 call 2
                                          dedupeHypotheses → applyDismissals → priority 1..N
-              ─► stage 3 fixes            runFixPlanner (terra)             call 1
-                                         runCodegenAgent (sol) per priority hypothesis, validated
+              ─► stage 3 fixes            runFixPlanner (GLM 5.3)           call 1
+                                         runCodegenAgent (GPT 5.6 Sol) per priority hypothesis, validated
                                          (publishing and suggestions deferred)
               ─► stage 4 verify           E2B sandbox: clone head, install once
-                                         runVerifyPlanner (terra) per fix  call 1
+                                         runVerifyPlanner (GLM 5.3) per fix     call 1
                                          apply edits → run harness (baseline + attempts)
-                                         on failure: runVerifyRepair (terra) → sol rewrites
+                                         on failure: runVerifyRepair (GLM 5.3) → GPT 5.6 Sol rewrites
                                          ≤4 attempts (typically 1-2)
               ─► publish                  ONE review comment + one suggestion per verified fix
 ```
@@ -87,11 +87,11 @@ mismatches, empty/removed catches, unawaited state-changing calls, **condition c
 guard removal, cleanup removal. Deduped by `file:line:mechanism`, ranked, capped at 12.
 
 ### 4.2 Coordinator plan + swarm + synthesis
-Terra splits leads and uncovered files into ≤6 assignments. Luna investigators each run a
+GLM 5.3 splits leads and uncovered files into ≤6 assignments. GPT 5 Nano investigators each run a
 read-only tool loop (`read_file`, `read_diff`, `find_files`, `search_code`, `get_impact`);
 `search_code` is clearly labelled as the **default-branch index**, never as head evidence.
 Empty answers are pushed back until tools ran; the harness grounds a lazy agent itself. One
-agent failing never fails the run. Terra then synthesizes the final list and may add
+agent failing never fails the run. GLM 5.3 then synthesizes the final list and may add
 cross-file defects nobody reported.
 
 ### 4.3 One bug exactly once (`dedupeHypotheses`)
@@ -111,13 +111,13 @@ advisory prints `priority #n` plus its dismissal id (`s_…`). Dismissals from
 
 ## 5. Stage 3 — fixes (drafts only)
 
-### 5.1 Plan (terra, one call)
+### 5.1 Plan (GLM 5.3, one call)
 Every **priority** hypothesis — severity `critical` or `high` by default
 (`CODEBOT_FIX_SEVERITIES`) — becomes either a concrete plan
 (`summary`, `steps`, `files`, `risks`, `testIdea`) or an explicit `not_fixable` reason;
 medium/low advisories are counted and skipped. `maxFixes=0` means every priority hypothesis.
 
-### 5.2 Codegen (sol, parallel, up to 2 attempts per fix)
+### 5.2 Codegen (GPT 5.6 Sol, parallel, up to 2 attempts per fix)
 Each plan runs a read-only agent that must read the current code and return exact
 find/replace edits. Validation (`validateFixEdits`): file readable at head, `find` present
 exactly once, `replace` different, ≤6 edits; suggested ranges are mapped to head line
@@ -139,7 +139,7 @@ failed | failed_transport | skipped`, and skips state the reason (budget/deadlin
 Nothing is compiled, applied or pushed. That is stage 4.
 
 ### 5.4 Cost and caching
-- Models: coordinator `openai/gpt-5.6-terra`, swarm `openai/gpt-5.6-luna`, codegen
+- Models: coordinator `z-ai/glm-5.3`, swarm `openai/gpt-5-nano`, codegen
   `openai/gpt-5.6-sol`.
 - Codegen runs with **minimal reasoning** (`CODEBOT_REASONING_CODEGEN`, default `minimal`),
   `codegenTurns=3`, a shared cacheable context prefix (same system prompt + repo/PR + full
@@ -158,12 +158,12 @@ the PR head into an ephemeral E2B sandbox and proves the priority drafts there.
 Only generated fixes whose hypothesis severity is in `CODEBOT_FIX_SEVERITIES`
 (`critical,high` by default) reach the sandbox. Medium/low advisories stay as advisories.
 
-### 6.2 Plan (terra, one call per fix)
+### 6.2 Plan (GLM 5.3, one call per fix)
 Input: hypothesis, fix plan, drafted edits, changed-file diff, `package.json`, the repository
 tree and the likely tests from the code graph. Output: an optional install override, up to 5
 commands, up to 3 probe files, and `mustFailBefore` — the commands expected to fail on the
 unfixed head. Validation rejects destructive commands, unsafe probe paths, oversized probes
-and duplicate commands. When terra is unavailable, the deterministic fallback uses the
+and duplicate commands. When GLM 5.3 is unavailable, the deterministic fallback uses the
 repository's own `test` / `check` / `build` scripts or detected test files.
 
 ### 6.3 Sandbox
@@ -178,11 +178,11 @@ probe files, applies the full edit set and runs the harness. An attempt passes o
 every command exits 0. Evidence is graded honestly: `reproduction`/`probe`/`tests` require
 commands that actually execute repository code; a probe that only reads source text produces
 `static` (source check — behavior not exercised); typecheck/build-only evidence is `compile`.
-The pipeline always adds the repository's own typecheck or test command when a terra harness
+The pipeline always adds the repository's own typecheck or test command when a GLM 5.3 harness
 omitted it, and the review says how many verified fixes ran the changed code and warns when a
-fix rests on source/compile checks, so knock-on effects are never implied. On failure terra
-diagnoses from the exit codes, output and current files; sol rewrites the edits from the
-pristine head (in the diff or outside it), and terra may replace the commands. Maximum 4
+fix rests on source/compile checks, so knock-on effects are never implied. On failure GLM 5.3
+diagnoses from the exit codes, output and current files; GPT 5.6 Sol rewrites the edits from the
+pristine head (in the diff or outside it), and GLM 5.3 may replace the commands. Maximum 4
 attempts (1 initial + 3 repairs); stops early on success, `unfixable`, budget or deadline.
 Commands that already fail on the unfixed head are reported as pre-existing and never counted
 as fix failures. The harness probe contents are published in the collapsed verification log.
@@ -207,8 +207,8 @@ posting the suggestions fails, the review is republished once with the failure i
 
 | Env | Default | Purpose |
 | --- | --- | --- |
-| `CODEBOT_API_KEY` | — | explicit gateway key override (checked first) |
-| `CODEBOT_MODEL` / `CODEBOT_SWARM_MODEL` / `CODEBOT_CODEGEN_MODEL` | terra / luna / sol | role models |
+| `CODEBOT_API_KEY` | — | explicit OpenRouter key override (checked first) |
+| `CODEBOT_MODEL` / `CODEBOT_SWARM_MODEL` / `CODEBOT_CODEGEN_MODEL` | GLM 5.3 / GPT 5 Nano / GPT 5.6 Sol | role models |
 | `CODEBOT_REASONING` / `CODEBOT_REASONING_CODEGEN` | medium / minimal | reasoning effort |
 | `CODEBOT_SWARM_AGENTS` / `_CONCURRENCY` / `_TURNS` / `_TOOLS` / `_SEARCH` | 6 / 3 / 4 / 3 / on | swarm |
 | `CODEBOT_MAX_FIXES` | 0 (all priority) | codegen cap |
@@ -223,12 +223,12 @@ posting the suggestions fails, the review is republished once with the failure i
 | `CODEBOT_VERIFY` | on | 0 disables stage 4 |
 | `CODEBOT_VERIFY_ATTEMPTS` | 4 | 1 initial + repairs |
 | `CODEBOT_VERIFY_MS` / `_COMMAND_TIMEOUT_MS` | 900000 / 300000 | stage and command clocks |
-| `CODEBOT_VERIFY_COMMANDS` | — | newline-separated overrides (skips terra) |
+| `CODEBOT_VERIFY_COMMANDS` | — | newline-separated overrides (skips GLM 5.3) |
 | `CODEBOT_E2B_TEMPLATE` / `_TIMEOUT_MS` | cortardo-review-v1 / 900000 | sandbox |
 | `E2B_API_KEY` | — | required for stage 4 |
 | `CODEBOT_NO_MODEL` | — | deterministic-only |
 
-The gateway client retries transient statuses, and capability fallbacks (json mode, token
+The OpenRouter client retries transient statuses, and capability fallbacks (json mode, token
 caps, reasoning, temperature) are decided **per request**, so concurrent agents cannot race
 each other's recovery.
 
@@ -294,7 +294,7 @@ loop (E2B clone/install/verify/repair, graded evidence, verified-only suggestion
     and published artifact.
 11. Metrics/SLOs: latency per stage, recall on fixtures, cost per PR, cache-hit rate,
     failure rates by class; alert on repeated transport or GitHub failures.
-12. Runbook + self-host docs; fallback routing to a secondary gateway.
+12. Runbook + self-host docs; fallback routing to a secondary provider.
 
 ---
 

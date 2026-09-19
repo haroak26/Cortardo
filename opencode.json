@@ -1,5 +1,5 @@
 {
   "$schema": "https://opencode.ai/config.json",
-  "model": "merge-gateway/zai/glm-5.3-flash",
-  "small_model": "merge-gateway/zai/glm-5.3-flash"
+  "model": "openrouter/z-ai/glm-5.3-flash",
+  "small_model": "openrouter/z-ai/glm-5.3-flash"
 }

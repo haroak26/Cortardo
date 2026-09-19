@@ -159,7 +159,7 @@ export interface HypothesisReport {
 // Stage 3 — fixes
 // ---------------------------------------------------------------------------
 
-/** What the coordinator (terra) intends to change, per hypothesis. */
+/** What the coordinator (GLM 5.3) intends to change, per hypothesis. */
 export interface FixPlan {
   hypothesisId: string;
   summary: string;
@@ -169,7 +169,7 @@ export interface FixPlan {
   testIdea?: string;
 }
 
-/** One exact find/replace edit produced by the codegen model (sol). */
+/** One exact find/replace edit produced by the codegen model (GPT 5.6 Sol). */
 export interface FixEdit {
   path: string;
   find: string;
@@ -386,14 +386,14 @@ export interface FixStageResult extends CodeBotStageResult {
 // Stage 4 — verify (the autmpus loop)
 // ---------------------------------------------------------------------------
 
-/** One command the coordinator (terra) wants run in the sandbox. */
+/** One command the coordinator (GLM 5.3) wants run in the sandbox. */
 export interface VerifyCommand {
   cmd: string;
   why: string;
   timeoutMs: number;
 }
 
-/** A small test or probe file terra writes into the sandbox before verifying. */
+/** A small test or probe file GLM 5.3 writes into the sandbox before verifying. */
 export interface VerifyProbeFile {
   path: string;
   content: string;
@@ -442,7 +442,7 @@ export interface VerifyAttempt {
   reproductions: number;
   /** Reproductions that actually executed repository code, not just source text. */
   behavioralReproductions: number;
-  /** Terra's diagnosis when the attempt failed. */
+  /** GLM 5.3's diagnosis when the attempt failed. */
   diagnosis?: string;
   durationMs: number;
 }

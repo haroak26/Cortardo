@@ -1,7 +1,7 @@
 /**
- * Stage 4 — the autmpus loop. Terra designs a sandbox harness, the drafted fix
+ * Stage 4 — the autmpus loop. GLM 5.3 designs a sandbox harness, the drafted fix
  * is applied to a fresh clone of the PR head, and the harness runs. On failure
- * terra diagnoses and sol rewrites the edits (in the diff or outside it), up to
+ * GLM 5.3 diagnoses and GPT 5.6 Sol rewrites the edits (in the diff or outside it), up to
  * four attempts. Verified edits replace the stage-3 drafts as suggestions.
  */
 import type { FileAnalysis } from "../../server/lib/codegraph/analyze.ts";
@@ -211,7 +211,7 @@ export function selectVerifyFixes(report: FixReport, severities: HypothesisSever
 }
 
 // ---------------------------------------------------------------------------
-// Terra calls
+// GLM 5.3 calls
 // ---------------------------------------------------------------------------
 
 export interface VerifyPlannerInput {

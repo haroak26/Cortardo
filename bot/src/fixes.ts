@@ -1,6 +1,6 @@
 /**
- * Stage 3 — fixes. The coordinator (terra) turns each hypothesis into a fix
- * plan; the codegen model (sol) writes the actual patch as exact find/replace
+ * Stage 3 — fixes. The coordinator (GLM 5.3) turns each hypothesis into a fix
+ * plan; the codegen model (GPT 5.6 Sol) writes the actual patch as exact find/replace
  * edits against the current head. Drafts only: nothing is compiled, applied or
  * pushed, and every fix carries its plan, confidence and validation status.
  */

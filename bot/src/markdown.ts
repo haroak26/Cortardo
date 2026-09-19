@@ -571,8 +571,8 @@ export function buildVerifyComment(input: BuildVerifyCommentInput): string {
     lines.push("");
   }
   lines.push("---");
-  lines.push(`_Planner (terra): ${usageLine("Coordinator", usage.coordinator)}_`);
-  lines.push(`_Repairs (sol): ${usageLine("Codegen", usage.codegen)}_`);
+  lines.push(`_Planner (GLM 5.3): ${usageLine("Coordinator", usage.coordinator)}_`);
+  lines.push(`_Repairs (GPT 5.6 Sol): ${usageLine("Codegen", usage.codegen)}_`);
   lines.push(
     `_Total $${usage.totalCostUsd.toFixed(4)} of $${usage.maxCostUsd.toFixed(2)} budget · ` +
       `stage 4 of the CodeBot pipeline (verify)._`,
@@ -796,8 +796,8 @@ export function buildReviewComment(input: BuildReviewCommentInput): string {
 
   lines.push("---");
   if (usage) {
-    lines.push(`_Coordinator (terra): ${usageLine("Coordinator", usage.coordinator)}_`);
-    lines.push(`_Codegen (sol): ${usageLine("Codegen", usage.codegen)}_`);
+    lines.push(`_Coordinator (GLM 5.3): ${usageLine("Coordinator", usage.coordinator)}_`);
+    lines.push(`_Codegen (GPT 5.6 Sol): ${usageLine("Codegen", usage.codegen)}_`);
     const totalCalls = usage.coordinator.calls + usage.swarm.calls + usage.codegen.calls;
     lines.push(
       `_Total $${usage.totalCostUsd.toFixed(4)} of $${usage.maxCostUsd.toFixed(2)} budget · ` +

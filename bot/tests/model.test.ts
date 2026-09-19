@@ -8,8 +8,8 @@ import {
 } from "../src/model.ts";
 
 const CONFIG: CodeBotModelConfig = {
-  model: "openai/gpt-5.6-terra",
-  swarmModel: "openai/gpt-5.6-luna",
+  model: "z-ai/glm-5.3",
+  swarmModel: "openai/gpt-5-nano",
   codegenModel: "openai/gpt-5.6-sol",
   baseUrl: "http://gateway.test",
   apiKey: "test-key",
@@ -92,7 +92,7 @@ test("max_tokens rejections walk down to omitting the cap", async () => {
   assert.deepEqual(params, ["max_tokens", "max_completion_tokens", undefined]);
 });
 
-test("codegen model config uses minimal reasoning and the sol default", () => {
+test("codegen model config uses minimal reasoning and the GPT 5.6 Sol default", () => {
   const config = resolveCodeBotModelConfig({});
   assert.equal(config.codegenModel, "openai/gpt-5.6-sol");
   assert.equal(config.codegenReasoning, "minimal");
@@ -112,10 +112,10 @@ test("cached prompt tokens are billed at the cached rate", async () => {
       choices: [{ message: { content: '{"ok":true}' } }],
       usage: { prompt_tokens: 1_000_000, completion_tokens: 0, prompt_tokens_details: { cached_tokens: 1_000_000 } },
     })) as typeof fetch;
-  const client = new HttpCodeBotModelClient({ ...CONFIG, model: "openai/gpt-5.6-luna" }, fetchImpl);
+  const client = new HttpCodeBotModelClient({ ...CONFIG, model: "openai/gpt-5-nano" }, fetchImpl);
   const completion = await client.complete({ system: "s", user: "u" });
   assert.equal(completion.cachedTokensIn, 1_000_000);
-  assert.equal(completion.costUsd, 0.05, "cached luna input bills at 10% of the input rate");
+  assert.equal(completion.costUsd, 0.005, "cached gpt-5-nano input bills at 10% of the input rate");
 });
 
 test("unknown models are priced conservatively instead of free", async () => {
@@ -126,7 +126,48 @@ test("unknown models are priced conservatively instead of free", async () => {
     })) as typeof fetch;
   const client = new HttpCodeBotModelClient({ ...CONFIG, model: "openai/custom-mystery" }, fetchImpl);
   const completion = await client.complete({ system: "s", user: "u" });
-  assert.equal(completion.costUsd, 7.5, "an uncatalogued model bills at the priciest known input rate");
+  assert.equal(completion.costUsd, 2, "an uncatalogued model bills at the priciest known input rate");
+});
+
+test("requests ask OpenRouter to include usage.cost", async () => {
+  let body: Record<string, unknown> | undefined;
+  const fetchImpl = (async (_url: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+    body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+    return jsonResponse(200, {
+      choices: [{ message: { content: '{"ok":true}' } }],
+      usage: { prompt_tokens: 2, completion_tokens: 1, cost: 0.0001 },
+    });
+  }) as typeof fetch;
+
+  const client = new HttpCodeBotModelClient(CONFIG, fetchImpl);
+  const completion = await client.complete({ system: "s", user: "u" });
+  assert.deepEqual(body?.usage, { include: true });
+  assert.equal(completion.costUsd, 0.0001, "the reported OpenRouter cost wins over the catalog estimate");
+});
+
+test("OpenRouter in-flight credit rejections are retried, not fatal", async () => {
+  let calls = 0;
+  const fetchImpl = (async () => {
+    calls += 1;
+    if (calls === 1) {
+      return jsonResponse(402, {
+        error: {
+          message:
+            "This request would exceed your available credits given your current in-flight requests. Retry after in-flight requests settle, or add credits.",
+          code: 402,
+        },
+      });
+    }
+    return jsonResponse(200, {
+      choices: [{ message: { content: '{"ok":true}' } }],
+      usage: { prompt_tokens: 2, completion_tokens: 1 },
+    });
+  }) as typeof fetch;
+
+  const client = new HttpCodeBotModelClient({ ...CONFIG, maxRetries: 1 }, fetchImpl);
+  const completion = await client.complete({ system: "s", user: "u" });
+  assert.equal(completion.text, '{"ok":true}');
+  assert.equal(calls, 2, "the in-flight 402 was retried once");
 });
 
 test("prompt_cache_key is sent and disabled per request when the gateway rejects it", async () => {

@@ -303,8 +303,8 @@ test("runSynthesis validates the synthesis and reports drops", async () => {
 
 test("resolves the coordinator and swarm models with env overrides", () => {
   const defaults = resolveCodeBotModelConfig({});
-  assert.equal(defaults.model, "openai/gpt-5.6-terra");
-  assert.equal(defaults.swarmModel, "openai/gpt-5.6-luna");
+  assert.equal(defaults.model, "z-ai/glm-5.3");
+  assert.equal(defaults.swarmModel, "openai/gpt-5-nano");
   assert.equal(defaults.reasoning, "medium");
 
   const overridden = resolveCodeBotModelConfig({

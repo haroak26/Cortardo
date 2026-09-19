@@ -61,11 +61,9 @@ test("formatSupportObservations reports successes and failures", () => {
 test("gateway falls back to the next key when one is out of credits", async () => {
   const keyNames = [
     "SUPPORT_AGENT_API_KEY",
+    "OPENROUTER_API_KEY",
     "CORTADO_AI_API_KEY",
     "CODEBOT_API_KEY",
-    "MERGE_GATEWAY_API_KEY",
-    "CODEBOT_MERGE_API_KEY",
-    "OPENCODE_MERGE_KEY",
   ] as const;
   const saved = Object.fromEntries(keyNames.map((name) => [name, process.env[name]]));
   const originalFetch = globalThis.fetch;
@@ -73,7 +71,7 @@ test("gateway falls back to the next key when one is out of credits", async () =
   try {
     for (const name of keyNames) delete process.env[name];
     process.env.SUPPORT_AGENT_API_KEY = "spent-key";
-    process.env.MERGE_GATEWAY_API_KEY = "good-key";
+    process.env.OPENROUTER_API_KEY = "good-key";
     globalThis.fetch = (async (_url: unknown, init?: RequestInit) => {
       const headers = new Headers(init?.headers);
       seen.push(headers.get("authorization") ?? "");

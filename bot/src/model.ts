@@ -1,16 +1,16 @@
 /**
- * Minimal gateway client for the hypothesis stage. This is a small client with
- * capability fallbacks that keep the gateway honest (json mode, token caps,
- * reasoning, temperature), plus per-role usage accounting and a soft cost
- * budget shared by the coordinator and the swarm.
+ * Minimal OpenRouter client for the hypothesis stage. This is a small client
+ * with capability fallbacks that keep the provider honest (json mode, token
+ * caps, reasoning, temperature), plus per-role usage accounting and a soft
+ * cost budget shared by the coordinator and the swarm.
  */
 import { catalogEntry, parseReasoningEffort, type ReasoningEffort } from "@shared/models";
 import { HYPOTHESIS_SEVERITIES, type HypothesisSeverity } from "./types.ts";
 
 /** Coordinator (master agent): plans the investigation and synthesizes it. */
-export const CODEBOT_DEFAULT_COORDINATOR_MODEL = "openai/gpt-5.6-terra";
+export const CODEBOT_DEFAULT_COORDINATOR_MODEL = "z-ai/glm-5.3";
 /** Swarm (investigator): reads the code and gathers evidence per assignment. */
-export const CODEBOT_DEFAULT_SWARM_MODEL = "openai/gpt-5.6-luna";
+export const CODEBOT_DEFAULT_SWARM_MODEL = "openai/gpt-5-nano";
 /** Codegen (engineer): writes the fix for a planned hypothesis. */
 export const CODEBOT_DEFAULT_CODEGEN_MODEL = "openai/gpt-5.6-sol";
 export const CODEBOT_DEFAULT_MODEL = CODEBOT_DEFAULT_COORDINATOR_MODEL;
@@ -129,16 +129,13 @@ export function resolveCodeBotModelConfig(env: Record<string, string | undefined
     model: env.CODEBOT_MODEL?.trim() || CODEBOT_DEFAULT_COORDINATOR_MODEL,
     swarmModel: env.CODEBOT_SWARM_MODEL?.trim() || CODEBOT_DEFAULT_SWARM_MODEL,
     codegenModel: env.CODEBOT_CODEGEN_MODEL?.trim() || CODEBOT_DEFAULT_CODEGEN_MODEL,
-    baseUrl: env.CORTADO_AI_BASE_URL?.trim() || "https://api-gateway.merge.dev/v1/ai-sdk",
+    baseUrl: env.CORTADO_AI_BASE_URL?.trim() || "https://openrouter.ai/api/v1",
     apiKey:
       // Explicit override first so an exhausted project key can be swapped
       // without touching the shared CORTADO_AI_* configuration.
       env.CODEBOT_API_KEY?.trim() ||
+      env.OPENROUTER_API_KEY?.trim() ||
       env.CORTADO_AI_API_KEY?.trim() ||
-      env.CODEBOT_MERGE_API_KEY?.trim() ||
-      env.MERGE_GATEWAY_API_KEY?.trim() ||
-      // Workspace fallback for local validation runs.
-      env.OPENCODE_MERGE_KEY?.trim() ||
       "",
     timeoutMs: envInt(env.CODEBOT_MODEL_TIMEOUT_MS, 60_000),
     maxRetries: envInt(env.CODEBOT_MODEL_RETRIES, 1),
@@ -350,9 +347,9 @@ export class CodeBotUsageTracker {
 }
 
 /** Fallback rates for models missing from the catalog: the priciest known. */
-const FALLBACK_INPUT_RATE = 7.5;
-const FALLBACK_OUTPUT_RATE = 37.5;
-const FALLBACK_CACHED_RATE = 0.75;
+const FALLBACK_INPUT_RATE = 2;
+const FALLBACK_OUTPUT_RATE = 10;
+const FALLBACK_CACHED_RATE = 0.2;
 
 export interface CodeBotPricing {
   modelId: string;
@@ -483,6 +480,7 @@ export class HttpCodeBotModelClient implements CodeBotModelClient {
   private reasoningDisabled = false;
   private temperatureDisabled = false;
   private promptCacheKeySupported = true;
+  private usageIncludeSupported = true;
   private maxTokensParam: "max_tokens" | "max_completion_tokens" | "none" = "max_tokens";
   private readonly supportsReasoning: boolean;
 
@@ -517,6 +515,7 @@ export class HttpCodeBotModelClient implements CodeBotModelClient {
     reasoning: boolean;
     temperature: boolean;
     promptCacheKey: boolean;
+    usageInclude: boolean;
   } {
     return {
       jsonMode: this.jsonModeSupported,
@@ -524,6 +523,7 @@ export class HttpCodeBotModelClient implements CodeBotModelClient {
       reasoning: this.supportsReasoning && !this.reasoningDisabled,
       temperature: !this.temperatureDisabled,
       promptCacheKey: this.config.promptCacheEnabled !== false && this.promptCacheKeySupported,
+      usageInclude: this.usageIncludeSupported,
     };
   }
 
@@ -562,6 +562,8 @@ export class HttpCodeBotModelClient implements CodeBotModelClient {
           ...(options.jsonMode ? { response_format: { type: "json_object" } } : {}),
           ...(options.reasoning ? { reasoning_effort: this.config.reasoning } : {}),
           ...(options.promptCacheKey && input.cacheKey ? { prompt_cache_key: input.cacheKey } : {}),
+          // OpenRouter returns `usage.cost` only when explicitly requested.
+          ...(options.usageInclude ? { usage: { include: true } } : {}),
         }),
         signal,
       });
@@ -579,7 +581,7 @@ export class HttpCodeBotModelClient implements CodeBotModelClient {
     if (!response.ok) {
       // Fallbacks are decided by what THIS request actually sent, so two
       // concurrent calls cannot disable each other's recovery.
-      for (const field of ["reasoning_effort", "reasoning", "temperature", "max_tokens", "max_completion_tokens", "response_format", "prompt_cache_key"] as const) {
+      for (const field of ["reasoning_effort", "reasoning", "temperature", "max_tokens", "max_completion_tokens", "response_format", "prompt_cache_key", "usage"] as const) {
         if (!raw.includes(field)) continue;
         if (field === "response_format" && options.jsonMode) {
           this.jsonModeSupported = false;
@@ -588,6 +590,10 @@ export class HttpCodeBotModelClient implements CodeBotModelClient {
         if (field === "prompt_cache_key" && options.promptCacheKey) {
           this.promptCacheKeySupported = false;
           return this.request(input, { ...options, promptCacheKey: false }, depth + 1);
+        }
+        if (field === "usage" && options.usageInclude) {
+          this.usageIncludeSupported = false;
+          return this.request(input, { ...options, usageInclude: false }, depth + 1);
         }
         if ((field === "max_tokens" || field === "max_completion_tokens") && options.maxTokensParam !== "none") {
           const next = this.maxTokensParam === "max_tokens" ? "max_completion_tokens" : "none";
@@ -603,7 +609,7 @@ export class HttpCodeBotModelClient implements CodeBotModelClient {
           return this.request(input, { ...options, temperature: false }, depth + 1);
         }
       }
-      if (/provider_error|temporarily|overloaded|try again|rate limit|timed out/i.test(raw)) {
+      if (/provider_error|temporarily|overloaded|try again|rate limit|timed out|in-flight requests|available credits/i.test(raw)) {
         throw new CodeBotModelError(`transient provider error: ${raw.slice(0, 200)}`, true);
       }
       throw new CodeBotModelError(`model request failed with status ${response.status}: ${raw.slice(0, 200)}`, false);

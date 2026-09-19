@@ -17,8 +17,8 @@ import type {
 import type { CodegraphChangedFile, RepoGraphIndex, HypothesisDismissal } from "../src/types.ts";
 
 const MODEL_CONFIG: CodeBotModelConfig = {
-  model: "openai/gpt-5.6-terra",
-  swarmModel: "openai/gpt-5.6-luna",
+  model: "z-ai/glm-5.3",
+  swarmModel: "openai/gpt-5-nano",
   codegenModel: "openai/gpt-5.6-sol",
   baseUrl: "http://localhost:1234",
   apiKey: "test-key",
